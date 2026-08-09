@@ -1,0 +1,21 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Build output
+bin/
+dist/
+server
+
+# Go
+*.exe
+*.out
+*.test
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

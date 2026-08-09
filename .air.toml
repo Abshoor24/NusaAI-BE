@@ -1,0 +1,34 @@
+# Air configuration for hot reload during development.
+# Docs: https://github.com/air-verse/air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build the server binary into the temporary directory.
+  # Runs via PowerShell on Windows.
+  cmd = "go build -o ./tmp/main.exe ./cmd/server"
+
+  # Binary Air runs after a successful build (relative to root).
+  entrypoint = ["./tmp/main.exe"]
+
+  # Watch only Go source files.
+  include_ext = ["go"]
+
+  # Directories to ignore.
+  exclude_dir = ["tmp", "bin", ".git", "vendor"]
+
+  # Files to ignore (log files must not trigger a reload).
+  exclude_file = ["server.log", "server.err.log", "server.pid"]
+
+  # Test files should not trigger a rebuild.
+  exclude_regex = ["_test\\.go"]
+
+  # Debounce delay (ms) before rebuilding.
+  delay = 1000
+
+  # Keep the last working binary running if the new build fails.
+  stop_on_error = true
+
+  # Build error log, stored inside tmp_dir.
+  log = "build-errors.log"

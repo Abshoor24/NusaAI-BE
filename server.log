@@ -1,0 +1,5 @@
+time=2026-08-09T20:09:45.763+07:00 level=INFO msg="database connected" host=127.0.0.1 port=5433 name=backend
+time=2026-08-09T20:09:45.765+07:00 level=INFO msg="server starting" addr=127.0.0.1:8080 env=development app=backend
+time=2026-08-09T20:23:30.666+07:00 level=INFO msg="http request" request_id=b2f2de45-d020-4bf5-91f0-43dcd1898d63 method=GET path=/health status=200 duration_ms=3 remote_addr=127.0.0.1:64895 user_agent="Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8972"
+time=2026-08-09T20:24:38.237+07:00 level=INFO msg="http request" request_id=a849d076-23a5-4035-af79-fdb659960c07 method=GET path=/health status=200 duration_ms=1 remote_addr=127.0.0.1:54974 user_agent="Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8972"
+time=2026-08-09T20:26:33.051+07:00 level=INFO msg="http request" request_id=5c5eb68c-48d3-4bd0-b709-58b03a00befe method=GET path=/health/db status=200 duration_ms=2 remote_addr=127.0.0.1:52330 user_agent="Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8972"
