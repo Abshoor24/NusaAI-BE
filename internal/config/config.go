@@ -143,7 +143,7 @@ func Load() (*Config, error) {
 			MaxBytes: getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
+			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 		},
 		Rate: RateLimitConfig{
 			Enabled:   getBool("RATE_LIMIT_ENABLED", true),
