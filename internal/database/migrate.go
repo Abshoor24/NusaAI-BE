@@ -16,9 +16,25 @@ import (
 )
 
 // migrationDSN builds a connection URL consumable by golang-migrate using the
-// pgx/v5 database driver. Values are URL-escaped to avoid breaking on special
-// characters in passwords.
-func migrationDSN(cfg config.DBConfig) string {
+// pgx/v5 database driver. A full DATABASE_URL is reused (only its scheme is
+// rewritten to the driver scheme), otherwise the individual connection fields
+// are assembled and URL-escaped to avoid breaking on special characters in
+// passwords.
+func migrationDSN(cfg config.DBConfig) (string, error) {
+	if cfg.URL != "" {
+		u, err := url.Parse(cfg.URL)
+		if err != nil {
+			return "", fmt.Errorf("database: parse DATABASE_URL: %w", err)
+		}
+		switch u.Scheme {
+		case "postgres", "postgresql":
+			u.Scheme = "pgx5"
+			return u.String(), nil
+		default:
+			return "", fmt.Errorf("database: DATABASE_URL must use a postgres/postgresql scheme, got %q", u.Scheme)
+		}
+	}
+
 	q := url.Values{}
 	q.Set("sslmode", cfg.SSLMode)
 	u := url.URL{
@@ -28,18 +44,23 @@ func migrationDSN(cfg config.DBConfig) string {
 		Path:     "/" + cfg.Name,
 		RawQuery: q.Encode(),
 	}
-	return u.String()
+	return u.String(), nil
 }
 
 // RunMigrations applies all pending embedded migrations at startup.
 func RunMigrations(cfg config.DBConfig) error {
+	dsn, err := migrationDSN(cfg)
+	if err != nil {
+		return err
+	}
+
 	src, err := iofs.New(migrations.Files, ".")
 	if err != nil {
 		return fmt.Errorf("migrations: load source: %w", err)
 	}
 	defer src.Close()
 
-	m, err := migrate.NewWithSourceInstance("iofs", src, migrationDSN(cfg))
+	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
 	if err != nil {
 		return fmt.Errorf("migrations: init: %w", err)
 	}

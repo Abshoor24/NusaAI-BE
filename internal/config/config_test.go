@@ -83,3 +83,24 @@ func TestLoadDurationParsing(t *testing.T) {
 		t.Errorf("JWT.Expiration = %v, want 2h", cfg.JWT.Expiration)
 	}
 }
+
+func TestLoadDatabaseURLPrecedence(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("DATABASE_URL", "postgresql://user:p@ss@db.example.com:5432/backend?sslmode=require")
+	t.Setenv("DATABASE_HOST", "127.0.0.1")
+	t.Setenv("DATABASE_PASSWORD", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DB.URL == "" {
+		t.Fatal("DB.URL = empty, want the DATABASE_URL value")
+	}
+	// Password is optional when a full URL is provided.
+	if cfg.DB.HostLabel() != "db.example.com:5432" {
+		t.Errorf("DB.HostLabel() = %q, want db.example.com:5432", cfg.DB.HostLabel())
+	}
+	if strings.Contains(cfg.DB.HostLabel(), "p@ss") {
+		t.Error("DB.HostLabel() must not expose the password")
+	}
+}

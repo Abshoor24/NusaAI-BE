@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +39,10 @@ type ServerConfig struct {
 }
 
 type DBConfig struct {
+	// URL is a full PostgreSQL connection string (e.g. Supabase). When set it
+	// takes precedence over the individual Host/Port/User/Password/Name/SSLMode
+	// fields and is passed through to the driver as-is.
+	URL               string
 	Host              string
 	Port              string
 	User              string
@@ -112,6 +117,7 @@ func Load() (*Config, error) {
 			IdleTimeout:  getDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
 		},
 		DB: DBConfig{
+			URL:               getEnv("DATABASE_URL", ""),
 			Host:              getEnv("DATABASE_HOST", "localhost"),
 			Port:              getEnv("DATABASE_PORT", "5432"),
 			User:              getEnv("DATABASE_USER", "postgres"),
@@ -195,10 +201,25 @@ func (c ServerConfig) valid() error {
 }
 
 func (c DBConfig) valid() error {
-	if c.Password == "" && !isLoopbackHost(c.Host) {
+	// A full connection string carries its own credentials, so the per-field
+	// password requirement only applies to the individual-variable path.
+	if c.URL == "" && c.Password == "" && !isLoopbackHost(c.Host) {
 		return fmt.Errorf("config: DATABASE_PASSWORD is required when connecting to a non-loopback host")
 	}
 	return nil
+}
+
+// HostLabel returns the host being connected to for log messages without
+// exposing credentials. When DATABASE_URL is used, the host is extracted from
+// the URL and the password is never included.
+func (c DBConfig) HostLabel() string {
+	if c.URL != "" {
+		if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
+			return u.Host
+		}
+		return "<from DATABASE_URL>"
+	}
+	return c.Host
 }
 
 // isLoopbackHost reports whether a host string refers to the local machine.

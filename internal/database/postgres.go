@@ -16,10 +16,13 @@ type Postgres struct {
 	pool *pgxpool.Pool
 }
 
-// DSN builds the PostgreSQL connection string from config.
-// TODO: evaluate whether a pool config with DATABASE_URL is preferable once
-// deployment requirements are known.
+// DSN builds the PostgreSQL connection string from config. A full DATABASE_URL
+// (e.g. Supabase) is passed through untouched; otherwise a libpq keyword/value
+// string is assembled from the individual fields.
 func DSN(cfg config.DBConfig) string {
+	if cfg.URL != "" {
+		return cfg.URL
+	}
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
