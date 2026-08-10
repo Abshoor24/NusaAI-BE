@@ -29,14 +29,17 @@ type Dependencies struct {
 // New builds the full HTTP handler with all routes and middleware.
 //
 // Middleware order matters: RequestID and Recovery run first so that logging
-// has an ID and panics are contained. CORS, SecurityHeaders and RateLimit are
-// applied to the API group; /health stays thin and is never throttled.
+// has an ID and panics are contained. CORS is applied at the top level so that
+// every endpoint (including /health) can be reached from the browser during
+// development. SecurityHeaders and RateLimit are applied to the API group;
+// /health stays thin and is never throttled.
 func New(deps Dependencies) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(deps.Logger))
 	r.Use(middleware.Recovery(deps.Logger))
+	r.Use(middleware.CORS(deps.Config.CORS.AllowedOrigins))
 	r.Use(middleware.SecurityHeaders)
 
 	healthH := handler.NewHealthHandler(deps.DB, deps.Logger)
@@ -47,7 +50,6 @@ func New(deps Dependencies) http.Handler {
 	r.Get("/health/db", healthH.DBHealth)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.CORS(deps.Config.CORS.AllowedOrigins))
 		if deps.Config.Rate.Enabled {
 			r.Use(middleware.RateLimit(deps.Config.Rate))
 		}
