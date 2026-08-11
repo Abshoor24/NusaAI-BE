@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
+	"github.com/USERNAME/PROJECT_NAME/pkg/response"
 )
 
 // DBPinger is the minimal dependency the health handler needs. It keeps the
@@ -27,7 +28,7 @@ func NewHealthHandler(db DBPinger, logger *slog.Logger) *HealthHandler {
 
 // Health reports liveness of the process. It does not touch the database.
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	RespondSuccess(w, http.StatusOK, "Request successful", map[string]string{"status": "ok"})
+	response.RespondSuccess(w, http.StatusOK, "Request successful", map[string]string{"status": "ok"})
 }
 
 // DBHealth reports whether the database connection pool can be pinged.
@@ -38,11 +39,11 @@ func (h *HealthHandler) DBHealth(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.db.Ping(ctx); err != nil {
 		h.logger.Error("database health check failed", "error", err)
-		RespondError(w, h.logger, apperror.Unavailable("Database is unavailable", err))
+		response.RespondError(w, h.logger, apperror.Unavailable("Database is unavailable", err))
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, "Request successful", map[string]string{
+	response.RespondSuccess(w, http.StatusOK, "Request successful", map[string]string{
 		"status":   "ok",
 		"database": "connected",
 	})

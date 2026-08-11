@@ -1,11 +1,12 @@
-package ai
+package service
 
 import (
 	"context"
 	"log/slog"
 
+	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
+	"github.com/USERNAME/PROJECT_NAME/internal/ai/provider"
 	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
 )
 
 // Service is the AI abstraction used by HTTP handlers. It decouples the
@@ -16,32 +17,33 @@ import (
 // TODO: CLIENT REQUIREMENT - this interface may need to grow (streaming,
 // structured output, embeddings) once the client's AI use case is decided.
 type Service interface {
-	GenerateResponse(ctx context.Context, req model.AIRequest) (model.AIResponse, error)
+	GenerateText(ctx context.Context, req model.GenerateTextRequest) (model.GenerateTextResponse, error)
 }
 
 type service struct {
-	provider Provider
+	provider provider.Provider
 	cfg      config.AIConfig
 	logger   *slog.Logger
 }
 
-func NewService(provider Provider, cfg config.AIConfig, logger *slog.Logger) Service {
+func New(provider provider.Provider, cfg config.AIConfig, logger *slog.Logger) Service {
 	return &service{provider: provider, cfg: cfg, logger: logger}
 }
 
-// GenerateResponse passes a request to the configured provider and maps the
-// result back to the model layer. No company-specific prompt is built here.
+// GenerateText passes a request to the configured provider and maps the
+// result back to the model layer. No company-specific prompt is built here;
+// timeout and transport concerns are handled by the provider.
 //
 // TODO: CLIENT REQUIREMENT - build system prompts / RAG context assembly for
 // the actual client's AI use case once requirements are gathered.
-func (s *service) GenerateResponse(ctx context.Context, req model.AIRequest) (model.AIResponse, error) {
-	resp, err := s.provider.Complete(ctx, providerRequest{
+func (s *service) GenerateText(ctx context.Context, req model.GenerateTextRequest) (model.GenerateTextResponse, error) {
+	resp, err := s.provider.Complete(ctx, provider.Request{
 		Model:   s.cfg.Model,
-		Message: req.Message,
+		Prompt:  req.Prompt,
 		Context: req.Context,
 	})
 	if err != nil {
-		return model.AIResponse{}, err
+		return model.GenerateTextResponse{}, err
 	}
-	return model.AIResponse{Message: resp.Message, Model: resp.Model}, nil
+	return model.GenerateTextResponse{Content: resp.Content, Model: resp.Model}, nil
 }

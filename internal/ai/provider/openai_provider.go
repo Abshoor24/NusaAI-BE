@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"bytes"
@@ -35,9 +35,9 @@ func NewOpenAIProvider(cfg config.AIConfig, logger *slog.Logger) *OpenAIProvider
 
 // Complete sends a chat completion request. The API key is only used
 // server-side and is never logged or returned to the client.
-func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (providerResponse, error) {
+func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (Response, error) {
 	if req.Model == "" {
-		return providerResponse{}, apperror.AIProvider("AI model is not configured", nil)
+		return Response{}, apperror.AIProvider("AI model is not configured", nil)
 	}
 
 	messages := make([]map[string]string, 0, len(req.Context)+1)
@@ -51,7 +51,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (pro
 	}
 	messages = append(messages, map[string]string{
 		"role":    "user",
-		"content": req.Message,
+		"content": req.Prompt,
 	})
 
 	payload, err := json.Marshal(map[string]interface{}{
@@ -59,12 +59,12 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (pro
 		"messages": messages,
 	})
 	if err != nil {
-		return providerResponse{}, apperror.AIProvider("Failed to build AI request", err)
+		return Response{}, apperror.AIProvider("Failed to build AI request", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return providerResponse{}, apperror.AIProvider("Failed to build AI request", err)
+		return Response{}, apperror.AIProvider("Failed to build AI request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if p.apiKey != "" {
@@ -75,10 +75,10 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (pro
 	if err != nil {
 		// Context cancellation/timeout is common and not a provider bug.
 		if ctx.Err() != nil {
-			return providerResponse{}, apperror.AIProvider("AI request was cancelled", ctx.Err())
+			return Response{}, apperror.AIProvider("AI request was cancelled", ctx.Err())
 		}
 		p.logger.Error("ai provider request failed", "error", err)
-		return providerResponse{}, apperror.AIProvider("The AI provider could not be reached", err)
+		return Response{}, apperror.AIProvider("The AI provider could not be reached", err)
 	}
 	defer resp.Body.Close()
 
@@ -90,7 +90,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (pro
 			"status", resp.StatusCode,
 			"provider_body", string(body),
 		)
-		return providerResponse{}, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+		return Response{}, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
 	}
 
 	var out struct {
@@ -103,14 +103,14 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req providerRequest) (pro
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		p.logger.Error("ai provider decode failed", "error", err)
-		return providerResponse{}, apperror.AIProvider("Failed to read AI provider response", err)
+		return Response{}, apperror.AIProvider("Failed to read AI provider response", err)
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return providerResponse{}, apperror.AIProvider("The AI provider returned no response", nil)
+		return Response{}, apperror.AIProvider("The AI provider returned no response", nil)
 	}
 
-	return providerResponse{
-		Message: out.Choices[0].Message.Content,
+	return Response{
+		Content: out.Choices[0].Message.Content,
 		Model:   out.Model,
 	}, nil
 }
