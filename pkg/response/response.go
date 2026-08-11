@@ -1,4 +1,7 @@
-package handler
+// Package response provides the standard success and error envelopes used by
+// every HTTP handler. It is reusable infrastructure, independent of any
+// business module.
+package response
 
 import (
 	"encoding/json"

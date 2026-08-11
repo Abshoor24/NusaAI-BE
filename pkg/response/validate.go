@@ -1,4 +1,4 @@
-package handler
+package response
 
 import (
 	"encoding/json"
@@ -26,10 +26,10 @@ var validatorInstance = func() *validator.Validate {
 	return v
 }()
 
-// decodeAndValidate parses a JSON body, enforces a size limit, rejects unknown
+// DecodeAndValidate parses a JSON body, enforces a size limit, rejects unknown
 // fields and runs struct validation. It returns a structured apperror on any
 // failure.
-func decodeAndValidate(w http.ResponseWriter, r *http.Request, dst interface{}, maxBytes int64) error {
+func DecodeAndValidate(w http.ResponseWriter, r *http.Request, dst interface{}, maxBytes int64) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
 	dec := json.NewDecoder(r.Body)

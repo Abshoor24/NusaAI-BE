@@ -63,6 +63,7 @@ type JWTConfig struct {
 }
 
 type AIConfig struct {
+	Provider string
 	APIKey   string
 	Model    string
 	BaseURL  string
@@ -136,6 +137,7 @@ func Load() (*Config, error) {
 			Issuer:     getEnv("JWT_ISSUER", "backend"),
 		},
 		AI: AIConfig{
+			Provider: getEnv("AI_PROVIDER", "openai"),
 			APIKey:   getEnv("AI_API_KEY", ""),
 			Model:    getEnv("AI_MODEL", ""),
 			BaseURL:  getEnv("AI_BASE_URL", "https://api.openai.com/v1"),

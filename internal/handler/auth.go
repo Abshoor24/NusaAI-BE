@@ -8,6 +8,7 @@ import (
 	"github.com/USERNAME/PROJECT_NAME/internal/middleware"
 	"github.com/USERNAME/PROJECT_NAME/internal/model"
 	"github.com/USERNAME/PROJECT_NAME/internal/service"
+	"github.com/USERNAME/PROJECT_NAME/pkg/response"
 )
 
 const defaultMaxBytes = 1 << 20 // 1 MB
@@ -25,50 +26,50 @@ func NewAuthHandler(auth service.AuthService, logger *slog.Logger) *AuthHandler 
 // Register handles POST /api/v1/auth/register.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req model.AuthRegisterRequest
-	if err := decodeAndValidate(w, r, &req, defaultMaxBytes); err != nil {
-		RespondError(w, h.logger, err)
+	if err := response.DecodeAndValidate(w, r, &req, defaultMaxBytes); err != nil {
+		response.RespondError(w, h.logger, err)
 		return
 	}
 
 	resp, err := h.auth.Register(r.Context(), req)
 	if err != nil {
-		RespondError(w, h.logger, err)
+		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	RespondSuccess(w, http.StatusCreated, "User registered successfully", resp)
+	response.RespondSuccess(w, http.StatusCreated, "User registered successfully", resp)
 }
 
 // Login handles POST /api/v1/auth/login.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req model.AuthLoginRequest
-	if err := decodeAndValidate(w, r, &req, defaultMaxBytes); err != nil {
-		RespondError(w, h.logger, err)
+	if err := response.DecodeAndValidate(w, r, &req, defaultMaxBytes); err != nil {
+		response.RespondError(w, h.logger, err)
 		return
 	}
 
 	resp, err := h.auth.Login(r.Context(), req)
 	if err != nil {
-		RespondError(w, h.logger, err)
+		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, "Login successful", resp)
+	response.RespondSuccess(w, http.StatusOK, "Login successful", resp)
 }
 
 // Me handles GET /api/v1/auth/me. It requires a valid token (RequireAuth).
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFrom(r.Context())
 	if !ok {
-		RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
 		return
 	}
 
 	resp, err := h.auth.Me(r.Context(), userID)
 	if err != nil {
-		RespondError(w, h.logger, err)
+		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	RespondSuccess(w, http.StatusOK, "Request successful", resp)
+	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
 }

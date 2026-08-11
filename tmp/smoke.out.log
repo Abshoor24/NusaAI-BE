@@ -1,0 +1,4 @@
+time=2026-08-11T20:16:34.509+07:00 level=INFO msg="database connected" host=aws-0-ap-south-1.pooler.supabase.com:5432
+time=2026-08-11T20:16:34.512+07:00 level=INFO msg="server starting" addr=127.0.0.1:8080 env=development app=backend
+time=2026-08-11T20:41:22.241+07:00 level=INFO msg="shutdown signal received"
+time=2026-08-11T20:41:22.242+07:00 level=INFO msg="server stopped gracefully"

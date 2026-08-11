@@ -1,16 +1,17 @@
 package model
 
-// AIRequest is the input contract for the AI service abstraction.
-// Context holds additional information the AI may use to answer. Its source
-// is deliberately open: database content, documents, FAQ or vector search
-// results can all be passed later. No company-specific prompt is assumed.
-type AIRequest struct {
-	Message string   `json:"message" validate:"required"`
-	Context []string `json:"context"`
+// GenerateTextRequest is the input contract for the AI service abstraction.
+// Prompt is the user's instruction/text. Context is optional supplementary
+// material (documents, FAQ, search results) the model can use to answer. Its
+// source is deliberately open so any business use case can feed it later. No
+// company-specific prompt is assumed.
+type GenerateTextRequest struct {
+	Prompt  string   `json:"prompt" validate:"required"`
+	Context []string `json:"context,omitempty"`
 }
 
-// AIResponse is the output contract of the AI service abstraction.
-type AIResponse struct {
-	Message string `json:"message"`
+// GenerateTextResponse is the output contract of the AI service abstraction.
+type GenerateTextResponse struct {
+	Content string `json:"content"`
 	Model   string `json:"model,omitempty"`
 }

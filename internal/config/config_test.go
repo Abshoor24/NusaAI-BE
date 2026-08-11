@@ -25,6 +25,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.AI.BaseURL != "https://api.openai.com/v1" {
 		t.Errorf("AI.BaseURL = %q, want default", cfg.AI.BaseURL)
 	}
+	if cfg.AI.Provider != "openai" {
+		t.Errorf("AI.Provider = %q, want openai", cfg.AI.Provider)
+	}
 	if len(cfg.CORS.AllowedOrigins) != 2 ||
 		cfg.CORS.AllowedOrigins[0] != "http://localhost:5173" ||
 		cfg.CORS.AllowedOrigins[1] != "http://127.0.0.1:5173" {

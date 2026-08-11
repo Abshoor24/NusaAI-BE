@@ -1,4 +1,4 @@
-package ai
+package service
 
 import (
 	"context"
@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
+	"github.com/USERNAME/PROJECT_NAME/internal/ai/provider"
 	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
 	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
 )
 
 func testLogger() *slog.Logger {
@@ -18,48 +19,48 @@ func testLogger() *slog.Logger {
 
 // mockProvider simulates an LLM provider without any real API call.
 type mockProvider struct {
-	message string
+	content string
 	model   string
 	err     error
 }
 
-func (m *mockProvider) Complete(_ context.Context, req providerRequest) (providerResponse, error) {
+func (m *mockProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
 	if m.err != nil {
-		return providerResponse{}, m.err
+		return provider.Response{}, m.err
 	}
-	return providerResponse{Message: "echo: " + req.Message, Model: "mock-model"}, nil
+	return provider.Response{Content: "echo: " + req.Prompt, Model: "mock-model"}, nil
 }
 
-func newTestService(p Provider) Service {
-	return NewService(p, config.AIConfig{Model: "test-model"}, testLogger())
+func newTestService(p provider.Provider) Service {
+	return New(p, config.AIConfig{Model: "test-model"}, testLogger())
 }
 
-func TestGenerateResponseSuccess(t *testing.T) {
+func TestGenerateTextSuccess(t *testing.T) {
 	svc := newTestService(&mockProvider{})
 	ctx := context.Background()
 
-	resp, err := svc.GenerateResponse(ctx, model.AIRequest{
-		Message: "Hello",
+	resp, err := svc.GenerateText(ctx, model.GenerateTextRequest{
+		Prompt:  "Hello",
 		Context: []string{"context line"},
 	})
 	if err != nil {
-		t.Fatalf("GenerateResponse() error = %v", err)
+		t.Fatalf("GenerateText() error = %v", err)
 	}
-	if resp.Message != "echo: Hello" {
-		t.Errorf("message = %q, want %q", resp.Message, "echo: Hello")
+	if resp.Content != "echo: Hello" {
+		t.Errorf("content = %q, want %q", resp.Content, "echo: Hello")
 	}
 	if resp.Model != "mock-model" {
 		t.Errorf("model = %q, want mock-model", resp.Model)
 	}
 }
 
-func TestGenerateResponseProviderError(t *testing.T) {
+func TestGenerateTextProviderError(t *testing.T) {
 	providerErr := apperror.AIProvider("The AI provider could not be reached", errors.New("connection refused"))
 	svc := newTestService(&mockProvider{err: providerErr})
 
-	_, err := svc.GenerateResponse(context.Background(), model.AIRequest{Message: "Hi"})
+	_, err := svc.GenerateText(context.Background(), model.GenerateTextRequest{Prompt: "Hi"})
 	if err == nil {
-		t.Fatal("GenerateResponse() expected error")
+		t.Fatal("GenerateText() expected error")
 	}
 	var ae *apperror.Error
 	if !errors.As(err, &ae) {
@@ -74,29 +75,29 @@ func TestGenerateResponseProviderError(t *testing.T) {
 	}
 }
 
-func TestGenerateResponsePassesContext(t *testing.T) {
-	var got providerRequest
-	svc := NewService(&recordingProvider{onComplete: func(req providerRequest) providerResponse {
+func TestGenerateTextPassesContext(t *testing.T) {
+	var got provider.Request
+	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
-		return providerResponse{Message: "ok", Model: "m"}
+		return provider.Response{Content: "ok", Model: "m"}
 	}}, config.AIConfig{Model: "test-model"}, testLogger())
 
-	_, err := svc.GenerateResponse(context.Background(), model.AIRequest{
-		Message: "Q",
+	_, err := svc.GenerateText(context.Background(), model.GenerateTextRequest{
+		Prompt:  "Q",
 		Context: []string{"a", "b"},
 	})
 	if err != nil {
-		t.Fatalf("GenerateResponse() error = %v", err)
+		t.Fatalf("GenerateText() error = %v", err)
 	}
-	if got.Model != "test-model" || got.Message != "Q" || len(got.Context) != 2 {
+	if got.Model != "test-model" || got.Prompt != "Q" || len(got.Context) != 2 {
 		t.Errorf("provider received %+v", got)
 	}
 }
 
 type recordingProvider struct {
-	onComplete func(req providerRequest) providerResponse
+	onComplete func(req provider.Request) provider.Response
 }
 
-func (r *recordingProvider) Complete(_ context.Context, req providerRequest) (providerResponse, error) {
+func (r *recordingProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
 	return r.onComplete(req), nil
 }

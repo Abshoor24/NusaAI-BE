@@ -1,4 +1,6 @@
-package router
+// Package routes wires every module into a single chi router. main.go only
+// depends on this package, so HTTP wiring never leaks into the entrypoint.
+package routes
 
 import (
 	"log/slog"
@@ -7,12 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/USERNAME/PROJECT_NAME/internal/ai"
+	aiservice "github.com/USERNAME/PROJECT_NAME/internal/ai/service"
 	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/database"
 	"github.com/USERNAME/PROJECT_NAME/internal/handler"
 	"github.com/USERNAME/PROJECT_NAME/internal/jwt"
 	"github.com/USERNAME/PROJECT_NAME/internal/middleware"
 	"github.com/USERNAME/PROJECT_NAME/internal/service"
+	"github.com/USERNAME/PROJECT_NAME/storage"
 )
 
 // Dependencies are explicitly injected into the router from main.go to avoid
@@ -20,9 +23,9 @@ import (
 type Dependencies struct {
 	Config *config.Config
 	Logger *slog.Logger
-	DB     *database.Postgres
+	DB     *storage.Supabase
 	Auth   service.AuthService
-	AI     ai.Service
+	AI     aiservice.Service
 	Tokens *jwt.Manager
 }
 
@@ -44,7 +47,6 @@ func New(deps Dependencies) http.Handler {
 
 	healthH := handler.NewHealthHandler(deps.DB, deps.Logger)
 	authH := handler.NewAuthHandler(deps.Auth, deps.Logger)
-	aiH := handler.NewAIHandler(deps.AI, deps.Logger, deps.Config.AI)
 
 	r.Get("/health", healthH.Health)
 	r.Get("/health/db", healthH.DBHealth)
@@ -60,7 +62,12 @@ func New(deps Dependencies) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.Tokens))
 			r.Get("/auth/me", authH.Me)
-			r.Post("/ai/chat", aiH.Chat)
+		})
+
+		ai.RegisterRoutes(r, ai.ModuleDeps{
+			Service: deps.AI,
+			Config:  deps.Config.AI,
+			Logger:  deps.Logger,
 		})
 
 		// Admin namespace foundation.

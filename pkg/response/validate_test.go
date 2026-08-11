@@ -1,8 +1,10 @@
-package handler
+package response
 
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,10 @@ import (
 
 	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 type validatable struct {
 	Email    string `json:"email" validate:"required,email"`
@@ -22,8 +28,8 @@ func TestDecodeAndValidateValid(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	var dst validatable
-	if err := decodeAndValidate(rec, req, &dst, 1<<20); err != nil {
-		t.Fatalf("decodeAndValidate() error = %v", err)
+	if err := DecodeAndValidate(rec, req, &dst, 1<<20); err != nil {
+		t.Fatalf("DecodeAndValidate() error = %v", err)
 	}
 	if dst.Email != "a@b.com" {
 		t.Errorf("Email = %q", dst.Email)
@@ -35,9 +41,9 @@ func TestDecodeAndValidateInvalidEmail(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"email":"not-an-email","password":"secret123"}`))
 
 	var dst validatable
-	err := decodeAndValidate(rec, req, &dst, 1<<20)
+	err := DecodeAndValidate(rec, req, &dst, 1<<20)
 	if err == nil {
-		t.Fatal("decodeAndValidate() expected error")
+		t.Fatal("DecodeAndValidate() expected error")
 	}
 
 	var ae *apperror.Error
@@ -61,9 +67,9 @@ func TestDecodeAndValidateRejectsUnknownField(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"email":"a@b.com","password":"secret123","role":"admin"}`))
 
 	var dst validatable
-	err := decodeAndValidate(rec, req, &dst, 1<<20)
+	err := DecodeAndValidate(rec, req, &dst, 1<<20)
 	if err == nil {
-		t.Fatal("decodeAndValidate() expected error for unknown field")
+		t.Fatal("DecodeAndValidate() expected error for unknown field")
 	}
 	var ae *apperror.Error
 	if !errors.As(err, &ae) || ae.Code() != "VALIDATION_ERROR" {
@@ -76,9 +82,9 @@ func TestDecodeAndValidateRejectsOversizedBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"email":"a@b.com","password":"secret123"}`))
 
 	var dst validatable
-	err := decodeAndValidate(rec, req, &dst, 16)
+	err := DecodeAndValidate(rec, req, &dst, 16)
 	if err == nil {
-		t.Fatal("decodeAndValidate() expected error for oversized body")
+		t.Fatal("DecodeAndValidate() expected error for oversized body")
 	}
 	var ae *apperror.Error
 	if !errors.As(err, &ae) || ae.Code() != "BAD_REQUEST" {
