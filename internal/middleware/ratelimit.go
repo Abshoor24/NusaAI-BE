@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/config"
 )
 
 // ipRateLimiter tracks one token-bucket limiter per client IP. Stale entries

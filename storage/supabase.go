@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/database"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/database"
 )
 
 const dbWaitTimeout = 30 * time.Second

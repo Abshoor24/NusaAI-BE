@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/config"
 )
 
 // Postgres manages the connection pool. It is created once at startup and

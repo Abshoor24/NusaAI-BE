@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/jwt"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/repository"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/jwt"
+	"github.com/Abshoor24/backend-go/internal/model"
+	"github.com/Abshoor24/backend-go/internal/repository"
 )
 
 func testLogger() *slog.Logger {

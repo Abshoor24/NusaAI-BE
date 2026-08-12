@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/jwt"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/repository"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/jwt"
+	"github.com/Abshoor24/backend-go/internal/model"
+	"github.com/Abshoor24/backend-go/internal/repository"
 )
 
 // AuthService contains the authentication business logic. It depends on the

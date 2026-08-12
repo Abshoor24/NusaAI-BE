@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/provider"
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 )
 
 func testLogger() *slog.Logger {

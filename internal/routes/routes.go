@@ -8,14 +8,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai"
-	aiservice "github.com/USERNAME/PROJECT_NAME/internal/ai/service"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/handler"
-	"github.com/USERNAME/PROJECT_NAME/internal/jwt"
-	"github.com/USERNAME/PROJECT_NAME/internal/middleware"
-	"github.com/USERNAME/PROJECT_NAME/internal/service"
-	"github.com/USERNAME/PROJECT_NAME/storage"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/handler"
+	"github.com/Abshoor24/backend-go/internal/jwt"
+	"github.com/Abshoor24/backend-go/internal/middleware"
+	"github.com/Abshoor24/backend-go/internal/modules/ai"
+	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
+	"github.com/Abshoor24/backend-go/internal/service"
+	"github.com/Abshoor24/backend-go/storage"
 )
 
 // Dependencies are explicitly injected into the router from main.go to avoid

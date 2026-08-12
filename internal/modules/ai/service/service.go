@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/provider"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 )
 
 // Service is the AI abstraction used by HTTP handlers. It decouples the

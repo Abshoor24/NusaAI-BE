@@ -7,8 +7,8 @@ import (
 
 	jwtlib "github.com/golang-jwt/jwt/v5"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/model"
 )
 
 // Manager signs and validates JWT access tokens. Tokens only carry the

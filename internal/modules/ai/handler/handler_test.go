@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/service"
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/service"
 )
 
 func testLogger() *slog.Logger {

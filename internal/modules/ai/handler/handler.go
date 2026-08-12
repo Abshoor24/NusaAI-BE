@@ -4,10 +4,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/service"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/pkg/response"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/service"
+	"github.com/Abshoor24/backend-go/pkg/response"
 )
 
 // Handler exposes the AI foundation endpoints. It depends only on the AI
@@ -54,7 +54,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	modelConfigured := h.cfg.Model != ""
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", map[string]interface{}{
-		"provider":  h.cfg.Provider,
+		"provider":   h.cfg.Provider,
 		"configured": providerConfigured && apiKeyConfigured && modelConfigured,
 		"checks": map[string]bool{
 			"provider": providerConfigured,
