@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/apperror"
 )
 
 // validatorInstance uses JSON field names in validation messages so clients

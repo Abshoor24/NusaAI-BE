@@ -11,8 +11,8 @@ import (
 	// Register the "pgx5" database driver for golang-migrate (import for side effects).
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/migrations"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/migrations"
 )
 
 // migrationDSN builds a connection URL consumable by golang-migrate using the

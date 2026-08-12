@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/apperror"
 )
 
 // successResponse is the standard success envelope. data must be JSON-serializable.

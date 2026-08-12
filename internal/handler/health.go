@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/pkg/response"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/pkg/response"
 )
 
 // DBPinger is the minimal dependency the health handler needs. It keeps the

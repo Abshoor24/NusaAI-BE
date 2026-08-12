@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/apperror"
 )
 
 func testLogger() *slog.Logger {

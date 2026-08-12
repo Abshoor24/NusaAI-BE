@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/config"
 )
 
 // OpenAIProvider talks to any OpenAI-compatible chat completions API. The

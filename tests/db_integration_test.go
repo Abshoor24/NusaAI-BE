@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
-	"github.com/USERNAME/PROJECT_NAME/internal/database"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/database"
 )
 
 // TestDatabaseIntegration verifies the real PostgreSQL pool and the embedded

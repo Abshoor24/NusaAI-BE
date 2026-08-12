@@ -1,4 +1,4 @@
-module github.com/USERNAME/PROJECT_NAME
+module github.com/Abshoor24/backend-go
 
 go 1.25.3
 

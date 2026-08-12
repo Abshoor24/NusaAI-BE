@@ -4,11 +4,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/apperror"
-	"github.com/USERNAME/PROJECT_NAME/internal/middleware"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
-	"github.com/USERNAME/PROJECT_NAME/internal/service"
-	"github.com/USERNAME/PROJECT_NAME/pkg/response"
+	"github.com/Abshoor24/backend-go/internal/apperror"
+	"github.com/Abshoor24/backend-go/internal/middleware"
+	"github.com/Abshoor24/backend-go/internal/model"
+	"github.com/Abshoor24/backend-go/internal/service"
+	"github.com/Abshoor24/backend-go/pkg/response"
 )
 
 const defaultMaxBytes = 1 << 20 // 1 MB

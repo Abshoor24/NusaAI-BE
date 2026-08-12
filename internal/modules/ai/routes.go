@@ -1,7 +1,7 @@
 // Package ai is the AI foundation module. It is intentionally business-agnostic:
 // no company prompt, no chat history, no client-specific behavior. Client AI
 // features are added later under this same module structure
-// (internal/ai/{handler,service,provider,model}) without touching main.go.
+// (internal/modules/ai/{handler,service,provider,model}) without touching main.go.
 package ai
 
 import (
@@ -9,9 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/handler"
-	"github.com/USERNAME/PROJECT_NAME/internal/ai/service"
-	"github.com/USERNAME/PROJECT_NAME/internal/config"
+	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/handler"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/service"
 )
 
 // ModuleDeps carries the dependencies the AI module needs. It is wired from

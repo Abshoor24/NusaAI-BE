@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/USERNAME/PROJECT_NAME/internal/jwt"
-	"github.com/USERNAME/PROJECT_NAME/internal/model"
+	"github.com/Abshoor24/backend-go/internal/jwt"
+	"github.com/Abshoor24/backend-go/internal/model"
 )
 
 const claimsKey ctxKey = "claims"
