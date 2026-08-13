@@ -101,3 +101,79 @@ type recordingProvider struct {
 func (r *recordingProvider) Complete(_ context.Context, req provider.Request) (provider.Response, error) {
 	return r.onComplete(req), nil
 }
+
+func TestChatAssemblesMessages(t *testing.T) {
+	var got provider.Request
+	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+		got = req
+		return provider.Response{Content: "hi there", Model: "mock-model"}
+	}}, config.AIConfig{Model: "test-model"}, testLogger())
+
+	resp, err := svc.Chat(context.Background(), model.ChatRequest{
+		Message: "Halo",
+		History: []model.ChatMessage{
+			{Role: "user", Content: "Hai"},
+			{Role: "assistant", Content: "Halo!"},
+		},
+		System: "You are a bakery assistant.",
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if resp.Response != "hi there" {
+		t.Errorf("response = %q, want hi there", resp.Response)
+	}
+	if got.Model != "test-model" {
+		t.Errorf("model = %q, want test-model", got.Model)
+	}
+	want := []provider.ChatMessage{
+		{Role: "system", Content: "You are a bakery assistant."},
+		{Role: "user", Content: "Hai"},
+		{Role: "assistant", Content: "Halo!"},
+		{Role: "user", Content: "Halo"},
+	}
+	if len(got.Messages) != len(want) {
+		t.Fatalf("messages length = %d, want %d", len(got.Messages), len(want))
+	}
+	for i, w := range want {
+		if got.Messages[i] != w {
+			t.Errorf("messages[%d] = %+v, want %+v", i, got.Messages[i], w)
+		}
+	}
+}
+
+func TestChatDefaultSystemPrompt(t *testing.T) {
+	var got provider.Request
+	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+		got = req
+		return provider.Response{Content: "ok", Model: "m"}
+	}}, config.AIConfig{Model: "test-model"}, testLogger())
+
+	_, err := svc.Chat(context.Background(), model.ChatRequest{Message: "Hai"})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if len(got.Messages) != 2 {
+		t.Fatalf("messages length = %d, want 2", len(got.Messages))
+	}
+	if got.Messages[0].Role != "system" || got.Messages[0].Content == "" {
+		t.Errorf("default system prompt missing: %+v", got.Messages[0])
+	}
+	if got.Messages[1].Role != "user" || got.Messages[1].Content != "Hai" {
+		t.Errorf("user message = %+v", got.Messages[1])
+	}
+}
+
+func TestChatProviderError(t *testing.T) {
+	providerErr := apperror.AIProvider("The AI provider could not be reached", errors.New("connection refused"))
+	svc := New(&mockProvider{err: providerErr}, config.AIConfig{Model: "test-model"}, testLogger())
+
+	_, err := svc.Chat(context.Background(), model.ChatRequest{Message: "Hi"})
+	if err == nil {
+		t.Fatal("Chat() expected error")
+	}
+	var ae *apperror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("error = %T, want *apperror.Error", err)
+	}
+}

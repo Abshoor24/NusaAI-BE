@@ -40,19 +40,30 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (Response, e
 		return Response{}, apperror.AIProvider("AI model is not configured", nil)
 	}
 
-	messages := make([]map[string]string, 0, len(req.Context)+1)
-	// TODO: CLIENT REQUIREMENT - replace generic context injection with a
-	// real system prompt / RAG strategy once the client's AI use case exists.
-	if len(req.Context) > 0 {
+	var messages []map[string]string
+	if len(req.Messages) > 0 {
+		messages = make([]map[string]string, len(req.Messages))
+		for i, msg := range req.Messages {
+			messages[i] = map[string]string{
+				"role":    msg.Role,
+				"content": msg.Content,
+			}
+		}
+	} else {
+		messages = make([]map[string]string, 0, len(req.Context)+1)
+		// TODO: CLIENT REQUIREMENT - replace generic context injection with a
+		// real system prompt / RAG strategy once the client's AI use case exists.
+		if len(req.Context) > 0 {
+			messages = append(messages, map[string]string{
+				"role":    "system",
+				"content": strings.Join(req.Context, "\n\n"),
+			})
+		}
 		messages = append(messages, map[string]string{
-			"role":    "system",
-			"content": strings.Join(req.Context, "\n\n"),
+			"role":    "user",
+			"content": req.Prompt,
 		})
 	}
-	messages = append(messages, map[string]string{
-		"role":    "user",
-		"content": req.Prompt,
-	})
 
 	payload, err := json.Marshal(map[string]interface{}{
 		"model":    req.Model,

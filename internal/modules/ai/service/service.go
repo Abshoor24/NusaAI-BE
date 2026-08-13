@@ -18,6 +18,7 @@ import (
 // structured output, embeddings) once the client's AI use case is decided.
 type Service interface {
 	GenerateText(ctx context.Context, req model.GenerateTextRequest) (model.GenerateTextResponse, error)
+	Chat(ctx context.Context, req model.ChatRequest) (model.ChatResponse, error)
 }
 
 type service struct {
@@ -46,4 +47,45 @@ func (s *service) GenerateText(ctx context.Context, req model.GenerateTextReques
 		return model.GenerateTextResponse{}, err
 	}
 	return model.GenerateTextResponse{Content: resp.Content, Model: resp.Model}, nil
+}
+
+func (s *service) Chat(ctx context.Context, req model.ChatRequest) (model.ChatResponse, error) {
+	var msgs []provider.ChatMessage
+
+	// 1. Add System Prompt (use default if none is provided)
+	systemPrompt := "You are a helpful customer service chatbot assistant."
+	if req.System != "" {
+		systemPrompt = req.System
+	}
+	msgs = append(msgs, provider.ChatMessage{
+		Role:    "system",
+		Content: systemPrompt,
+	})
+
+	// 2. Add history
+	for _, msg := range req.History {
+		msgs = append(msgs, provider.ChatMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		})
+	}
+
+	// 3. Add latest user message
+	msgs = append(msgs, provider.ChatMessage{
+		Role:    "user",
+		Content: req.Message,
+	})
+
+	resp, err := s.provider.Complete(ctx, provider.Request{
+		Model:    s.cfg.Model,
+		Messages: msgs,
+	})
+	if err != nil {
+		return model.ChatResponse{}, err
+	}
+
+	return model.ChatResponse{
+		Response: resp.Content,
+		Model:    resp.Model,
+	}, nil
 }

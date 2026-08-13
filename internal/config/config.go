@@ -63,12 +63,14 @@ type JWTConfig struct {
 }
 
 type AIConfig struct {
-	Provider string
-	APIKey   string
-	Model    string
-	BaseURL  string
-	Timeout  time.Duration
-	MaxBytes int64
+	Provider             string
+	APIKey               string
+	Model                string
+	BaseURL              string
+	Timeout              time.Duration
+	MaxBytes             int64
+	ChatRateLimitEnabled bool
+	ChatRateLimitPerMin  int
 }
 
 type CORSConfig struct {
@@ -137,12 +139,14 @@ func Load() (*Config, error) {
 			Issuer:     getEnv("JWT_ISSUER", "backend"),
 		},
 		AI: AIConfig{
-			Provider: getEnv("AI_PROVIDER", "openai"),
-			APIKey:   getEnv("AI_API_KEY", ""),
-			Model:    getEnv("AI_MODEL", ""),
-			BaseURL:  getEnv("AI_BASE_URL", "https://api.openai.com/v1"),
-			Timeout:  getDuration("AI_TIMEOUT", 30*time.Second),
-			MaxBytes: getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
+			Provider:             getEnv("AI_PROVIDER", "openai"),
+			APIKey:               getEnv("AI_API_KEY", ""),
+			Model:                getEnv("AI_MODEL", ""),
+			BaseURL:              getEnv("AI_BASE_URL", "https://api.openai.com/v1"),
+			Timeout:              getDuration("AI_TIMEOUT", 30*time.Second),
+			MaxBytes:             getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
+			ChatRateLimitEnabled: getBool("AI_CHAT_RATE_LIMIT_ENABLED", true),
+			ChatRateLimitPerMin:  getInt("AI_CHAT_RATE_LIMIT_PER_MINUTE", 10),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),

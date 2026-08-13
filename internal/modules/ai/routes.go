@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/middleware"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/handler"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/service"
 )
@@ -28,4 +29,16 @@ func RegisterRoutes(r chi.Router, deps ModuleDeps) {
 	h := handler.New(deps.Service, deps.Logger, deps.Config)
 	r.Get("/ai/health", h.Health)
 	r.Post("/ai/generate", h.Generate)
+
+	// Chatbot endpoint has a separate group to apply stricter rate limits specifically to chatbot queries
+	r.Group(func(r chi.Router) {
+		if deps.Config.ChatRateLimitEnabled {
+			r.Use(middleware.RateLimit(config.RateLimitConfig{
+				Enabled:   true,
+				PerMinute: deps.Config.ChatRateLimitPerMin,
+				Burst:     deps.Config.ChatRateLimitPerMin,
+			}))
+		}
+		r.Post("/ai/chat", h.Chat)
+	})
 }

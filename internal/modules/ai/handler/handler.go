@@ -63,3 +63,22 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// Chat handles POST /ai/chat. It receives conversation history and a message,
+// and returns the assistant's reply. No authentication is required, which
+// is ideal for public website chatbots.
+func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
+	var req model.ChatRequest
+	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	resp, err := h.ai.Chat(r.Context(), req)
+	if err != nil {
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
+}
