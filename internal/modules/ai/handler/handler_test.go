@@ -174,6 +174,7 @@ func TestChatSuccess(t *testing.T) {
 			Response string `json:"response"`
 			Model    string `json:"model"`
 		} `json:"data"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)
@@ -186,6 +187,9 @@ func TestChatSuccess(t *testing.T) {
 	}
 	if body.Data.Model != "m" {
 		t.Errorf("model = %q, want m", body.Data.Model)
+	}
+	if body.Message != "Request successful" {
+		t.Errorf("message = %q, want \"Request successful\"", body.Message)
 	}
 }
 

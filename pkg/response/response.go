@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/Abshoor24/backend-go/internal/apperror"
 )
@@ -33,9 +34,25 @@ type errorResponse struct {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
+	slog.Default().Info("writeJSON: starting encoding")
+	data, err := json.Marshal(v)
+	if err != nil {
+		slog.Default().Error("writeJSON: failed to encode JSON response", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	slog.Default().Info("writeJSON: encoding successful", "bytes", len(data))
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+
+	n, err := w.Write(data)
+	if err != nil {
+		slog.Default().Error("writeJSON: failed to write HTTP response bytes", "error", err)
+	} else {
+		slog.Default().Info("writeJSON: successfully wrote response bytes", "bytes_written", n)
+	}
 }
 
 // RespondSuccess writes a standard success response.
