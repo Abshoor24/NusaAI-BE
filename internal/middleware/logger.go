@@ -28,6 +28,16 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *statusWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // RequestLogger logs one structured line per request. It never logs the
 // Authorization header, passwords, tokens or request bodies.
 func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {

@@ -68,17 +68,23 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 // and returns the assistant's reply. No authentication is required, which
 // is ideal for public website chatbots.
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("chatbot handler entered", "request_id", r.Header.Get("X-Request-ID"))
+
 	var req model.ChatRequest
 	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		h.logger.Error("chatbot request validation failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
 
 	resp, err := h.ai.Chat(r.Context(), req)
 	if err != nil {
+		h.logger.Error("chatbot ai service execution failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
+
+	h.logger.Info("chatbot gemini response received successfully")
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
 }

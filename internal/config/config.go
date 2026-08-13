@@ -115,9 +115,9 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Host:         getEnv("APP_HOST", "0.0.0.0"),
 			Port:         getEnv("APP_PORT", "8080"),
-			ReadTimeout:  getDuration("SERVER_READ_TIMEOUT", 5*time.Second),
-			WriteTimeout: getDuration("SERVER_WRITE_TIMEOUT", 10*time.Second),
-			IdleTimeout:  getDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
+			ReadTimeout:  getDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout: getDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
+			IdleTimeout:  getDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
 		DB: DBConfig{
 			URL:               getEnv("DATABASE_URL", ""),
