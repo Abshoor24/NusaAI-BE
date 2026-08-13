@@ -15,3 +15,22 @@ type GenerateTextResponse struct {
 	Content string `json:"content"`
 	Model   string `json:"model,omitempty"`
 }
+
+// ChatMessage represents a single message in a chatbot conversation history.
+type ChatMessage struct {
+	Role    string `json:"role" validate:"required,oneof=system user assistant"`
+	Content string `json:"content" validate:"required"`
+}
+
+// ChatRequest is the input contract for the chatbot endpoint.
+type ChatRequest struct {
+	Message string        `json:"message" validate:"required"`
+	History []ChatMessage `json:"history,omitempty"`
+	System  string        `json:"system,omitempty"` // Optional custom system prompt override
+}
+
+// ChatResponse is the output contract of the chatbot endpoint.
+type ChatResponse struct {
+	Response string `json:"response"`
+	Model    string `json:"model,omitempty"`
+}

@@ -35,6 +35,13 @@ func (m *mockService) GenerateText(_ context.Context, req model.GenerateTextRequ
 	return model.GenerateTextResponse{Content: "answer to: " + req.Prompt, Model: m.model}, nil
 }
 
+func (m *mockService) Chat(_ context.Context, req model.ChatRequest) (model.ChatResponse, error) {
+	if m.err != nil {
+		return model.ChatResponse{}, m.err
+	}
+	return model.ChatResponse{Response: "chat reply to: " + req.Message, Model: m.model}, nil
+}
+
 func TestGenerateSuccess(t *testing.T) {
 	h := New(&mockService{model: "m"}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
 	rec := httptest.NewRecorder()
@@ -150,3 +157,61 @@ func TestHealthConfigured(t *testing.T) {
 }
 
 var _ service.Service = (*mockService)(nil)
+
+func TestChatSuccess(t *testing.T) {
+	h := New(&mockService{model: "m"}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/chat", strings.NewReader(`{"message":"Halo","history":[{"role":"user","content":"Hai"},{"role":"assistant","content":"Halo!"}]}`))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Response string `json:"response"`
+			Model    string `json:"model"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if !body.Success {
+		t.Error("success = false, want true")
+	}
+	if body.Data.Response != "chat reply to: Halo" {
+		t.Errorf("response = %q", body.Data.Response)
+	}
+	if body.Data.Model != "m" {
+		t.Errorf("model = %q, want m", body.Data.Model)
+	}
+}
+
+func TestChatValidationError(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/chat", strings.NewReader(`{"message":""}`))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestChatProviderError(t *testing.T) {
+	h := New(&mockService{err: apperror.AIProvider("The AI provider could not be reached", errors.New("boom"))}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/chat", strings.NewReader(`{"message":"x"}`))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	if strings.Contains(rec.Body.String(), "boom") {
+		t.Errorf("response leaks provider cause: %s", rec.Body.String())
+	}
+}

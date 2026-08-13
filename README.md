@@ -162,7 +162,7 @@ Endpoint yang tersedia:
 | POST | `/api/v1/auth/register` | - | Registrasi user baru |
 | POST | `/api/v1/auth/login` | - | Login, menerima JWT |
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
-| POST | `/api/v1/ai/chat` | Bearer | Prototype AI chat |
+| POST | `/api/v1/ai/chat` | - | Chatbot publik (tanpa login) dengan rate limit per IP |
 
 Dokumentasi lengkap: [docs/api.md](docs/api.md).
 

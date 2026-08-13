@@ -223,27 +223,31 @@ Status codes:
 
 ## POST /api/v1/ai/chat
 
-Prototype AI endpoint untuk membuktikan abstraksi AI end-to-end.
+Endpoint chatbot publik untuk website. Tidak memerlukan login/registrasi.
+Riwayat percakapan dikirim dari frontend (stateless) sehingga backend tidak
+perlu menyimpan sesi per user.
 
-> **PENTING:** endpoint ini adalah **PROTOTYPE**. Prompt/system instruction
-> yang spesifik untuk bisnis client **belum ada** dan tidak boleh diasumsikan.
-
-- **Auth:** `Authorization: Bearer <token>` wajib
+- **Auth:** tidak diperlukan (publik)
 
 Request:
 
 ```json
 {
-  "message": "Hello",
-  "context": []
+  "message": "Halo, jam berapa toko buka?",
+  "history": [
+    { "role": "user", "content": "Hai" },
+    { "role": "assistant", "content": "Halo! Ada yang bisa saya bantu?" }
+  ],
+  "system": "Anda adalah asisten toko roti yang ramah."
 }
 ```
 
 Rules:
 
 - `message` wajib.
-- `context` opsional: array string yang nantinya dapat berisi dokumen, FAQ,
-  hasil vector search, dsb. (CLIENT REQUIREMENT).
+- `history` opsional: array percakapan sebelumnya (`system`/`user`/`assistant`).
+- `system` opsional: system prompt kustom. Jika kosong, dipakai default
+  `"You are a helpful customer service chatbot assistant."`.
 - Ukuran body dibatasi (`AI_MAX_REQUEST_BYTES`, default 1 MB).
 - Timeout panggilan AI dibatasi (`AI_TIMEOUT`, default 30 detik).
 
@@ -253,7 +257,7 @@ Response `200`:
 {
   "success": true,
   "data": {
-    "message": "...",
+    "response": "Toko kami buka dari jam 08.00 hingga 20.00 setiap hari.",
     "model": "gpt-4o-mini"
   },
   "message": "Request successful"
@@ -264,9 +268,15 @@ Status codes:
 
 - `200` sukses
 - `400` body tidak valid / terlalu besar
-- `401` token hilang/tidak valid
 - `429` rate limit terlampaui
 - `502` AI provider error (detail provider tidak diekspos ke client)
+
+Rate limiting:
+
+- Limit khusus per IP: `AI_CHAT_RATE_LIMIT_PER_MINUTE` (default 10 request/menit/IP),
+  diaktifkan via `AI_CHAT_RATE_LIMIT_ENABLED` (default true).
+- Proteksi ini tetap berjalan meski timer di frontend di-bypass, sehingga
+  kuota berbayar API key tetap aman dari spam.
 
 Catatan: jika `AI_MODEL` kosong, endpoint mengembalikan `AI_PROVIDER_ERROR`.
 API key hanya disimpan di backend, tidak pernah dikirim ke frontend.
