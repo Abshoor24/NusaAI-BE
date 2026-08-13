@@ -72,15 +72,15 @@ AI Service (interface: GenerateResponse(ctx, AIRequest) → AIResponse)
 Provider (interface: Complete(ctx, providerRequest) → providerResponse)
    │
    ▼
-LLM API (OpenAI-compatible, base URL configurable)
+LLM API (Gemini Generative Language API, base URL configurable)
 ```
 
 - **AI Service** (`internal/ai/service.go`) adalah satu-satunya yang dipakai
   HTTP handler. Handler tidak tahu provider apa yang dipakai.
 - **Provider** (`internal/ai/provider.go`) adalah contract transport.
-  `OpenAIProvider` (`internal/ai/openai_provider.go`) adalah implementasi
-  OpenAI-compatible dengan `AI_BASE_URL` yang bisa diarahkan ke OpenAI,
-  OpenRouter, Ollama, vLLM, dsb.
+  `GeminiProvider` (`internal/ai/gemini_provider.go`) adalah implementasi
+  native Gemini dengan `AI_BASE_URL` yang bisa diarahkan ke endpoint Gemini
+  lain atau gateway OpenAI-compatible bila provider berbeda dibutuhkan.
 - **Model** (`AIRequest{Message, Context []string}`, `AIResponse{Message, Model}`)
   dirancang netral sehingga nantinya bisa dipakai untuk chatbot, rekomendasi,
   document Q&A, semantic search, content assistance, lead qualification.

@@ -258,7 +258,7 @@ Response `200`:
   "success": true,
   "data": {
     "response": "Toko kami buka dari jam 08.00 hingga 20.00 setiap hari.",
-    "model": "gpt-4o-mini"
+    "model": "gemini-2.5-flash"
   },
   "message": "Request successful"
 }

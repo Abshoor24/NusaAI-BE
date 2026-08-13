@@ -31,7 +31,7 @@ infrastructure yang dapat dikembangkan ketika requirement client tersedia:
 - PostgreSQL (pgx/v5, connection pooling)
 - REST API
 - JWT authentication (golang-jwt/v5)
-- AI API (OpenAI-compatible, base URL configurable)
+- AI API (Google Gemini, provider abstraction with configurable base URL)
 - Docker (development environment)
 
 ## Project Structure
@@ -40,7 +40,7 @@ infrastructure yang dapat dikembangkan ketika requirement client tersedia:
 backend/
 ├── cmd/server/            entrypoint: server startup, graceful shutdown, DI wiring
 ├── internal/
-│   ├── ai/                AI abstraction: Service interface + Provider + OpenAI-compatible impl
+│   ├── ai/                AI abstraction: Service interface + Provider + Gemini impl
 │   ├── apperror/          canonical application errors (typed, safe messages)
 │   ├── config/            environment-based configuration + startup validation
 │   ├── database/          PostgreSQL pool + embedded migration runner

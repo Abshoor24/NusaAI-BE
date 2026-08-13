@@ -12,28 +12,28 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func TestNewDefaultIsOpenAI(t *testing.T) {
+func TestNewDefaultIsGemini(t *testing.T) {
 	p, err := New(config.AIConfig{Provider: ""}, testLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if _, ok := p.(*OpenAIProvider); !ok {
-		t.Errorf("provider = %T, want *OpenAIProvider", p)
+	if _, ok := p.(*GeminiProvider); !ok {
+		t.Errorf("provider = %T, want *GeminiProvider", p)
 	}
 }
 
-func TestNewOpenAI(t *testing.T) {
-	p, err := New(config.AIConfig{Provider: "openai"}, testLogger())
+func TestNewGemini(t *testing.T) {
+	p, err := New(config.AIConfig{Provider: "gemini"}, testLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if _, ok := p.(*OpenAIProvider); !ok {
-		t.Errorf("provider = %T, want *OpenAIProvider", p)
+	if _, ok := p.(*GeminiProvider); !ok {
+		t.Errorf("provider = %T, want *GeminiProvider", p)
 	}
 }
 
 func TestNewUnsupportedProvider(t *testing.T) {
-	_, err := New(config.AIConfig{Provider: "gemini"}, testLogger())
+	_, err := New(config.AIConfig{Provider: "openai"}, testLogger())
 	if err == nil {
 		t.Fatal("New() expected error for unsupported provider")
 	}

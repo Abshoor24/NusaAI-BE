@@ -12,7 +12,7 @@ import (
 	"github.com/Abshoor24/backend-go/internal/handler"
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/middleware"
-	"github.com/Abshoor24/backend-go/internal/modules/ai"
+	aihandler "github.com/Abshoor24/backend-go/internal/modules/ai/handler"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
 	"github.com/Abshoor24/backend-go/internal/service"
 	"github.com/Abshoor24/backend-go/storage"
@@ -64,10 +64,21 @@ func New(deps Dependencies) http.Handler {
 			r.Get("/auth/me", authH.Me)
 		})
 
-		ai.RegisterRoutes(r, ai.ModuleDeps{
-			Service: deps.AI,
-			Config:  deps.Config.AI,
-			Logger:  deps.Logger,
+		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI)
+		r.Get("/ai/health", aiH.Health)
+		r.Post("/ai/generate", aiH.Generate)
+
+		// Chatbot endpoint: separate group to apply stricter rate limits
+		// specifically to chatbot queries.
+		r.Group(func(r chi.Router) {
+			if deps.Config.AI.ChatRateLimitEnabled {
+				r.Use(middleware.RateLimit(config.RateLimitConfig{
+					Enabled:   true,
+					PerMinute: deps.Config.AI.ChatRateLimitPerMin,
+					Burst:     deps.Config.AI.ChatRateLimitPerMin,
+				}))
+			}
+			r.Post("/ai/chat", aiH.Chat)
 		})
 
 		// Admin namespace foundation.
