@@ -139,10 +139,10 @@ func Load() (*Config, error) {
 			Issuer:     getEnv("JWT_ISSUER", "backend"),
 		},
 		AI: AIConfig{
-			Provider:             getEnv("AI_PROVIDER", "openai"),
+			Provider:             getEnv("AI_PROVIDER", "gemini"),
 			APIKey:               getEnv("AI_API_KEY", ""),
 			Model:                getEnv("AI_MODEL", ""),
-			BaseURL:              getEnv("AI_BASE_URL", "https://api.openai.com/v1"),
+			BaseURL:              getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
 			Timeout:              getDuration("AI_TIMEOUT", 30*time.Second),
 			MaxBytes:             getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
 			ChatRateLimitEnabled: getBool("AI_CHAT_RATE_LIMIT_ENABLED", true),
