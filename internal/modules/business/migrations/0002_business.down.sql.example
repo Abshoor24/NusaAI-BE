@@ -1,0 +1,6 @@
+-- TEMPLATE: rename to migrations/0002_<nama>.down.sql and fill in the reverse
+-- of 0002_<nama>.up.sql.
+--
+-- Example shape (replace entirely with the real rollback):
+--
+-- DROP TABLE IF EXISTS items;
