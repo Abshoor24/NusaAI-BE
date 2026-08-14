@@ -40,19 +40,23 @@ infrastructure yang dapat dikembangkan ketika requirement client tersedia:
 backend/
 ├── cmd/server/            entrypoint: server startup, graceful shutdown, DI wiring
 ├── internal/
-│   ├── ai/                AI abstraction: Service interface + Provider + Gemini impl
 │   ├── apperror/          canonical application errors (typed, safe messages)
 │   ├── config/            environment-based configuration + startup validation
 │   ├── database/          PostgreSQL pool + embedded migration runner
 │   ├── handler/           HTTP handlers + request parsing/validation + API responses
 │   ├── jwt/               JWT token manager (sign/parse/validate)
-│   ├── logger/            structured logging (slog), env-aware level
 │   ├── middleware/        request ID, logger, recovery, CORS, auth, role, rate limit, security
 │   ├── model/             database models + request/response DTOs
+│   ├── modules/ai/        AI abstraction: Service interface + Provider + Gemini impl
+│   ├── modules/business/  TEMPLATE modul bisnis (handler/service/repository/migration)
 │   ├── repository/        database access (UserRepository)
-│   ├── router/            route + middleware wiring
+│   ├── routes/            route + middleware wiring
 │   └── service/           business logic (AuthService)
 ├── migrations/            SQL migrations (embedded via embed.FS)
+├── pkg/
+│   ├── logger/            structured logging (slog), env-aware level
+│   └── response/          standard API response + request validation helpers
+├── storage/               Supabase integration (connection pool + migrations)
 ├── docs/                  api.md, architecture.md, client-requirements.md
 ├── tests/                 database integration test (skipped unless enabled)
 ├── .env.example
@@ -162,6 +166,8 @@ Endpoint yang tersedia:
 | POST | `/api/v1/auth/register` | - | Registrasi user baru |
 | POST | `/api/v1/auth/login` | - | Login, menerima JWT |
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
+| GET | `/api/v1/ai/health` | - | Cek konfigurasi AI lokal (tanpa panggil provider) |
+| POST | `/api/v1/ai/generate` | - | Generate teks generik (foundation, tanpa login) |
 | POST | `/api/v1/ai/chat` | - | Chatbot publik (tanpa login) dengan rate limit per IP |
 
 Dokumentasi lengkap: [docs/api.md](docs/api.md).

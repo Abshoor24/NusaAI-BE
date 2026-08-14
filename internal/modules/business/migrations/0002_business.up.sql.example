@@ -1,0 +1,15 @@
+-- TEMPLATE: rename to migrations/0002_<nama>.up.sql (next free number) and fill
+-- in the real business schema once the client's requirements are known.
+--
+-- Migrations run automatically at server start (storage/supabase.go). Once a
+-- migration has been applied it must not be edited; create a new numbered file
+-- for later changes.
+--
+-- Example shape (replace entirely with the real schema):
+--
+-- CREATE TABLE IF NOT EXISTS items (
+--     id         UUID PRIMARY KEY,
+--     name       VARCHAR(255) NOT NULL,
+--     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+--     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+-- );

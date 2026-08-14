@@ -8,6 +8,12 @@ bin/
 dist/
 server
 
+# Runtime artifacts
+server.log
+server.err.log
+server.pid
+tmp/
+
 # Go
 *.exe
 *.out
