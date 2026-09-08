@@ -34,3 +34,25 @@ type ChatResponse struct {
 	Response string `json:"response"`
 	Model    string `json:"model,omitempty"`
 }
+
+// GenerateSolutionRequest is the input for AI Business Solution Generator.
+type GenerateSolutionRequest struct {
+	BusinessType    string `json:"business_type" validate:"required"`
+	BusinessProblem string `json:"business_problem" validate:"required"`
+	BusinessGoal    string `json:"business_goal" validate:"required"`
+}
+
+// GeneratedSolution is the structured output from AI Business Solution Generator.
+type GeneratedSolution struct {
+	SolutionName          string   `json:"solution_name"`
+	Summary               string   `json:"summary"`
+	RecommendedFeatures   []string `json:"recommended_features"`
+	RecommendedTechnology []string `json:"recommended_technology"`
+	Complexity            string   `json:"complexity"`
+}
+
+// GenerateSolutionResponse wraps the generated solution for API response.
+type GenerateSolutionResponse struct {
+	Solution GeneratedSolution `json:"solution"`
+	Model    string            `json:"model,omitempty"`
+}

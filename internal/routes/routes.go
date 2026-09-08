@@ -67,6 +67,7 @@ func New(deps Dependencies) http.Handler {
 		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI)
 		r.Get("/ai/health", aiH.Health)
 		r.Post("/ai/generate", aiH.Generate)
+		r.Post("/ai/generate-solution", aiH.GenerateSolution)
 
 		// Chatbot endpoint: separate group to apply stricter rate limits
 		// specifically to chatbot queries.
