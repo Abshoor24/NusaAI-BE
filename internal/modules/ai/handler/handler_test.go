@@ -42,6 +42,22 @@ func (m *mockService) Chat(_ context.Context, req model.ChatRequest) (model.Chat
 	return model.ChatResponse{Response: "chat reply to: " + req.Message, Model: m.model}, nil
 }
 
+func (m *mockService) GenerateSolution(_ context.Context, req model.GenerateSolutionRequest) (model.GenerateSolutionResponse, error) {
+	if m.err != nil {
+		return model.GenerateSolutionResponse{}, m.err
+	}
+	return model.GenerateSolutionResponse{
+		Solution: model.GeneratedSolution{
+			SolutionName:          "Test Solution",
+			Summary:               "Test summary",
+			RecommendedFeatures:   []string{"Feature 1", "Feature 2"},
+			RecommendedTechnology: []string{"React", "Go"},
+			Complexity:            "Medium",
+		},
+		Model: m.model,
+	}, nil
+}
+
 func TestGenerateSuccess(t *testing.T) {
 	h := New(&mockService{model: "m"}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
 	rec := httptest.NewRecorder()

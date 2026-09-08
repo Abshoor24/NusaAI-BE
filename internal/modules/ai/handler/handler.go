@@ -88,3 +88,27 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
 }
+
+// GenerateSolution handles POST /ai/generate-solution. It receives business
+// information and returns a structured digital solution recommendation.
+func (h *Handler) GenerateSolution(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("generate-solution handler entered", "request_id", r.Header.Get("X-Request-ID"))
+
+	var req model.GenerateSolutionRequest
+	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		h.logger.Error("generate-solution request validation failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	resp, err := h.ai.GenerateSolution(r.Context(), req)
+	if err != nil {
+		h.logger.Error("generate-solution ai service execution failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	h.logger.Info("generate-solution response generated successfully")
+
+	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
+}

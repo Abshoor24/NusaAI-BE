@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 
+	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
@@ -19,6 +22,7 @@ import (
 type Service interface {
 	GenerateText(ctx context.Context, req model.GenerateTextRequest) (model.GenerateTextResponse, error)
 	Chat(ctx context.Context, req model.ChatRequest) (model.ChatResponse, error)
+	GenerateSolution(ctx context.Context, req model.GenerateSolutionRequest) (model.GenerateSolutionResponse, error)
 }
 
 type service struct {
@@ -86,6 +90,59 @@ func (s *service) Chat(ctx context.Context, req model.ChatRequest) (model.ChatRe
 
 	return model.ChatResponse{
 		Response: resp.Content,
+		Model:    resp.Model,
+	}, nil
+}
+
+func (s *service) GenerateSolution(ctx context.Context, req model.GenerateSolutionRequest) (model.GenerateSolutionResponse, error) {
+	systemPrompt := `You are an expert digital solutions architect. Analyze the user's business type, problem, and goal. Return ONLY a valid JSON object with this exact structure:
+
+{
+  "solution_name": "string",
+  "summary": "string", 
+  "recommended_features": ["string", ...],
+  "recommended_technology": ["string", ...],
+  "complexity": "Low" | "Medium" | "High"
+}
+
+Rules:
+- NO markdown, NO extra text, NO explanations
+- Output ONLY the JSON object
+- solution_name: concise product/platform name
+- summary: 1-2 sentence description
+- recommended_features: 3-7 specific features
+- recommended_technology: 3-6 technologies (React, Go, PostgreSQL, etc.)
+- complexity: "Low", "Medium", or "High" based on scope`
+
+	userPrompt := fmt.Sprintf(`Business Type: %s
+Business Problem: %s
+Business Goal: %s`, req.BusinessType, req.BusinessProblem, req.BusinessGoal)
+
+	resp, err := s.provider.Complete(ctx, provider.Request{
+		Model: s.cfg.Model,
+		Messages: []provider.ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	})
+	if err != nil {
+		return model.GenerateSolutionResponse{}, err
+	}
+
+	var solution model.GeneratedSolution
+	if err := json.Unmarshal([]byte(resp.Content), &solution); err != nil {
+		s.logger.Error("failed to parse AI solution response", "error", err, "raw", resp.Content)
+		return model.GenerateSolutionResponse{}, apperror.AIProvider("The AI provider returned an invalid response format", err)
+	}
+
+	// Validate required fields
+	if solution.SolutionName == "" || solution.Summary == "" || len(solution.RecommendedFeatures) == 0 || len(solution.RecommendedTechnology) == 0 || solution.Complexity == "" {
+		s.logger.Error("AI solution response missing required fields", "solution", solution)
+		return model.GenerateSolutionResponse{}, apperror.AIProvider("The AI provider returned an incomplete response", nil)
+	}
+
+	return model.GenerateSolutionResponse{
+		Solution: solution,
 		Model:    resp.Model,
 	}, nil
 }
