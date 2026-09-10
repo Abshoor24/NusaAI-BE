@@ -56,11 +56,48 @@ func (s *service) GenerateText(ctx context.Context, req model.GenerateTextReques
 func (s *service) Chat(ctx context.Context, req model.ChatRequest) (model.ChatResponse, error) {
 	var msgs []provider.ChatMessage
 
-	// 1. Add System Prompt (use default if none is provided)
+	// 1. Build system prompt with optional solution context
 	systemPrompt := "You are a helpful customer service chatbot assistant."
 	if req.System != "" {
 		systemPrompt = req.System
 	}
+
+	// Append solution context if provided
+	if req.SolutionContext != nil {
+		solutionCtx := req.SolutionContext
+		solutionPrompt := fmt.Sprintf(`
+
+---
+Generated Solution Context (for reference when user asks about this solution):
+Business Type: %s
+Business Problem: %s
+Business Goal: %s
+
+Solution Name: %s
+Summary: %s
+Recommended Features: %s
+Recommended Technology: %s
+Complexity: %s
+
+Instructions:
+- Use the above context as the primary reference when the user asks questions related to the generated solution.
+- Do not invent company-specific information that is not present in the context.
+- If the user asks something unrelated to the generated solution, answer normally.
+- If information is unavailable from the context, clearly say that the information is not available rather than inventing it.
+---
+`,
+			solutionCtx.BusinessType,
+			solutionCtx.BusinessProblem,
+			solutionCtx.BusinessGoal,
+			solutionCtx.Solution.SolutionName,
+			solutionCtx.Solution.Summary,
+			formatStringSlice(solutionCtx.Solution.RecommendedFeatures),
+			formatStringSlice(solutionCtx.Solution.RecommendedTechnology),
+			solutionCtx.Solution.Complexity,
+		)
+		systemPrompt += solutionPrompt
+	}
+
 	msgs = append(msgs, provider.ChatMessage{
 		Role:    "system",
 		Content: systemPrompt,
@@ -92,6 +129,21 @@ func (s *service) Chat(ctx context.Context, req model.ChatRequest) (model.ChatRe
 		Response: resp.Content,
 		Model:    resp.Model,
 	}, nil
+}
+
+// formatStringSlice formats a string slice as a comma-separated string.
+func formatStringSlice(slice []string) string {
+	if len(slice) == 0 {
+		return "None"
+	}
+	result := ""
+	for i, s := range slice {
+		if i > 0 {
+			result += ", "
+		}
+		result += s
+	}
+	return result
 }
 
 func (s *service) GenerateSolution(ctx context.Context, req model.GenerateSolutionRequest) (model.GenerateSolutionResponse, error) {

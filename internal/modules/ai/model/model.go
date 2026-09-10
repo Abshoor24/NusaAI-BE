@@ -24,9 +24,10 @@ type ChatMessage struct {
 
 // ChatRequest is the input contract for the chatbot endpoint.
 type ChatRequest struct {
-	Message string        `json:"message" validate:"required"`
-	History []ChatMessage `json:"history,omitempty"`
-	System  string        `json:"system,omitempty"` // Optional custom system prompt override
+	Message         string           `json:"message" validate:"required"`
+	History         []ChatMessage    `json:"history,omitempty"`
+	System          string           `json:"system,omitempty"`           // Optional custom system prompt override
+	SolutionContext *SolutionContext `json:"solution_context,omitempty"` // Optional generated solution context
 }
 
 // ChatResponse is the output contract of the chatbot endpoint.
@@ -55,4 +56,12 @@ type GeneratedSolution struct {
 type GenerateSolutionResponse struct {
 	Solution GeneratedSolution `json:"solution"`
 	Model    string            `json:"model,omitempty"`
+}
+
+// SolutionContext carries the generated solution context for chatbot discussion.
+type SolutionContext struct {
+	BusinessType    string            `json:"business_type"`
+	BusinessProblem string            `json:"business_problem"`
+	BusinessGoal    string            `json:"business_goal"`
+	Solution        GeneratedSolution `json:"solution"`
 }
