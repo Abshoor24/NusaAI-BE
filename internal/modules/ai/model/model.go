@@ -65,3 +65,26 @@ type SolutionContext struct {
 	BusinessGoal    string            `json:"business_goal"`
 	Solution        GeneratedSolution `json:"solution"`
 }
+
+// DocumentUploadRequest represents the payload for uploading raw company documents for RAG.
+type DocumentUploadRequest struct {
+	CompanyID string `json:"company_id" validate:"required"`
+	Content   string `json:"content" validate:"required"`
+}
+
+// GenerateCompanyProfileRequest is the input for generating a company profile via RAG.
+type GenerateCompanyProfileRequest struct {
+	CompanyID string `json:"company_id" validate:"required"`
+}
+
+// GeneratedCompanyProfile is the structured output from AI Company Profile Generator.
+type GeneratedCompanyProfile struct {
+	Name           string   `json:"name"`
+	Tagline        string   `json:"tagline"`
+	AboutUs        string   `json:"about_us"`
+	Vision         string   `json:"vision"`
+	Mission        []string `json:"mission"`
+	CoreValues     []string `json:"core_values"`
+	Services       []string `json:"services"`
+	TargetAudience string   `json:"target_audience"`
+}

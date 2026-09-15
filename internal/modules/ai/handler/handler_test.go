@@ -58,6 +58,26 @@ func (m *mockService) GenerateSolution(_ context.Context, req model.GenerateSolu
 	}, nil
 }
 
+func (m *mockService) IngestDocument(_ context.Context, req model.DocumentUploadRequest) error {
+	return m.err
+}
+
+func (m *mockService) GenerateCompanyProfile(_ context.Context, req model.GenerateCompanyProfileRequest) (*model.GeneratedCompanyProfile, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &model.GeneratedCompanyProfile{
+		Name:           "Acme Corp",
+		Tagline:        "Innovation at scale",
+		AboutUs:        "Leading technology company",
+		Vision:         "Innovate the future",
+		Mission:        []string{"Deliver excellence"},
+		CoreValues:     []string{"Integrity", "Innovation"},
+		Services:       []string{"Software Development"},
+		TargetAudience: "Global Enterprises",
+	}, nil
+}
+
 func TestGenerateSuccess(t *testing.T) {
 	h := New(&mockService{model: "m"}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
 	rec := httptest.NewRecorder()
@@ -233,5 +253,75 @@ func TestChatProviderError(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "boom") {
 		t.Errorf("response leaks provider cause: %s", rec.Body.String())
+	}
+}
+
+func TestHandleUploadDocumentSuccess(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/documents/upload", strings.NewReader(`{"company_id":"comp-123","content":"Some raw company context"}`))
+
+	h.HandleUploadDocument(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusCreated)
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Data    struct {
+			CompanyID string `json:"company_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if !body.Success || body.Data.CompanyID != "comp-123" {
+		t.Errorf("unexpected response: %+v", body)
+	}
+}
+
+func TestHandleUploadDocumentValidation(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/documents/upload", strings.NewReader(`{"company_id":""}`))
+
+	h.HandleUploadDocument(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleGenerateCompanyProfileSuccess(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/generate-company-profile", strings.NewReader(`{"company_id":"comp-123"}`))
+
+	h.HandleGenerateCompanyProfile(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var body struct {
+		Success bool                          `json:"success"`
+		Data    model.GeneratedCompanyProfile `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if !body.Success || body.Data.Name != "Acme Corp" {
+		t.Errorf("unexpected profile name: %+v", body.Data)
+	}
+}
+
+func TestHandleGenerateCompanyProfileValidation(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/ai/generate-company-profile", strings.NewReader(`{}`))
+
+	h.HandleGenerateCompanyProfile(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }

@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
@@ -16,23 +21,23 @@ import (
 // application from any concrete LLM API, so the AI can later be used for
 // chatbot, recommendation, document Q&A, semantic search, content assistance,
 // lead qualification, etc., without touching the handler layer.
-//
-// TODO: CLIENT REQUIREMENT - this interface may need to grow (streaming,
-// structured output, embeddings) once the client's AI use case is decided.
 type Service interface {
 	GenerateText(ctx context.Context, req model.GenerateTextRequest) (model.GenerateTextResponse, error)
 	Chat(ctx context.Context, req model.ChatRequest) (model.ChatResponse, error)
 	GenerateSolution(ctx context.Context, req model.GenerateSolutionRequest) (model.GenerateSolutionResponse, error)
+	IngestDocument(ctx context.Context, req model.DocumentUploadRequest) error
+	GenerateCompanyProfile(ctx context.Context, req model.GenerateCompanyProfileRequest) (*model.GeneratedCompanyProfile, error)
 }
 
 type service struct {
 	provider provider.Provider
 	cfg      config.AIConfig
 	logger   *slog.Logger
+	pool     *pgxpool.Pool
 }
 
-func New(provider provider.Provider, cfg config.AIConfig, logger *slog.Logger) Service {
-	return &service{provider: provider, cfg: cfg, logger: logger}
+func New(provider provider.Provider, cfg config.AIConfig, logger *slog.Logger, pool *pgxpool.Pool) Service {
+	return &service{provider: provider, cfg: cfg, logger: logger, pool: pool}
 }
 
 // GenerateText passes a request to the configured provider and maps the
@@ -197,4 +202,159 @@ Business Goal: %s`, req.BusinessType, req.BusinessProblem, req.BusinessGoal)
 		Solution: solution,
 		Model:    resp.Model,
 	}, nil
+}
+
+// IngestDocument converts raw document content into text embeddings using Gemini
+// (model text-embedding-004) and stores the company_id, content, and embedding vector
+// in the company_documents table.
+func (s *service) IngestDocument(ctx context.Context, req model.DocumentUploadRequest) error {
+	if s.pool == nil {
+		return apperror.Database("Database pool is not available", nil)
+	}
+
+	// 1. Convert req.Content into float32 array (vector) using Gemini text-embedding-004
+	embedding, err := s.provider.Embed(ctx, "text-embedding-004", req.Content)
+	if err != nil {
+		s.logger.Error("failed to generate embedding for document", "company_id", req.CompanyID, "error", err)
+		return err
+	}
+
+	// 2. Format vector as PostgreSQL vector string representation: [val1,val2,...]
+	vecStr := formatVector(embedding)
+
+	// 3. Save company_id, content, and vector to company_documents table using pgxpool
+	docID := uuid.New().String()
+	const q = `
+		INSERT INTO company_documents (id, company_id, content, embedding, created_at)
+		VALUES ($1, $2, $3, $4::vector, NOW())`
+
+	if _, err := s.pool.Exec(ctx, q, docID, req.CompanyID, req.Content, vecStr); err != nil {
+		s.logger.Error("failed to insert company document into database", "company_id", req.CompanyID, "error", err)
+		return apperror.Database("Failed to save document to database", err)
+	}
+
+	s.logger.Info("document ingested and embedded successfully", "company_id", req.CompanyID, "doc_id", docID)
+	return nil
+}
+
+// GenerateCompanyProfile queries raw documents for the given CompanyID from Supabase,
+// combines them as [CONTEXT] into the system prompt, and calls the LLM to generate
+// a structured company profile JSON.
+func (s *service) GenerateCompanyProfile(ctx context.Context, req model.GenerateCompanyProfileRequest) (*model.GeneratedCompanyProfile, error) {
+	if s.pool == nil {
+		return nil, apperror.Database("Database pool is not available", nil)
+	}
+
+	// 1. Query raw documents for CompanyID from Supabase
+	const q = `
+		SELECT content
+		FROM company_documents
+		WHERE company_id = $1
+		ORDER BY created_at ASC`
+
+	rows, err := s.pool.Query(ctx, q, req.CompanyID)
+	if err != nil {
+		s.logger.Error("failed to query company documents", "company_id", req.CompanyID, "error", err)
+		return nil, apperror.Database("Failed to retrieve company documents", err)
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			s.logger.Error("failed to scan company document content", "error", err)
+			return nil, apperror.Database("Failed to read company document", err)
+		}
+		contents = append(contents, content)
+	}
+	if err := rows.Err(); err != nil {
+		s.logger.Error("row iteration error for company documents", "error", err)
+		return nil, apperror.Database("Failed to retrieve company documents", err)
+	}
+
+	if len(contents) == 0 {
+		return nil, apperror.NotFound("No documents found for the specified company ID", nil)
+	}
+
+	// 2. Combine retrieved document content as [CONTEXT]
+	combinedContext := strings.Join(contents, "\n\n---\n\n")
+
+	// 3. Construct System Prompt with [CONTEXT]
+	systemPrompt := fmt.Sprintf(`Anda adalah AI copywriter profesional. Ekstrak informasi dari [CONTEXT] berikut ke dalam format JSON yang telah ditentukan. Anda HANYA boleh menggunakan fakta dari [CONTEXT]. Jika informasi tidak ada di dalam konteks, berikan nilai string kosong atau array kosong []. Jangan pernah berhalusinasi.
+
+[CONTEXT]
+%s
+
+Format JSON yang telah ditentukan:
+{
+  "name": "string",
+  "tagline": "string",
+  "about_us": "string",
+  "vision": "string",
+  "mission": ["string"],
+  "core_values": ["string"],
+  "services": ["string"],
+  "target_audience": "string"
+}
+
+Aturan:
+- Output HANYA objek JSON valid sesuai format di atas.
+- JANGAN sertakan markdown block (tanpa `+"```json"+` atau `+"```"+`).
+- JANGAN sertakan penjelasan, teks pembuka, atau teks penutup apa pun.`, combinedContext)
+
+	userPrompt := fmt.Sprintf("Ekstrak dan hasilkan profil perusahaan untuk company_id %q berdasarkan fakta dari [CONTEXT].", req.CompanyID)
+
+	// 4. Use existing LLM execution method to return JSON data
+	resp, err := s.provider.Complete(ctx, provider.Request{
+		Model: s.cfg.Model,
+		Messages: []provider.ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	})
+	if err != nil {
+		s.logger.Error("failed to complete company profile generation", "error", err)
+		return nil, err
+	}
+
+	// 5. Clean potential markdown formatting
+	cleaned := strings.TrimSpace(resp.Content)
+	cleaned = strings.TrimPrefix(cleaned, "```json")
+	cleaned = strings.TrimPrefix(cleaned, "```")
+	cleaned = strings.TrimSuffix(cleaned, "```")
+	cleaned = strings.TrimSpace(cleaned)
+
+	var profile model.GeneratedCompanyProfile
+	if err := json.Unmarshal([]byte(cleaned), &profile); err != nil {
+		s.logger.Error("failed to parse AI company profile response", "error", err, "raw", resp.Content)
+		return nil, apperror.AIProvider("The AI provider returned an invalid response format", err)
+	}
+
+	// Ensure slice fields are non-nil so JSON serialization outputs [] instead of null
+	if profile.Mission == nil {
+		profile.Mission = []string{}
+	}
+	if profile.CoreValues == nil {
+		profile.CoreValues = []string{}
+	}
+	if profile.Services == nil {
+		profile.Services = []string{}
+	}
+
+	return &profile, nil
+}
+
+// formatVector formats a float32 slice into PostgreSQL vector syntax [v1,v2,v3,...].
+func formatVector(values []float32) string {
+	var sb strings.Builder
+	sb.WriteByte('[')
+	for i, v := range values {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(strconv.FormatFloat(float64(v), 'f', -1, 32))
+	}
+	sb.WriteByte(']')
+	return sb.String()
 }

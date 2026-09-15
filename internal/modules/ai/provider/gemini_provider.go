@@ -161,3 +161,71 @@ func appendGeminiContent(contents []map[string]interface{}, role, text string) [
 		"parts": []map[string]string{{"text": text}},
 	})
 }
+
+// Embed sends an embedContent request to the Gemini API (models/{model}:embedContent).
+func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) ([]float32, error) {
+	if model == "" {
+		model = "text-embedding-004"
+	}
+	if p.apiKey == "" {
+		return nil, apperror.AIProvider("AI API key is not configured", nil)
+	}
+
+	modelName := strings.TrimPrefix(model, "models/")
+	payload := map[string]interface{}{
+		"model": fmt.Sprintf("models/%s", modelName),
+		"content": map[string]interface{}{
+			"parts": []map[string]string{
+				{"text": text},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, apperror.AIProvider("Failed to build AI embed request", err)
+	}
+
+	url := fmt.Sprintf("%s/models/%s:embedContent", p.baseURL, modelName)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, apperror.AIProvider("Failed to build AI embed request", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", p.apiKey)
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, apperror.AIProvider("AI embed request was cancelled", ctx.Err())
+		}
+		p.logger.Error("ai provider embed request failed", "error", err)
+		return nil, apperror.AIProvider("The AI provider could not be reached", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		p.logger.Error("ai provider embed returned error",
+			"status", resp.StatusCode,
+			"provider_body", string(respBody),
+		)
+		return nil, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+	}
+
+	var out struct {
+		Embedding struct {
+			Values []float32 `json:"values"`
+		} `json:"embedding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		p.logger.Error("ai provider embed decode failed", "error", err)
+		return nil, apperror.AIProvider("Failed to read AI embed response", err)
+	}
+
+	if len(out.Embedding.Values) == 0 {
+		return nil, apperror.AIProvider("The AI provider returned no embeddings", nil)
+	}
+
+	return out.Embedding.Values, nil
+}

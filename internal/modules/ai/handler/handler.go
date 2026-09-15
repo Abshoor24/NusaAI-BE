@@ -112,3 +112,52 @@ func (h *Handler) GenerateSolution(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
 }
+
+// HandleUploadDocument handles POST /documents/upload. It converts the uploaded
+// text content into vector embeddings and stores it into the company_documents table.
+func (h *Handler) HandleUploadDocument(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("upload-document handler entered", "request_id", r.Header.Get("X-Request-ID"))
+
+	var req model.DocumentUploadRequest
+	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		h.logger.Error("upload-document request validation failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	if err := h.ai.IngestDocument(r.Context(), req); err != nil {
+		h.logger.Error("upload-document ai service execution failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	h.logger.Info("document uploaded and embedded successfully", "company_id", req.CompanyID)
+
+	response.RespondSuccess(w, http.StatusCreated, "Document uploaded and ingested successfully", map[string]interface{}{
+		"company_id": req.CompanyID,
+	})
+}
+
+// HandleGenerateCompanyProfile handles POST /ai/generate-company-profile. It retrieves
+// stored company documents and generates a structured company profile using RAG.
+func (h *Handler) HandleGenerateCompanyProfile(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("generate-company-profile handler entered", "request_id", r.Header.Get("X-Request-ID"))
+
+	var req model.GenerateCompanyProfileRequest
+	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		h.logger.Error("generate-company-profile request validation failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	profile, err := h.ai.GenerateCompanyProfile(r.Context(), req)
+	if err != nil {
+		h.logger.Error("generate-company-profile ai service execution failed", "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	h.logger.Info("company profile generated successfully", "company_id", req.CompanyID)
+
+	response.RespondSuccess(w, http.StatusOK, "Request successful", profile)
+}

@@ -7,6 +7,7 @@ import "context"
 // without changing the service layer.
 type Provider interface {
 	Complete(ctx context.Context, req Request) (Response, error)
+	Embed(ctx context.Context, model string, text string) ([]float32, error)
 }
 
 // ChatMessage represents a single chat message for multi-turn conversation.
