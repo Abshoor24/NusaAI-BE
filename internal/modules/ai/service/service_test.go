@@ -31,8 +31,15 @@ func (m *mockProvider) Complete(_ context.Context, req provider.Request) (provid
 	return provider.Response{Content: "echo: " + req.Prompt, Model: "mock-model"}, nil
 }
 
+func (m *mockProvider) Embed(_ context.Context, _ string, _ string) ([]float32, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return make([]float32, 768), nil
+}
+
 func newTestService(p provider.Provider) Service {
-	return New(p, config.AIConfig{Model: "test-model"}, testLogger())
+	return New(p, config.AIConfig{Model: "test-model"}, testLogger(), nil)
 }
 
 func TestGenerateTextSuccess(t *testing.T) {
@@ -77,10 +84,10 @@ func TestGenerateTextProviderError(t *testing.T) {
 
 func TestGenerateTextPassesContext(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	_, err := svc.GenerateText(context.Background(), model.GenerateTextRequest{
 		Prompt:  "Q",
@@ -102,12 +109,16 @@ func (r *recordingProvider) Complete(_ context.Context, req provider.Request) (p
 	return r.onComplete(req), nil
 }
 
+func (r *recordingProvider) Embed(_ context.Context, _ string, _ string) ([]float32, error) {
+	return make([]float32, 768), nil
+}
+
 func TestChatAssemblesMessages(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "hi there", Model: "mock-model"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	resp, err := svc.Chat(context.Background(), model.ChatRequest{
 		Message: "Halo",
@@ -144,10 +155,10 @@ func TestChatAssemblesMessages(t *testing.T) {
 
 func TestChatDefaultSystemPrompt(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	_, err := svc.Chat(context.Background(), model.ChatRequest{Message: "Hai"})
 	if err != nil {
@@ -166,7 +177,7 @@ func TestChatDefaultSystemPrompt(t *testing.T) {
 
 func TestChatProviderError(t *testing.T) {
 	providerErr := apperror.AIProvider("The AI provider could not be reached", errors.New("connection refused"))
-	svc := New(&mockProvider{err: providerErr}, config.AIConfig{Model: "test-model"}, testLogger())
+	svc := newTestService(&mockProvider{err: providerErr})
 
 	_, err := svc.Chat(context.Background(), model.ChatRequest{Message: "Hi"})
 	if err == nil {
@@ -180,10 +191,10 @@ func TestChatProviderError(t *testing.T) {
 
 func TestChatWithSolutionContext(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	solutionCtx := model.SolutionContext{
 		BusinessType:    "Restaurant",
@@ -237,10 +248,10 @@ func TestChatWithSolutionContext(t *testing.T) {
 
 func TestChatWithSolutionContextAndHistory(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	solutionCtx := model.SolutionContext{
 		BusinessType:    "Restaurant",
@@ -287,10 +298,10 @@ func TestChatWithSolutionContextAndHistory(t *testing.T) {
 
 func TestChatWithEmptySolutionContext(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	// Empty solution context (nil pointer) should work like before
 	_, err := svc.Chat(context.Background(), model.ChatRequest{
@@ -315,10 +326,10 @@ func TestChatWithEmptySolutionContext(t *testing.T) {
 
 func TestChatWithSolutionContextAndCustomSystem(t *testing.T) {
 	var got provider.Request
-	svc := New(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
+	svc := newTestService(&recordingProvider{onComplete: func(req provider.Request) provider.Response {
 		got = req
 		return provider.Response{Content: "ok", Model: "m"}
-	}}, config.AIConfig{Model: "test-model"}, testLogger())
+	}})
 
 	solutionCtx := model.SolutionContext{
 		BusinessType:    "Restaurant",
