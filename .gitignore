@@ -6,7 +6,7 @@
 # Build output
 bin/
 dist/
-server
+/server
 
 # Runtime artifacts
 server.log
