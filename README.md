@@ -4,26 +4,17 @@
 
 ## Overview
 
-Backend foundation untuk AI-powered client website.
+Backend untuk **Full AI Generator / AI Assistant Website** (konsep mirip ChatGPT, Gemini, Claude).
 
-Project ini adalah **reusable Go backend foundation**, bukan website final.
-Belum ada client yang ditentukan, sehingga project saat ini hanya berisi
-infrastructure yang dapat dikembangkan ketika requirement client tersedia:
+AI adalah produk utama dari sistem ini: pengguna dapat berinteraksi langsung, mengirim prompt untuk men-generate berbagai kebutuhan (teks, ide, kode, analisis), serta melakukan percakapan interaktif.
 
-- REST API dengan structure yang rapi (handler / service / repository)
-- PostgreSQL infrastructure (connection pool + migrations)
+- REST API dengan Clean Architecture (handler / service / provider)
+- PostgreSQL infrastructure (connection pool + auto-run migrations)
 - Authentication foundation (register / login / JWT / me)
-- Authorization foundation (role-based middleware)
-- AI service abstraction dengan provider yang dapat diganti
+- AI Assistant interaction (Google Gemini provider, rate-limited per IP, multi-turn chat support)
 - Standard API response format + centralized error handling
 - Structured logging, request ID, CORS, rate limiting, graceful shutdown
 - Docker development environment
-
-## Current Status
-
-- **Client belum ditentukan.**
-- Semua keputusan bisnis ditandai dengan `TODO: CLIENT REQUIREMENT`.
-- Belum ada business schema, business endpoint, maupun business logic.
 
 ## Tech Stack
 
@@ -167,8 +158,10 @@ Endpoint yang tersedia:
 | POST | `/api/v1/auth/login` | - | Login, menerima JWT |
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
 | GET | `/api/v1/ai/health` | - | Cek konfigurasi AI lokal (tanpa panggil provider) |
-| POST | `/api/v1/ai/generate` | - | Generate teks generik (foundation, tanpa login) |
-| POST | `/api/v1/ai/chat` | - | Chatbot publik (tanpa login) dengan rate limit per IP |
+| POST | `/api/v1/ai/chat` | Bearer | Interaksi utama AI Assistant (create/continue conversation + persistence) |
+| GET | `/api/v1/ai/conversations` | Bearer | Daftar riwayat percakapan user |
+| GET | `/api/v1/ai/conversations/{id}` | Bearer | Detail percakapan beserta seluruh pesan |
+| DELETE | `/api/v1/ai/conversations/{id}` | Bearer | Hapus percakapan |
 
 Dokumentasi lengkap: [docs/api.md](docs/api.md).
 

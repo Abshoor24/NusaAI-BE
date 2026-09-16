@@ -68,6 +68,13 @@ func UserIDFrom(ctx context.Context) (string, bool) {
 	return claims.Subject, true
 }
 
+// WithUserID injects a user ID into the context (intended for tests).
+func WithUserID(ctx context.Context, userID string) context.Context {
+	c := &jwt.Claims{}
+	c.Subject = userID
+	return context.WithValue(ctx, claimsKey, c)
+}
+
 func bearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	if h == "" {

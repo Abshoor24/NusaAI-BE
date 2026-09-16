@@ -1,0 +1,1 @@
+-- Down migration: no-op since legacy company tables are obsolete.

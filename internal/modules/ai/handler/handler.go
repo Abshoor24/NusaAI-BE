@@ -3,51 +3,31 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/middleware"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/service"
 	"github.com/Abshoor24/backend-go/pkg/response"
 )
 
-// Handler exposes the AI foundation endpoints. It depends only on the AI
-// Service interface, never on a concrete provider SDK.
+// Handler exposes the AI assistant and conversation endpoints.
 type Handler struct {
 	ai     service.Service
 	logger *slog.Logger
 	cfg    config.AIConfig
 }
 
+// New creates a new AI Handler.
 func New(svc service.Service, logger *slog.Logger, cfg config.AIConfig) *Handler {
 	return &Handler{ai: svc, logger: logger, cfg: cfg}
 }
 
-// Generate handles POST /ai/generate. This is a FOUNDATION endpoint to prove
-// the AI abstraction end-to-end. It is intentionally generic (no company
-// prompt, no business context) until the client's AI use case is known.
-//
-// TODO: CLIENT REQUIREMENT - decide whether the real AI endpoint needs
-// authentication, streaming, usage tracking and richer context once the
-// client's use case is defined.
-func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
-	var req model.GenerateTextRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
-		response.RespondError(w, h.logger, err)
-		return
-	}
-
-	resp, err := h.ai.GenerateText(r.Context(), req)
-	if err != nil {
-		response.RespondError(w, h.logger, err)
-		return
-	}
-
-	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
-}
-
-// Health handles GET /ai/health. It only inspects the local AI configuration
-// and never calls the external provider, so it does not consume API quota.
-// The API key itself is never returned.
+// Health handles GET /api/v1/ai/health.
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	providerConfigured := h.cfg.Provider != ""
 	apiKeyConfigured := h.cfg.APIKey != ""
@@ -64,100 +44,93 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Chat handles POST /ai/chat. It receives conversation history and a message,
-// and returns the assistant's reply. No authentication is required, which
-// is ideal for public website chatbots.
+// Chat handles POST /api/v1/ai/chat. It receives a prompt message,
+// creates or continues a conversation, and returns the assistant's reply.
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("chatbot handler entered", "request_id", r.Header.Get("X-Request-ID"))
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
 
 	var req model.ChatRequest
 	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
-		h.logger.Error("chatbot request validation failed", "error", err)
+		h.logger.Error("ai chat request validation failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	resp, err := h.ai.Chat(r.Context(), req)
+	resp, err := h.ai.Chat(r.Context(), userID, req)
 	if err != nil {
-		h.logger.Error("chatbot ai service execution failed", "error", err)
+		h.logger.Error("ai chat service execution failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
-
-	h.logger.Info("chatbot gemini response received successfully")
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
 }
 
-// GenerateSolution handles POST /ai/generate-solution. It receives business
-// information and returns a structured digital solution recommendation.
-func (h *Handler) GenerateSolution(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("generate-solution handler entered", "request_id", r.Header.Get("X-Request-ID"))
-
-	var req model.GenerateSolutionRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
-		h.logger.Error("generate-solution request validation failed", "error", err)
-		response.RespondError(w, h.logger, err)
+// ListConversations handles GET /api/v1/ai/conversations.
+func (h *Handler) ListConversations(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
 		return
 	}
 
-	resp, err := h.ai.GenerateSolution(r.Context(), req)
+	convs, err := h.ai.ListConversations(r.Context(), userID)
 	if err != nil {
-		h.logger.Error("generate-solution ai service execution failed", "error", err)
+		h.logger.Error("failed to list conversations", "user_id", userID, "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	h.logger.Info("generate-solution response generated successfully")
-
-	response.RespondSuccess(w, http.StatusOK, "Request successful", resp)
+	response.RespondSuccess(w, http.StatusOK, "Request successful", convs)
 }
 
-// HandleUploadDocument handles POST /documents/upload. It converts the uploaded
-// text content into vector embeddings and stores it into the company_documents table.
-func (h *Handler) HandleUploadDocument(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("upload-document handler entered", "request_id", r.Header.Get("X-Request-ID"))
+// GetConversation handles GET /api/v1/ai/conversations/{id}.
+func (h *Handler) GetConversation(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
 
-	var req model.DocumentUploadRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
-		h.logger.Error("upload-document request validation failed", "error", err)
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		response.RespondError(w, h.logger, apperror.Validation("Conversation ID is required"))
+		return
+	}
+
+	detail, err := h.ai.GetConversation(r.Context(), id, userID)
+	if err != nil {
+		h.logger.Error("failed to get conversation", "conversation_id", id, "user_id", userID, "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	if err := h.ai.IngestDocument(r.Context(), req); err != nil {
-		h.logger.Error("upload-document ai service execution failed", "error", err)
-		response.RespondError(w, h.logger, err)
-		return
-	}
-
-	h.logger.Info("document uploaded and embedded successfully", "company_id", req.CompanyID)
-
-	response.RespondSuccess(w, http.StatusCreated, "Document uploaded and ingested successfully", map[string]interface{}{
-		"company_id": req.CompanyID,
-	})
+	response.RespondSuccess(w, http.StatusOK, "Request successful", detail)
 }
 
-// HandleGenerateCompanyProfile handles POST /ai/generate-company-profile. It retrieves
-// stored company documents and generates a structured company profile using RAG.
-func (h *Handler) HandleGenerateCompanyProfile(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("generate-company-profile handler entered", "request_id", r.Header.Get("X-Request-ID"))
+// DeleteConversation handles DELETE /api/v1/ai/conversations/{id}.
+func (h *Handler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
 
-	var req model.GenerateCompanyProfileRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
-		h.logger.Error("generate-company-profile request validation failed", "error", err)
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		response.RespondError(w, h.logger, apperror.Validation("Conversation ID is required"))
+		return
+	}
+
+	if err := h.ai.DeleteConversation(r.Context(), id, userID); err != nil {
+		h.logger.Error("failed to delete conversation", "conversation_id", id, "user_id", userID, "error", err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
 
-	profile, err := h.ai.GenerateCompanyProfile(r.Context(), req)
-	if err != nil {
-		h.logger.Error("generate-company-profile ai service execution failed", "error", err)
-		response.RespondError(w, h.logger, err)
-		return
-	}
-
-	h.logger.Info("company profile generated successfully", "company_id", req.CompanyID)
-
-	response.RespondSuccess(w, http.StatusOK, "Request successful", profile)
+	response.RespondSuccess(w, http.StatusOK, "Conversation deleted successfully", nil)
 }

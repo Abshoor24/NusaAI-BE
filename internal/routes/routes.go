@@ -30,12 +30,6 @@ type Dependencies struct {
 }
 
 // New builds the full HTTP handler with all routes and middleware.
-//
-// Middleware order matters: RequestID and Recovery run first so that logging
-// has an ID and panics are contained. CORS is applied at the top level so that
-// every endpoint (including /health) can be reached from the browser during
-// development. SecurityHeaders and RateLimit are applied to the API group;
-// /health stays thin and is never throttled.
 func New(deps Dependencies) http.Handler {
 	r := chi.NewRouter()
 
@@ -56,45 +50,34 @@ func New(deps Dependencies) http.Handler {
 			r.Use(middleware.RateLimit(deps.Config.Rate))
 		}
 
+		// Auth endpoints (public)
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
 
+		// AI diagnostic endpoint (public)
+		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI)
+		r.Get("/ai/health", aiH.Health)
+
+		// Protected endpoints requiring authentication
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.Tokens))
 			r.Get("/auth/me", authH.Me)
+
+			// AI Assistant & Conversation interaction: rate limited
+			r.Group(func(r chi.Router) {
+				if deps.Config.AI.ChatRateLimitEnabled {
+					r.Use(middleware.RateLimit(config.RateLimitConfig{
+						Enabled:   true,
+						PerMinute: deps.Config.AI.ChatRateLimitPerMin,
+						Burst:     deps.Config.AI.ChatRateLimitPerMin,
+					}))
+				}
+				r.Post("/ai/chat", aiH.Chat)
+				r.Get("/ai/conversations", aiH.ListConversations)
+				r.Get("/ai/conversations/{id}", aiH.GetConversation)
+				r.Delete("/ai/conversations/{id}", aiH.DeleteConversation)
+			})
 		})
-
-		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI)
-		r.Get("/ai/health", aiH.Health)
-		r.Post("/ai/generate", aiH.Generate)
-		r.Post("/ai/generate-solution", aiH.GenerateSolution)
-		r.Post("/documents/upload", aiH.HandleUploadDocument)
-		r.Post("/ai/generate-company-profile", aiH.HandleGenerateCompanyProfile)
-
-		// Chatbot endpoint: separate group to apply stricter rate limits
-		// specifically to chatbot queries.
-		r.Group(func(r chi.Router) {
-			if deps.Config.AI.ChatRateLimitEnabled {
-				r.Use(middleware.RateLimit(config.RateLimitConfig{
-					Enabled:   true,
-					PerMinute: deps.Config.AI.ChatRateLimitPerMin,
-					Burst:     deps.Config.AI.ChatRateLimitPerMin,
-				}))
-			}
-			r.Post("/ai/chat", aiH.Chat)
-		})
-
-		// Admin namespace foundation.
-		// RequireAuth + RequireRole("admin") compose here when the first
-		// admin endpoint is added. No admin endpoints exist yet.
-		//
-		// TODO: CLIENT REQUIREMENT - add admin routes under an authenticated,
-		// admin-only group once the client's admin needs are known:
-		//   r.Group(func(r chi.Router) {
-		//       r.Use(middleware.RequireAuth(deps.Tokens))
-		//       r.Use(middleware.RequireRole(model.RoleAdmin))
-		//       r.Get("/admin/...", handler)
-		//   })
 	})
 
 	return r
