@@ -15,6 +15,7 @@ import (
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/model"
 	aimodel "github.com/Abshoor24/backend-go/internal/modules/ai/model"
+	aiprovider "github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
 )
 
@@ -43,6 +44,15 @@ func (d *dummyAIService) Chat(_ context.Context, _ string, req aimodel.ChatReque
 	}, nil
 }
 
+func (d *dummyAIService) ChatStream(_ context.Context, _ string, _ aimodel.ChatRequest) (<-chan aiprovider.StreamChunk, string, string, error) {
+	ch := make(chan aiprovider.StreamChunk, 1)
+	go func() {
+		defer close(ch)
+		ch <- aiprovider.StreamChunk{Done: true}
+	}()
+	return ch, "conv-stream-1", "msg-stream-1", nil
+}
+
 func (d *dummyAIService) ListConversations(_ context.Context, _ string) ([]aimodel.Conversation, error) {
 	return []aimodel.Conversation{}, nil
 }
@@ -55,6 +65,25 @@ func (d *dummyAIService) GetConversation(_ context.Context, id, userID string) (
 }
 
 func (d *dummyAIService) DeleteConversation(_ context.Context, _, _ string) error {
+	return nil
+}
+
+func (d *dummyAIService) IngestDocument(_ context.Context, _ string, req aimodel.IngestDocumentRequest) (*aimodel.IngestDocumentResponse, error) {
+	return &aimodel.IngestDocumentResponse{
+		Document:   aimodel.Document{ID: "doc-1", Title: req.Title},
+		ChunkCount: 1,
+	}, nil
+}
+
+func (d *dummyAIService) ListDocuments(_ context.Context, _ string) ([]aimodel.DocumentDetail, error) {
+	return []aimodel.DocumentDetail{}, nil
+}
+
+func (d *dummyAIService) GetDocument(_ context.Context, id, userID string) (*aimodel.Document, error) {
+	return &aimodel.Document{ID: id, UserID: userID, Title: "Doc Title"}, nil
+}
+
+func (d *dummyAIService) DeleteDocument(_ context.Context, _, _ string) error {
 	return nil
 }
 
@@ -125,6 +154,39 @@ func TestAIChatAuthorized(t *testing.T) {
 	}
 }
 
+func TestAIChatStreamRequiresAuth(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat/stream", strings.NewReader(`{"message":"Hello"}`))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/v1/ai/chat/stream without token should return 401, got %d", rec.Code)
+	}
+}
+
+func TestAIChatStreamAuthorized(t *testing.T) {
+	router, tokens := setupTestRouter()
+
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-1", Email: "test@example.com", Role: model.RoleAdmin})
+	if err != nil {
+		t.Fatalf("token generate failed: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat/stream", strings.NewReader(`{"message":"Hello"}`))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST /api/v1/ai/chat/stream with token should return 200 OK, got %d", rec.Code)
+	}
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
+		t.Errorf("Content-Type should be text/event-stream, got %s", rec.Header().Get("Content-Type"))
+	}
+}
+
 func TestConversationEndpointsRequireAuth(t *testing.T) {
 	router, _ := setupTestRouter()
 
@@ -140,6 +202,30 @@ func TestConversationEndpointsRequireAuth(t *testing.T) {
 	for _, ep := range endpoints {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(ep.method, ep.path, nil)
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s expected 401 Unauthorized, got %d", ep.method, ep.path, rec.Code)
+		}
+	}
+}
+
+func TestDocumentEndpointsRequireAuth(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/v1/ai/documents"},
+		{http.MethodGet, "/api/v1/ai/documents"},
+		{http.MethodGet, "/api/v1/ai/documents/doc-1"},
+		{http.MethodDelete, "/api/v1/ai/documents/doc-1"},
+	}
+
+	for _, ep := range endpoints {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(ep.method, ep.path, strings.NewReader(`{"title":"Doc","content":"Content text"}`))
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {

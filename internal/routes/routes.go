@@ -63,7 +63,7 @@ func New(deps Dependencies) http.Handler {
 			r.Use(middleware.RequireAuth(deps.Tokens))
 			r.Get("/auth/me", authH.Me)
 
-			// AI Assistant & Conversation interaction: rate limited
+			// AI Assistant, Conversation, & Document interaction: rate limited
 			r.Group(func(r chi.Router) {
 				if deps.Config.AI.ChatRateLimitEnabled {
 					r.Use(middleware.RateLimit(config.RateLimitConfig{
@@ -73,9 +73,16 @@ func New(deps Dependencies) http.Handler {
 					}))
 				}
 				r.Post("/ai/chat", aiH.Chat)
+				r.Post("/ai/chat/stream", aiH.ChatStream)
 				r.Get("/ai/conversations", aiH.ListConversations)
 				r.Get("/ai/conversations/{id}", aiH.GetConversation)
 				r.Delete("/ai/conversations/{id}", aiH.DeleteConversation)
+
+				// RAG Knowledge Document endpoints
+				r.Post("/ai/documents", aiH.IngestDocument)
+				r.Get("/ai/documents", aiH.ListDocuments)
+				r.Get("/ai/documents/{id}", aiH.GetDocument)
+				r.Delete("/ai/documents/{id}", aiH.DeleteDocument)
 			})
 		})
 	})

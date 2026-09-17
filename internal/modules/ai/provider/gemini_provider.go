@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,23 +15,34 @@ import (
 	"github.com/Abshoor24/backend-go/internal/config"
 )
 
+
 // GeminiProvider talks to the Google Gemini Generative Language API
 // (models/{model}:generateContent). The base URL must point at the API root,
 // e.g. https://generativelanguage.googleapis.com/v1beta. The API key is sent
 // via the x-goog-api-key header and never logged or returned to the client.
 type GeminiProvider struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
-	logger  *slog.Logger
+	baseURL      string
+	apiKey       string
+	client       *http.Client // used for non-streaming (complete) requests
+	streamClient *http.Client // used for streaming — no hard timeout on body read
+	logger       *slog.Logger
 }
 
 func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider {
 	return &GeminiProvider{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		apiKey:  cfg.APIKey,
-		client:  &http.Client{Timeout: cfg.Timeout},
-		logger:  logger,
+		// Regular client: hard timeout covers the entire round-trip.
+		client: &http.Client{Timeout: cfg.Timeout},
+		// Stream client: no Timeout so we don't kill a long-running stream body.
+		// ResponseHeaderTimeout protects against a server that accepts the TCP
+		// connection but never sends response headers.
+		streamClient: &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: cfg.Timeout,
+			},
+		},
+		logger: logger,
 	}
 }
 
@@ -139,6 +151,165 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 		Content: sb.String(),
 		Model:   out.ModelVersion,
 	}, nil
+}
+
+// CompleteStream sends a streamGenerateContent request to the Gemini API and
+// returns a read-only channel of StreamChunk values. The caller MUST drain the
+// channel until it is closed (or cancel ctx) to avoid goroutine leaks.
+// The channel will receive a terminal chunk with Done=true on success, or a
+// chunk with Err set on failure. No further chunks are sent after either.
+func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-chan StreamChunk, error) {
+	if req.Model == "" {
+		return nil, apperror.AIProvider("AI model is not configured", nil)
+	}
+	if p.apiKey == "" {
+		return nil, apperror.AIProvider("AI API key is not configured", nil)
+	}
+
+	var systemParts []string
+	contents := make([]map[string]interface{}, 0, len(req.Messages)+1)
+
+	if len(req.Messages) > 0 {
+		for _, msg := range req.Messages {
+			switch msg.Role {
+			case "system":
+				systemParts = append(systemParts, msg.Content)
+			case "assistant":
+				contents = appendGeminiContent(contents, "model", msg.Content)
+			default: // user
+				contents = appendGeminiContent(contents, "user", msg.Content)
+			}
+		}
+	} else {
+		if len(req.Context) > 0 {
+			systemParts = append(systemParts, strings.Join(req.Context, "\n\n"))
+		}
+		contents = appendGeminiContent(contents, "user", req.Prompt)
+	}
+
+	payload := map[string]interface{}{
+		"contents": contents,
+	}
+	if len(systemParts) > 0 {
+		payload["systemInstruction"] = map[string]interface{}{
+			"parts": []map[string]string{{"text": strings.Join(systemParts, "\n\n")}},
+		}
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, apperror.AIProvider("Failed to build AI stream request", err)
+	}
+
+	url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse", p.baseURL, req.Model)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, apperror.AIProvider("Failed to build AI stream request", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", p.apiKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	// Use p.streamClient (no hard body-read timeout) so long streams are not
+	// killed mid-response. ResponseHeaderTimeout is set on the transport.
+	resp, err := p.streamClient.Do(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, apperror.AIProvider("AI stream request was cancelled", ctx.Err())
+		}
+		p.logger.Error("ai provider stream request failed", "error", err)
+		return nil, apperror.AIProvider("The AI provider could not be reached", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		p.logger.Error("ai provider stream returned error",
+			"status", resp.StatusCode,
+			"provider_body", string(errBody),
+		)
+		return nil, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+	}
+
+	ch := make(chan StreamChunk, 32)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+
+		// geminiStreamResponse mirrors the JSON shape of each SSE data line.
+		type geminiStreamResponse struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+
+		scanner := bufio.NewScanner(resp.Body)
+		// Increase scanner buffer for large tokens.
+		scanner.Buffer(make([]byte, 64*1024), 64*1024)
+
+		for scanner.Scan() {
+			if ctx.Err() != nil {
+				return
+			}
+			line := scanner.Text()
+			// SSE data lines are prefixed with "data: "
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			data = strings.TrimSpace(data)
+			if data == "" || data == "[DONE]" {
+				continue
+			}
+
+			var sr geminiStreamResponse
+			if err := json.Unmarshal([]byte(data), &sr); err != nil {
+				p.logger.Error("ai provider stream decode failed", "error", err, "data", data)
+				select {
+				case ch <- StreamChunk{Err: apperror.AIProvider("Failed to decode AI stream response", err)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+
+			for _, cand := range sr.Candidates {
+				for _, part := range cand.Content.Parts {
+					if part.Text == "" {
+						continue
+					}
+					select {
+					case ch <- StreamChunk{Token: part.Text}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			if ctx.Err() != nil {
+				return // Normal cancellation
+			}
+			p.logger.Error("ai provider stream scan error", "error", err)
+			select {
+			case ch <- StreamChunk{Err: apperror.AIProvider("AI stream read error", err)}:
+			case <-ctx.Done():
+			}
+			return
+		}
+
+		// Stream ended cleanly.
+		select {
+		case ch <- StreamChunk{Done: true}:
+		case <-ctx.Done():
+		}
+	}()
+
+	return ch, nil
 }
 
 // appendGeminiContent appends a content entry to the contents slice and
