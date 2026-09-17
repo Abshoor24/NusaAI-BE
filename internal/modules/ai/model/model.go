@@ -26,12 +26,62 @@ type ConversationDetail struct {
 	Messages []Message `json:"messages"`
 }
 
-// ChatRequest is the input payload for POST /api/v1/ai/chat.
+// Document represents a knowledge base document ingested by a user for RAG.
+type Document struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	Title     string    `json:"title"`
+	Source    string    `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// DocumentChunk represents a segmented portion of a document with its vector embedding.
+type DocumentChunk struct {
+	ID         string    `json:"id"`
+	DocumentID string    `json:"document_id"`
+	ChunkIndex int       `json:"chunk_index"`
+	Content    string    `json:"content"`
+	Embedding  []float32 `json:"-"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// DocumentDetail represents a document along with metadata such as total chunks.
+type DocumentDetail struct {
+	Document
+	ChunkCount int `json:"chunk_count"`
+}
+
+// IngestDocumentRequest is the input payload for POST /api/v1/ai/documents.
+type IngestDocumentRequest struct {
+	Title   string `json:"title" validate:"required,min=1,max=255"`
+	Content string `json:"content" validate:"required,min=5,max=500000"`
+	Source  string `json:"source,omitempty"`
+}
+
+// IngestDocumentResponse is the response payload for POST /api/v1/ai/documents.
+type IngestDocumentResponse struct {
+	Document   Document `json:"document"`
+	ChunkCount int      `json:"chunk_count"`
+}
+
+// ChunkSearchResult represents a chunk returned by vector similarity search.
+type ChunkSearchResult struct {
+	ID         string  `json:"id"`
+	DocumentID string  `json:"document_id"`
+	ChunkIndex int     `json:"chunk_index"`
+	Content    string  `json:"content"`
+	Similarity float64 `json:"similarity"`
+}
+
+// ChatRequest is the input payload for POST /api/v1/ai/chat and POST /api/v1/ai/chat/stream.
 // If ConversationID is omitted or empty, a new conversation is automatically created.
+// If UseRAG is true, relevant document chunks will be retrieved and injected into the context.
 type ChatRequest struct {
 	ConversationID string `json:"conversation_id,omitempty"`
 	Message        string `json:"message" validate:"required,max=10000"`
-	System         string `json:"system,omitempty"` // Optional custom system prompt override
+	System         string `json:"system,omitempty"`          // Optional custom system prompt override
+	UseRAG         bool   `json:"use_rag,omitempty"`         // Optional: enable RAG knowledge retrieval
+	DocumentID     string `json:"document_id,omitempty"`     // Optional: restrict retrieval to a specific document
 }
 
 // ChatMessageItem represents the generated message returned in ChatResponse.
@@ -43,6 +93,7 @@ type ChatMessageItem struct {
 
 // ChatResponse is the response payload for POST /api/v1/ai/chat.
 type ChatResponse struct {
-	ConversationID string          `json:"conversation_id"`
-	Message        ChatMessageItem `json:"message"`
+	ConversationID string              `json:"conversation_id"`
+	Message        ChatMessageItem     `json:"message"`
+	Sources        []ChunkSearchResult `json:"sources,omitempty"` // Included if RAG was used
 }

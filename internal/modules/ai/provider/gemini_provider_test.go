@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,3 +155,76 @@ func TestGeminiProviderRequiresModel(t *testing.T) {
 		t.Fatal("Complete() expected error when model is empty")
 	}
 }
+
+func TestGeminiProviderCompleteStream(t *testing.T) {
+	var gotPath, gotAuth, gotAccept string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("x-goog-api-key")
+		gotAccept = r.Header.Get("Accept")
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "no flusher", http.StatusInternalServerError)
+			return
+		}
+
+		lines := []string{
+			`data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":" streaming"}]}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}]}`,
+			`data: [DONE]`,
+		}
+		for _, l := range lines {
+			fmt.Fprintf(w, "%s\n\n", l)
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model: "gemini-2.5-flash",
+		Messages: []ChatMessage{
+			{Role: "user", Content: "Hi"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+
+	if gotPath != "/models/gemini-2.5-flash:streamGenerateContent" {
+		t.Errorf("path = %q, want streamGenerateContent", gotPath)
+	}
+	if gotAuth != "test-key" {
+		t.Errorf("auth = %q, want test-key", gotAuth)
+	}
+	if gotAccept != "text/event-stream" {
+		t.Errorf("accept = %q, want text/event-stream", gotAccept)
+	}
+
+	var tokens []string
+	var done bool
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("unexpected stream error chunk: %v", chunk.Err)
+		}
+		if chunk.Done {
+			done = true
+			break
+		}
+		if chunk.Token != "" {
+			tokens = append(tokens, chunk.Token)
+		}
+	}
+
+	if !done {
+		t.Error("expected stream to end with done=true")
+	}
+	full := strings.Join(tokens, "")
+	if full != "Hello streaming world" {
+		t.Errorf("stream content = %q, want 'Hello streaming world'", full)
+	}
+}
+
