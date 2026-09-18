@@ -163,6 +163,9 @@ func (r *inMemoryRepository) GetMessages(_ context.Context, conversationID strin
 
 func (r *inMemoryRepository) CreateDocument(_ context.Context, doc *model.Document) error {
 	doc.CreatedAt = time.Now()
+	if doc.Status == "" {
+		doc.Status = "ready"
+	}
 	r.documents[doc.ID] = doc
 	return nil
 }
@@ -233,12 +236,32 @@ func (r *inMemoryRepository) SearchSimilarChunks(_ context.Context, _ []float32,
 	return results, nil
 }
 
+func (r *inMemoryRepository) UpdateDocumentStatus(_ context.Context, id, userID, status, errorMsg string) error {
+	doc, ok := r.documents[id]
+	if !ok || doc.UserID != userID {
+		return apperror.NotFound("Document not found", nil)
+	}
+	doc.Status = status
+	doc.ErrorMessage = errorMsg
+	r.documents[id] = doc
+	return nil
+}
+
+func (r *inMemoryRepository) GetDocumentChunkCount(_ context.Context, documentID string) (int, error) {
+	chunks := r.documentChunks[documentID]
+	return len(chunks), nil
+}
+
 var _ repository.Repository = (*inMemoryRepository)(nil)
+
+func newTestService(p provider.Provider, cfg config.AIConfig, repo repository.Repository) Service {
+	return New(p, cfg, config.UploadConfig{Dir: "uploads", MaxSizeBytes: 10 << 20}, testLogger(), repo)
+}
 
 func TestChatNewConversation(t *testing.T) {
 	p := &mockProvider{content: "Recursion is a technique where a function calls itself."}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	resp, err := svc.Chat(ctx, "user-123", model.ChatRequest{
@@ -281,7 +304,7 @@ func TestChatNewConversation(t *testing.T) {
 func TestChatExistingConversation(t *testing.T) {
 	p := &mockProvider{content: "Here is an example in Go."}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	firstResp, err := svc.Chat(ctx, "user-123", model.ChatRequest{
@@ -322,7 +345,7 @@ func TestChatExistingConversation(t *testing.T) {
 func TestChatOwnershipIsolation(t *testing.T) {
 	repo := newInMemoryRepo()
 	p := &mockProvider{}
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	respA, err := svc.Chat(ctx, "user-A", model.ChatRequest{Message: "User A message"})
@@ -347,7 +370,7 @@ func TestChatOwnershipIsolation(t *testing.T) {
 func TestChatGeminiErrorDoesNotPersistAssistantMessage(t *testing.T) {
 	p := &mockProvider{err: apperror.AIProvider("Provider timeout", errors.New("timeout"))}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	_, err := svc.Chat(ctx, "user-123", model.ChatRequest{Message: "Hello"})
@@ -367,7 +390,7 @@ func TestChatGeminiErrorDoesNotPersistAssistantMessage(t *testing.T) {
 func TestConversationCRUD(t *testing.T) {
 	repo := newInMemoryRepo()
 	p := &mockProvider{content: "Answer"}
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	resp, err := svc.Chat(ctx, "user-1", model.ChatRequest{Message: "Hello from User 1"})
@@ -416,7 +439,7 @@ func TestConversationCRUD(t *testing.T) {
 func TestChatStreamNewConversation(t *testing.T) {
 	p := &mockProvider{streamContent: "Hello world from stream"}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	ch, convID, msgID, err := svc.ChatStream(ctx, "user-123", model.ChatRequest{
@@ -472,7 +495,7 @@ func TestChatStreamNewConversation(t *testing.T) {
 func TestChatStreamExistingConversation(t *testing.T) {
 	p := &mockProvider{streamContent: "continuation reply"}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	p.content = "first reply"
@@ -510,7 +533,7 @@ func TestChatStreamExistingConversation(t *testing.T) {
 func TestChatStreamOwnershipIsolation(t *testing.T) {
 	p := &mockProvider{}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	p.content = "user a reply"
@@ -535,7 +558,7 @@ func TestChatStreamOwnershipIsolation(t *testing.T) {
 func TestChatStreamProviderError(t *testing.T) {
 	p := &mockProvider{streamErr: apperror.AIProvider("stream failed", errors.New("network error"))}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	ch, convID, _, err := svc.ChatStream(ctx, "user-123", model.ChatRequest{Message: "trigger error"})
@@ -568,7 +591,7 @@ func TestChatStreamInterruptedPersistsPartialMessage(t *testing.T) {
 		omitDone:      true,
 	}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	ch, convID, msgID, err := svc.ChatStream(ctx, "user-123", model.ChatRequest{Message: "hello"})
@@ -602,7 +625,7 @@ func TestChatStreamInterruptedPersistsPartialMessage(t *testing.T) {
 func TestIngestDocument(t *testing.T) {
 	p := &mockProvider{}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	resp, err := svc.IngestDocument(ctx, "user-123", model.IngestDocumentRequest{
@@ -634,7 +657,7 @@ func TestIngestDocument(t *testing.T) {
 func TestDocumentCRUD(t *testing.T) {
 	p := &mockProvider{}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	resp, err := svc.IngestDocument(ctx, "user-1", model.IngestDocumentRequest{
@@ -675,7 +698,7 @@ func TestDocumentCRUD(t *testing.T) {
 func TestChatWithRAG(t *testing.T) {
 	p := &mockProvider{content: "According to the document, penguins live in Antarctica."}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	// Ingest document
@@ -720,7 +743,7 @@ func TestChatWithRAG(t *testing.T) {
 func TestChatWithoutRAG(t *testing.T) {
 	p := &mockProvider{content: "Generic answer without RAG."}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	// Ingest document
@@ -754,7 +777,7 @@ func TestChatWithoutRAG(t *testing.T) {
 func TestChatStreamWithRAG(t *testing.T) {
 	p := &mockProvider{streamContent: "RAG streaming reply"}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	_, _ = svc.IngestDocument(ctx, "user-123", model.IngestDocumentRequest{
@@ -791,7 +814,7 @@ func TestChatStreamWithRAG(t *testing.T) {
 func TestDocumentOwnershipIsolation(t *testing.T) {
 	p := &mockProvider{content: "Answer"}
 	repo := newInMemoryRepo()
-	svc := New(p, config.AIConfig{Model: "test-model"}, testLogger(), repo)
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
 	ctx := context.Background()
 
 	// User A ingests confidential document
@@ -829,5 +852,123 @@ func TestDocumentOwnershipIsolation(t *testing.T) {
 		if strings.Contains(m.Content, "99887766") {
 			t.Fatal("SECURITY VIOLATION: User A's secret document was leaked to User B's prompt!")
 		}
+	}
+}
+
+func TestUploadDocumentSuccessAndStatusTransition(t *testing.T) {
+	p := &mockProvider{}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 10 << 20}, testLogger(), repo)
+	ctx := context.Background()
+
+	fileContent := "This is the content of an uploaded knowledge file for RAG indexing."
+	doc, err := svc.UploadDocument(ctx, "user-123", "Knowledge Doc", "test.txt", int64(len(fileContent)), strings.NewReader(fileContent))
+	if err != nil {
+		t.Fatalf("UploadDocument failed: %v", err)
+	}
+
+	if doc.ID == "" {
+		t.Errorf("expected non-empty document ID")
+	}
+	if doc.Status != "processing" {
+		t.Errorf("initial status = %q, want 'processing'", doc.Status)
+	}
+	if doc.FileName != "test.txt" {
+		t.Errorf("file_name = %q, want 'test.txt'", doc.FileName)
+	}
+	if doc.FileType != "txt" {
+		t.Errorf("file_type = %q, want 'txt'", doc.FileType)
+	}
+
+	// Poll until background processing completes (processing -> ready)
+	var finalStatus *model.DocumentStatusResponse
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		statusResp, err := svc.GetDocumentStatus(ctx, doc.ID, "user-123")
+		if err == nil && statusResp.Status == "ready" {
+			finalStatus = statusResp
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if finalStatus == nil {
+		t.Fatalf("timed out waiting for document status to transition to 'ready'")
+	}
+	if finalStatus.ChunkCount <= 0 {
+		t.Errorf("expected chunk_count > 0, got %d", finalStatus.ChunkCount)
+	}
+}
+
+func TestUploadDocumentValidation(t *testing.T) {
+	p := &mockProvider{}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 100}, testLogger(), repo)
+	ctx := context.Background()
+
+	// 1. Missing user ID
+	_, err := svc.UploadDocument(ctx, "", "Title", "sample.txt", 10, strings.NewReader("some data"))
+	if err == nil {
+		t.Error("expected error for empty user_id")
+	}
+
+	// 2. Empty / invalid file name
+	_, err = svc.UploadDocument(ctx, "user-123", "Title", "", 10, strings.NewReader("some data"))
+	if err == nil {
+		t.Error("expected error for empty file name")
+	}
+
+	// 3. Unsupported file extension (.exe)
+	_, err = svc.UploadDocument(ctx, "user-123", "Title", "malicious.exe", 10, strings.NewReader("some data"))
+	if err == nil {
+		t.Error("expected error for unsupported file extension")
+	}
+
+	// 4. File size exceeds limit (limit is 100 bytes)
+	largeData := strings.Repeat("A", 150)
+	_, err = svc.UploadDocument(ctx, "user-123", "Large Doc", "large.txt", int64(len(largeData)), strings.NewReader(largeData))
+	if err == nil {
+		t.Error("expected error for file size exceeding limit")
+	}
+}
+
+func TestGetDocumentStatus(t *testing.T) {
+	p := &mockProvider{}
+	repo := newInMemoryRepo()
+	svc := newTestService(p, config.AIConfig{Model: "test-model"}, repo)
+	ctx := context.Background()
+
+	// Non-existent document
+	_, err := svc.GetDocumentStatus(ctx, "non-existent-id", "user-123")
+	if err == nil {
+		t.Error("expected not found error for non-existent document")
+	}
+
+	// Ingest a document and check status
+	ingested, err := svc.IngestDocument(ctx, "user-123", model.IngestDocumentRequest{
+		Title:   "Direct Ingest",
+		Content: "Direct text content for testing status.",
+	})
+	if err != nil {
+		t.Fatalf("IngestDocument failed: %v", err)
+	}
+
+	statusResp, err := svc.GetDocumentStatus(ctx, ingested.Document.ID, "user-123")
+	if err != nil {
+		t.Fatalf("GetDocumentStatus failed: %v", err)
+	}
+	if statusResp.Status != "ready" {
+		t.Errorf("status = %q, want 'ready'", statusResp.Status)
+	}
+	if statusResp.ChunkCount != ingested.ChunkCount {
+		t.Errorf("chunk_count = %d, want %d", statusResp.ChunkCount, ingested.ChunkCount)
+	}
+
+	// Ownership check: other user cannot get status
+	_, err = svc.GetDocumentStatus(ctx, ingested.Document.ID, "other-user")
+	if err == nil {
+		t.Error("expected error when other user queries status")
 	}
 }

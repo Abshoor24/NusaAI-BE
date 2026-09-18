@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,6 +147,38 @@ func (m *mockService) GetDocument(_ context.Context, id, userID string) (*model.
 		Title:     "Sample Document",
 		Source:    "text",
 		CreatedAt: time.Now(),
+	}, nil
+}
+
+func (m *mockService) UploadDocument(_ context.Context, userID, title, fileName string, fileSize int64, _ io.Reader) (*model.Document, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.docDetail != nil {
+		return m.docDetail, nil
+	}
+	return &model.Document{
+		ID:        "doc-upload-123",
+		UserID:    userID,
+		Title:     title,
+		Source:    "upload",
+		FileName:  fileName,
+		FileType:  "txt",
+		FileSize:  fileSize,
+		Status:    "processing",
+		CreatedAt: time.Now(),
+	}, nil
+}
+
+func (m *mockService) GetDocumentStatus(_ context.Context, id, _ string) (*model.DocumentStatusResponse, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &model.DocumentStatusResponse{
+		ID:         id,
+		Title:      "Sample Doc",
+		Status:     "ready",
+		ChunkCount: 3,
 	}, nil
 }
 
@@ -531,5 +565,116 @@ func TestDeleteDocument(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestUploadDocumentSuccess(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 10 << 20})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("title", "My Uploaded Book")
+	part, err := mw.CreateFormFile("file", "handbook.txt")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	_, _ = part.Write([]byte("Handbook text content inside file."))
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/documents/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.UploadDocument(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+
+	var body struct {
+		Success bool           `json:"success"`
+		Data    model.Document `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if body.Data.Title != "My Uploaded Book" {
+		t.Errorf("title = %q, want 'My Uploaded Book'", body.Data.Title)
+	}
+	if body.Data.Status != "processing" {
+		t.Errorf("status = %q, want 'processing'", body.Data.Status)
+	}
+}
+
+func TestUploadDocumentMissingFile(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 10 << 20})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("title", "Title Without File")
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/documents/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.UploadDocument(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetDocumentStatusSuccess(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/ai/documents/{id}/status", h.GetDocumentStatus)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/documents/doc-123/status", nil)
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body struct {
+		Success bool                         `json:"success"`
+		Data    model.DocumentStatusResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if body.Data.Status != "ready" {
+		t.Errorf("status = %q, want 'ready'", body.Data.Status)
+	}
+	if body.Data.ChunkCount != 3 {
+		t.Errorf("chunk_count = %d, want 3", body.Data.ChunkCount)
+	}
+}
+
+func TestGetDocumentStatusNotFound(t *testing.T) {
+	svc := &mockService{err: apperror.NotFound("Document not found", nil)}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/ai/documents/{id}/status", h.GetDocumentStatus)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/documents/non-existent/status", nil)
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }

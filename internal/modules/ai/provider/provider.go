@@ -11,10 +11,17 @@ type Provider interface {
 	Embed(ctx context.Context, model string, text string) ([]float32, error)
 }
 
+// ImageAttachment represents an image passed to the AI provider.
+type ImageAttachment struct {
+	MimeType string
+	Data     []byte
+}
+
 // ChatMessage represents a single chat message for multi-turn conversation.
 type ChatMessage struct {
 	Role    string
 	Content string
+	Images  []ImageAttachment
 }
 
 // Request is the provider-neutral request payload.

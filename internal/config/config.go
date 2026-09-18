@@ -23,7 +23,9 @@ type Config struct {
 	AI     AIConfig
 	CORS   CORSConfig
 	Rate   RateLimitConfig
+	Upload UploadConfig
 }
+
 
 type AppConfig struct {
 	Env  string // development | production
@@ -82,6 +84,12 @@ type RateLimitConfig struct {
 	PerMinute int
 	Burst     int
 }
+
+type UploadConfig struct {
+	Dir          string
+	MaxSizeBytes int64
+}
+
 
 // loadEnvFile loads the local .env file for development when it is present.
 // It never crashes when the file is missing and it never overrides variables
@@ -156,7 +164,12 @@ func Load() (*Config, error) {
 			PerMinute: getInt("RATE_LIMIT_PER_MINUTE", 120),
 			Burst:     getInt("RATE_LIMIT_BURST", 120),
 		},
+		Upload: UploadConfig{
+			Dir:          getEnv("UPLOAD_DIR", "uploads"),
+			MaxSizeBytes: getInt64("UPLOAD_MAX_BYTES", 10<<20), // 10 MB default
+		},
 	}
+
 
 	if err := cfg.validate(); err != nil {
 		return nil, err

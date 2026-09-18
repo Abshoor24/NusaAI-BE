@@ -59,7 +59,7 @@ func run() error {
 		return err
 	}
 	aiRepo := airepo.New(supabase.Pool())
-	aiService := aiservice.New(aiProvider, cfg.AI, log, aiRepo)
+	aiService := aiservice.New(aiProvider, cfg.AI, cfg.Upload, log, aiRepo)
 
 	srv := &http.Server{
 		Addr:         net.JoinHostPort(cfg.Server.Host, cfg.Server.Port),

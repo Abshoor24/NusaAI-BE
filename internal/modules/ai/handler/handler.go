@@ -269,3 +269,61 @@ func (h *Handler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondSuccess(w, http.StatusOK, "Document deleted successfully", nil)
 }
+
+// UploadDocument handles POST /api/v1/ai/documents/upload (and /api/v1/documents/upload).
+// It accepts a multipart/form-data upload containing a file (PDF, DOCX, TXT) and optional title.
+func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
+
+	// Limit multipart body to max upload size + 1MB overhead (default 32MB buffer limit)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		h.logger.Error("failed to parse multipart form", "error", err)
+		response.RespondError(w, h.logger, apperror.Validation("Invalid multipart form data: "+err.Error()))
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		response.RespondError(w, h.logger, apperror.Validation("File is required under 'file' form field"))
+		return
+	}
+	defer file.Close()
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	doc, err := h.ai.UploadDocument(r.Context(), userID, title, fileHeader.Filename, fileHeader.Size, file)
+	if err != nil {
+		h.logger.Error("document upload failed", "user_id", userID, "filename", fileHeader.Filename, "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	response.RespondSuccess(w, http.StatusAccepted, "Document uploaded and queued for processing", doc)
+}
+
+// GetDocumentStatus handles GET /api/v1/ai/documents/{id}/status (and /api/v1/documents/{id}/status).
+func (h *Handler) GetDocumentStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
+
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		response.RespondError(w, h.logger, apperror.Validation("Document ID is required"))
+		return
+	}
+
+	statusResp, err := h.ai.GetDocumentStatus(r.Context(), id, userID)
+	if err != nil {
+		h.logger.Error("get document status failed", "document_id", id, "user_id", userID, "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+
+	response.RespondSuccess(w, http.StatusOK, "Request successful", statusResp)
+}
