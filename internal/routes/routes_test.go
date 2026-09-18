@@ -83,6 +83,27 @@ func (d *dummyAIService) GetDocument(_ context.Context, id, userID string) (*aim
 	return &aimodel.Document{ID: id, UserID: userID, Title: "Doc Title"}, nil
 }
 
+func (d *dummyAIService) UploadDocument(_ context.Context, userID, title, fileName string, fileSize int64, _ io.Reader) (*aimodel.Document, error) {
+	return &aimodel.Document{
+		ID:        "doc-upload-1",
+		UserID:    userID,
+		Title:     title,
+		FileName:  fileName,
+		FileSize:  fileSize,
+		Status:    "processing",
+		CreatedAt: time.Now(),
+	}, nil
+}
+
+func (d *dummyAIService) GetDocumentStatus(_ context.Context, id, _ string) (*aimodel.DocumentStatusResponse, error) {
+	return &aimodel.DocumentStatusResponse{
+		ID:         id,
+		Title:      "Doc Title",
+		Status:     "ready",
+		ChunkCount: 1,
+	}, nil
+}
+
 func (d *dummyAIService) DeleteDocument(_ context.Context, _, _ string) error {
 	return nil
 }
@@ -218,9 +239,13 @@ func TestDocumentEndpointsRequireAuth(t *testing.T) {
 		path   string
 	}{
 		{http.MethodPost, "/api/v1/ai/documents"},
+		{http.MethodPost, "/api/v1/ai/documents/upload"},
 		{http.MethodGet, "/api/v1/ai/documents"},
 		{http.MethodGet, "/api/v1/ai/documents/doc-1"},
+		{http.MethodGet, "/api/v1/ai/documents/doc-1/status"},
 		{http.MethodDelete, "/api/v1/ai/documents/doc-1"},
+		{http.MethodPost, "/api/v1/documents/upload"},
+		{http.MethodGet, "/api/v1/documents/doc-1/status"},
 	}
 
 	for _, ep := range endpoints {

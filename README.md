@@ -159,11 +159,19 @@ Endpoint yang tersedia:
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
 | GET | `/api/v1/ai/health` | - | Cek konfigurasi AI lokal (tanpa panggil provider) |
 | POST | `/api/v1/ai/chat` | Bearer | Interaksi utama AI Assistant (create/continue conversation + persistence) |
+| POST | `/api/v1/ai/chat/stream` | Bearer | Streaming respon AI token-by-token via Server-Sent Events (SSE) |
 | GET | `/api/v1/ai/conversations` | Bearer | Daftar riwayat percakapan user |
 | GET | `/api/v1/ai/conversations/{id}` | Bearer | Detail percakapan beserta seluruh pesan |
 | DELETE | `/api/v1/ai/conversations/{id}` | Bearer | Hapus percakapan |
+| POST | `/api/v1/ai/documents` | Bearer | Ingest dokumen teks untuk RAG knowledge base |
+| POST | `/api/v1/ai/documents/upload` | Bearer | Upload file dokumen (PDF, DOCX, TXT) dengan asynchronous processing (alias: `/api/v1/documents/upload`) |
+| GET | `/api/v1/ai/documents` | Bearer | Daftar dokumen knowledge milik user |
+| GET | `/api/v1/ai/documents/{id}` | Bearer | Detail dokumen knowledge milik user |
+| GET | `/api/v1/ai/documents/{id}/status` | Bearer | Cek status background processing dokumen (`processing`, `ready`, `failed`, alias: `/api/v1/documents/{id}/status`) |
+| DELETE | `/api/v1/ai/documents/{id}` | Bearer | Hapus dokumen knowledge beserta vector chunks & file fisik |
 
 Dokumentasi lengkap: [docs/api.md](docs/api.md).
+
 
 ## Dokumentasi Lain
 

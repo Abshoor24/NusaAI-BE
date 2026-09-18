@@ -3,13 +3,18 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/modules/ai/extractor"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/model"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/rag"
@@ -21,6 +26,7 @@ const (
 	maxTitleLength       = 40
 	ragTopK              = 4
 	embeddingModel       = "text-embedding-004"
+
 
 	// defaultSystemPrompt is the generic system instruction sent with every
 	// request unless the caller overrides it via ChatRequest.System.
@@ -52,29 +58,42 @@ type Service interface {
 
 	// Document and RAG operations
 	IngestDocument(ctx context.Context, userID string, req model.IngestDocumentRequest) (*model.IngestDocumentResponse, error)
+	UploadDocument(ctx context.Context, userID, title, fileName string, fileSize int64, fileReader io.Reader) (*model.Document, error)
+	GetDocumentStatus(ctx context.Context, id, userID string) (*model.DocumentStatusResponse, error)
 	ListDocuments(ctx context.Context, userID string) ([]model.DocumentDetail, error)
 	GetDocument(ctx context.Context, id, userID string) (*model.Document, error)
 	DeleteDocument(ctx context.Context, id, userID string) error
 }
 
+
 type service struct {
-	provider provider.Provider
-	cfg      config.AIConfig
-	logger   *slog.Logger
-	repo     repository.Repository
-	chunker  *rag.Chunker
+	provider  provider.Provider
+	cfg       config.AIConfig
+	uploadCfg config.UploadConfig
+	logger    *slog.Logger
+	repo      repository.Repository
+	chunker   *rag.Chunker
 }
 
 // New creates a new instance of the AI Service with injected dependencies.
-func New(provider provider.Provider, cfg config.AIConfig, logger *slog.Logger, repo repository.Repository) Service {
+func New(provider provider.Provider, cfg config.AIConfig, uploadCfg config.UploadConfig, logger *slog.Logger, repo repository.Repository) Service {
+	if uploadCfg.Dir == "" {
+		uploadCfg.Dir = "uploads"
+	}
+	if uploadCfg.MaxSizeBytes <= 0 {
+		uploadCfg.MaxSizeBytes = 10 << 20 // 10MB default
+	}
+
 	return &service{
-		provider: provider,
-		cfg:      cfg,
-		logger:   logger,
-		repo:     repo,
-		chunker:  rag.NewChunker(800, 150),
+		provider:  provider,
+		cfg:       cfg,
+		uploadCfg: uploadCfg,
+		logger:    logger,
+		repo:      repo,
+		chunker:   rag.NewChunker(800, 150),
 	}
 }
+
 
 // Chat handles sending a prompt to the general-purpose AI assistant.
 // It creates a new conversation or appends to an existing conversation,
@@ -340,18 +359,11 @@ func (s *service) ChatStream(ctx context.Context, userID string, req model.ChatR
 				collected.WriteString(chunk.Token)
 			}
 
-			// Forward token to handler only while client is still connected.
-			if !clientGone {
-				select {
-				case outCh <- chunk:
-				case <-ctx.Done():
-					clientGone = true
-				}
-			}
-
 			if chunk.Done {
-				// Stream completed (success path). Persist full response using
-				// dbCtx so this is not affected by client disconnect.
+				// Stream completed (success path). Persist full response
+				// BEFORE forwarding the Done chunk, so that when the
+				// consumer sees Done the message is already in the DB.
+				// Uses dbCtx so this is not affected by client disconnect.
 				content := collected.String()
 				assistantMsg := &model.Message{
 					ID:             assistantMsgID,
@@ -363,12 +375,30 @@ func (s *service) ChatStream(ctx context.Context, userID string, req model.ChatR
 					s.logger.Error("stream: failed to save assistant message", "conversation_id", convID, "error", saveErr)
 				}
 				_ = s.repo.TouchConversation(dbCtx, convID, userID)
+
+				// Now forward Done to the consumer.
+				if !clientGone {
+					select {
+					case outCh <- chunk:
+					case <-ctx.Done():
+					}
+				}
 				return
+			}
+
+			// Forward token-only chunks to handler while client is connected.
+			if !clientGone {
+				select {
+				case outCh <- chunk:
+				case <-ctx.Done():
+					clientGone = true
+				}
 			}
 		}
 
-		// If the stream ended without an explicit Done chunk (e.g. client disconnect / context cancellation
-		// or network interruption), but we collected content, persist whatever was accumulated.
+		// If the stream ended without an explicit Done chunk (e.g. client
+		// disconnect / context cancellation or network interruption), but we
+		// collected content, persist whatever was accumulated.
 		if collected.Len() > 0 {
 			content := collected.String()
 			assistantMsg := &model.Message{
@@ -440,6 +470,7 @@ func (s *service) IngestDocument(ctx context.Context, userID string, req model.I
 		UserID: userID,
 		Title:  title,
 		Source: source,
+		Status: "ready",
 	}
 
 	if err := s.repo.CreateDocument(ctx, &doc); err != nil {
@@ -481,6 +512,182 @@ func (s *service) IngestDocument(ctx context.Context, userID string, req model.I
 	}, nil
 }
 
+// UploadDocument saves an uploaded file to user-isolated disk storage, creates a document record
+// with 'processing' status, and starts asynchronous text extraction and embedding in the background.
+func (s *service) UploadDocument(ctx context.Context, userID, title, fileName string, fileSize int64, fileReader io.Reader) (*model.Document, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, apperror.Unauthorized("User authentication is required", nil)
+	}
+
+	fileName = filepath.Base(strings.TrimSpace(fileName))
+	if fileName == "" || fileName == "." {
+		return nil, apperror.Validation("Valid file name is required")
+	}
+
+	if !extractor.IsSupported(fileName) {
+		return nil, apperror.Validation("Unsupported file type. Only PDF, DOCX, and TXT files are supported")
+	}
+
+	maxSize := s.uploadCfg.MaxSizeBytes
+	if maxSize <= 0 {
+		maxSize = 10 << 20 // 10MB default
+	}
+	if fileSize > maxSize {
+		return nil, apperror.Validation(fmt.Sprintf("File size exceeds maximum allowed limit of %d MB", maxSize/(1<<20)))
+	}
+
+	docTitle := strings.TrimSpace(title)
+	if docTitle == "" {
+		docTitle = fileName
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	fileType := extractor.NormalizeType(ext)
+	docID := uuid.New().String()
+
+	userDir := filepath.Join(s.uploadCfg.Dir, userID)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		s.logger.Error("failed to create upload directory", "dir", userDir, "error", err)
+		return nil, apperror.Internal("Failed to initialize storage for upload", err)
+	}
+
+	safeFileName := fmt.Sprintf("%s_%s", docID, fileName)
+	targetPath := filepath.Join(userDir, safeFileName)
+
+	dst, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		s.logger.Error("failed to create target file", "path", targetPath, "error", err)
+		return nil, apperror.Internal("Failed to save uploaded file", err)
+	}
+
+	written, err := io.Copy(dst, io.LimitReader(fileReader, maxSize+1))
+	dst.Close()
+	if err != nil {
+		_ = os.Remove(targetPath)
+		s.logger.Error("failed to write uploaded file", "path", targetPath, "error", err)
+		return nil, apperror.Internal("Failed to write uploaded file", err)
+	}
+
+	if written > maxSize {
+		_ = os.Remove(targetPath)
+		return nil, apperror.Validation(fmt.Sprintf("File size exceeds maximum allowed limit of %d MB", maxSize/(1<<20)))
+	}
+
+	doc := &model.Document{
+		ID:           docID,
+		UserID:       userID,
+		Title:        docTitle,
+		Source:       "upload",
+		FileName:     fileName,
+		FileType:     fileType,
+		FileSize:     written,
+		FilePath:     targetPath,
+		Status:       "processing",
+		ErrorMessage: "",
+	}
+
+	if err := s.repo.CreateDocument(ctx, doc); err != nil {
+		_ = os.Remove(targetPath)
+		s.logger.Error("failed to create document record for upload", "error", err)
+		return nil, err
+	}
+
+	// Launch asynchronous text extraction and embedding in the background
+	go s.processUploadedDocument(context.Background(), docID, userID, targetPath, fileType)
+
+	return doc, nil
+}
+
+func (s *service) processUploadedDocument(ctx context.Context, docID, userID, filePath, fileType string) {
+	procCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	s.logger.Info("starting background document processing", "document_id", docID, "type", fileType)
+
+	text, err := extractor.ExtractText(filePath, fileType)
+	if err != nil {
+		s.logger.Error("document text extraction failed", "document_id", docID, "error", err)
+		_ = s.repo.UpdateDocumentStatus(procCtx, docID, userID, "failed", err.Error())
+		return
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		s.logger.Error("extracted document text is empty", "document_id", docID)
+		_ = s.repo.UpdateDocumentStatus(procCtx, docID, userID, "failed", "Document contains no extractable text")
+		return
+	}
+
+	textChunks := s.chunker.Chunk(text)
+	if len(textChunks) == 0 {
+		textChunks = []string{text}
+	}
+
+	docChunks := make([]model.DocumentChunk, 0, len(textChunks))
+	for i, chunkText := range textChunks {
+		if procCtx.Err() != nil {
+			s.logger.Error("document processing timed out", "document_id", docID)
+			_ = s.repo.UpdateDocumentStatus(context.Background(), docID, userID, "failed", "Processing timed out")
+			return
+		}
+
+		emb, err := s.provider.Embed(procCtx, embeddingModel, chunkText)
+		if err != nil {
+			s.logger.Error("chunk embedding failed", "document_id", docID, "chunk_index", i, "error", err)
+			_ = s.repo.UpdateDocumentStatus(context.Background(), docID, userID, "failed", fmt.Sprintf("Embedding failed at chunk %d: %v", i+1, err))
+			return
+		}
+
+		docChunks = append(docChunks, model.DocumentChunk{
+			ID:         uuid.New().String(),
+			DocumentID: docID,
+			ChunkIndex: i,
+			Content:    chunkText,
+			Embedding:  emb,
+		})
+	}
+
+	if err := s.repo.CreateDocumentChunks(procCtx, docChunks); err != nil {
+		s.logger.Error("saving document chunks failed", "document_id", docID, "error", err)
+		_ = s.repo.UpdateDocumentStatus(context.Background(), docID, userID, "failed", "Failed to save document chunks to database")
+		return
+	}
+
+	if err := s.repo.UpdateDocumentStatus(procCtx, docID, userID, "ready", ""); err != nil {
+		s.logger.Error("failed to mark document ready", "document_id", docID, "error", err)
+		return
+	}
+
+	s.logger.Info("document processing completed successfully", "document_id", docID, "chunks", len(docChunks))
+}
+
+func (s *service) GetDocumentStatus(ctx context.Context, id, userID string) (*model.DocumentStatusResponse, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, apperror.Unauthorized("User authentication is required", nil)
+	}
+	doc, err := s.repo.GetDocument(ctx, id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, apperror.NotFound("Document not found", nil)
+	}
+
+	chunkCount, err := s.repo.GetDocumentChunkCount(ctx, id)
+	if err != nil {
+		s.logger.Warn("failed to count document chunks", "document_id", id, "error", err)
+		chunkCount = 0
+	}
+
+	return &model.DocumentStatusResponse{
+		ID:           doc.ID,
+		Title:        doc.Title,
+		Status:       doc.Status,
+		ChunkCount:   chunkCount,
+		ErrorMessage: doc.ErrorMessage,
+	}, nil
+}
+
 func (s *service) ListDocuments(ctx context.Context, userID string) ([]model.DocumentDetail, error) {
 	if strings.TrimSpace(userID) == "" {
 		return nil, apperror.Unauthorized("User authentication is required", nil)
@@ -506,8 +713,25 @@ func (s *service) DeleteDocument(ctx context.Context, id, userID string) error {
 	if strings.TrimSpace(userID) == "" {
 		return apperror.Unauthorized("User authentication is required", nil)
 	}
-	return s.repo.DeleteDocument(ctx, id, userID)
+	doc, err := s.repo.GetDocument(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if doc == nil {
+		return apperror.NotFound("Document not found", nil)
+	}
+
+	if err := s.repo.DeleteDocument(ctx, id, userID); err != nil {
+		return err
+	}
+
+	if doc.FilePath != "" {
+		_ = os.Remove(doc.FilePath)
+	}
+
+	return nil
 }
+
 
 // ListConversations returns all conversation threads owned by the given user,
 // ordered by most recently updated first.

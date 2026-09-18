@@ -80,9 +80,15 @@ func New(deps Dependencies) http.Handler {
 
 				// RAG Knowledge Document endpoints
 				r.Post("/ai/documents", aiH.IngestDocument)
+				r.Post("/ai/documents/upload", aiH.UploadDocument)
 				r.Get("/ai/documents", aiH.ListDocuments)
 				r.Get("/ai/documents/{id}", aiH.GetDocument)
+				r.Get("/ai/documents/{id}/status", aiH.GetDocumentStatus)
 				r.Delete("/ai/documents/{id}", aiH.DeleteDocument)
+
+				// Aliases without /ai prefix as specified in requirements
+				r.Post("/documents/upload", aiH.UploadDocument)
+				r.Get("/documents/{id}/status", aiH.GetDocumentStatus)
 			})
 		})
 	})

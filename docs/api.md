@@ -276,8 +276,11 @@ Menerima prompt pengguna secara generik untuk menghasilkan teks, kode, analisis,
 - `conversation_id` (UUID string, opsional): ID thread percakapan. Jika kosong, dibuat thread baru.
 - `message` (string, wajib): Prompt pengguna (maksimal 10.000 karakter).
 - `system` (string, opsional): Instruksi sistem override.
+- `use_rag` (boolean, opsional): Jika `true`, mengaktifkan pencarian vector semantic pada dokumen knowledge pengguna dan menyisipkan konteks relevan ke dalam prompt. Default `false`.
+- `document_id` (UUID string, opsional): Jika diisi bersama `use_rag: true`, membatasi pencarian RAG hanya pada dokumen tertentu milik pengguna.
 
 ### Response `200`
+
 
 ```json
 {
@@ -305,7 +308,40 @@ Status codes:
 
 ---
 
+## POST /api/v1/ai/chat/stream
+
+Endpoint streaming **AI Assistant / AI Generator** menggunakan Server-Sent Events (SSE).
+
+Menghasilkan respon bertahap token demi token secara real-time ke client. Format request identik dengan `POST /api/v1/ai/chat`.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+- **Rate limiting:** Mengikuti rate limit `AI_CHAT_RATE_LIMIT_PER_MINUTE` per IP.
+- **Headers Response:** `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`
+
+### Format Event SSE
+
+1. **Token event** (dikirim berkala selama AI mengalirkan teks):
+```text
+event: token
+data: {"token":"Halo"}
+```
+
+2. **Done event** (dikirim saat stream selesai & pesan lengkap berhasil disimpan ke DB):
+```text
+event: done
+data: {"conversation_id":"7b8e1f54-...","message_id":"3c9d2e10-..."}
+```
+
+3. **Error event** (dikirim jika terjadi kegagalan provider saat streaming):
+```text
+event: error
+data: {"error":"The AI provider returned an error"}
+```
+
+---
+
 ## GET /api/v1/ai/conversations
+
 
 Mengambil daftar thread percakapan milik pengguna yang sedang login, diurutkan dari yang paling baru diperbarui.
 
@@ -398,4 +434,210 @@ Status codes:
 - `200` sukses
 - `401` token tidak valid (`UNAUTHORIZED`)
 - `404` conversation tidak ditemukan (`NOT_FOUND`)
+
+---
+
+## POST /api/v1/ai/documents
+
+Mengunggah/meng-ingest dokumen knowledge teks untuk RAG. Dokumen akan dipotong menjadi chunk-chunk dengan overlap dan di-embed menggunakan model vector `text-embedding-004` sebelum disimpan ke PostgreSQL (`pgvector`).
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+### Request Body
+
+```json
+{
+  "title": "Panduan Standar Operasional",
+  "content": "Isi lengkap panduan operasional perusahaan dalam format teks...",
+  "source": "manual"
+}
+```
+
+### Response `201`
+
+```json
+{
+  "success": true,
+  "data": {
+    "document": {
+      "id": "8f3a1b2c-...",
+      "user_id": "1a2b3c4d-...",
+      "title": "Panduan Standar Operasional",
+      "source": "manual",
+      "created_at": "2026-09-17T10:00:00Z"
+    },
+    "chunk_count": 5
+  },
+  "message": "Document ingested successfully"
+}
+```
+
+---
+
+## GET /api/v1/ai/documents
+
+Mengambil daftar seluruh dokumen knowledge milik pengguna yang sedang login beserta jumlah chunk-nya.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "8f3a1b2c-...",
+      "user_id": "1a2b3c4d-...",
+      "title": "Panduan Standar Operasional",
+      "source": "manual",
+      "created_at": "2026-09-17T10:00:00Z",
+      "chunk_count": 5
+    }
+  ],
+  "message": "Request successful"
+}
+```
+
+---
+
+## GET /api/v1/ai/documents/{id}
+
+Mengambil detail satu dokumen knowledge milik pengguna. Dilindungi dengan isolasi kepemilikan.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "8f3a1b2c-...",
+    "user_id": "1a2b3c4d-...",
+    "title": "Panduan Standar Operasional",
+    "source": "manual",
+    "created_at": "2026-09-17T10:00:00Z"
+  },
+  "message": "Request successful"
+}
+```
+
+---
+
+## DELETE /api/v1/ai/documents/{id}
+
+Menghapus dokumen knowledge beserta seluruh vector chunk terkait (`ON DELETE CASCADE`).
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "data": null,
+  "message": "Document deleted successfully"
+}
+```
+
+---
+
+## POST /api/v1/ai/documents/upload (alias: POST /api/v1/documents/upload)
+
+Mengunggah file dokumen asli (PDF, DOCX, TXT) ke storage terisolasi per user. Backend membuat record dokumen dengan status `processing` dan menjalankan background job (asinkron) untuk ekstraksi teks, chunking, dan pembuatan vector embedding (`text-embedding-004`) ke `document_chunks`.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+- **Content-Type:** `multipart/form-data`
+- **Tipe File yang Didukung:** PDF (`.pdf`), Microsoft Word (`.docx`), Plain Text (`.txt`)
+- **Batasan Ukuran:** Maksimal 10 MB (dikonfigurasi via `UPLOAD_MAX_BYTES`)
+
+### Form Fields
+
+- `file` (binary, wajib): Berkas file dokumen yang akan diunggah.
+- `title` (string, opsional): Judul dokumen. Jika kosong, default menggunakan nama asli file.
+
+### Response `202 Accepted`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
+    "user_id": "1a2b3c4d-...",
+    "title": "Dokumen Kebijakan 2026",
+    "source": "upload",
+    "file_name": "kebijakan_2026.pdf",
+    "file_type": "pdf",
+    "file_size": 204850,
+    "status": "processing",
+    "created_at": "2026-09-18T08:00:00Z"
+  },
+  "message": "Document uploaded and queued for processing"
+}
+```
+
+Status codes:
+- `202` Berhasil diunggah dan dijadwalkan untuk background processing
+- `400` File kosong, melebihi batas ukuran maksimum, atau ekstensi tidak didukung (`VALIDATION_ERROR`)
+- `401` Token tidak valid atau tidak disediakan (`UNAUTHORIZED`)
+
+---
+
+## GET /api/v1/ai/documents/{id}/status (alias: GET /api/v1/documents/{id}/status)
+
+Memeriksa status proses ekstraksi dan embedding dokumen knowledge (untuk polling dari frontend).
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+### Response `200`
+
+Status saat sedang diproses:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
+    "title": "Dokumen Kebijakan 2026",
+    "status": "processing",
+    "chunk_count": 0
+  },
+  "message": "Request successful"
+}
+```
+
+Status saat selesai dan siap digunakan dalam RAG chat:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
+    "title": "Dokumen Kebijakan 2026",
+    "status": "ready",
+    "chunk_count": 12
+  },
+  "message": "Request successful"
+}
+```
+
+Status jika pemrosesan gagal:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
+    "title": "Dokumen Kebijakan 2026",
+    "status": "failed",
+    "chunk_count": 0,
+    "error_message": "pdf contains no extractable text"
+  },
+  "message": "Request successful"
+}
+```
+
+Status codes:
+- `200` Berhasil mendapatkan status dokumen
+- `401` Token tidak valid (`UNAUTHORIZED`)
+- `404` Dokumen tidak ditemukan atau bukan milik pengguna (`NOT_FOUND`)
+
 

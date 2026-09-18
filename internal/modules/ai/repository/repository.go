@@ -32,7 +32,10 @@ type Repository interface {
 	DeleteDocument(ctx context.Context, id, userID string) error
 	CreateDocumentChunks(ctx context.Context, chunks []model.DocumentChunk) error
 	SearchSimilarChunks(ctx context.Context, embedding []float32, userID string, documentID string, limit int) ([]model.ChunkSearchResult, error)
+	UpdateDocumentStatus(ctx context.Context, id, userID, status, errorMsg string) error
+	GetDocumentChunkCount(ctx context.Context, documentID string) (int, error)
 }
+
 
 type postgresRepository struct {
 	pool *pgxpool.Pool
@@ -255,12 +258,16 @@ func (r *postgresRepository) CreateDocument(ctx context.Context, doc *model.Docu
 		return apperror.Database("Database pool is not available", nil)
 	}
 
+	if doc.Status == "" {
+		doc.Status = "ready"
+	}
+
 	const q = `
-		INSERT INTO documents (id, user_id, title, source, created_at)
-		VALUES ($1, $2, $3, $4, NOW())
+		INSERT INTO documents (id, user_id, title, source, file_name, file_type, file_size, file_path, status, error_message, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
 		RETURNING created_at`
 
-	err := r.pool.QueryRow(ctx, q, doc.ID, doc.UserID, doc.Title, doc.Source).Scan(&doc.CreatedAt)
+	err := r.pool.QueryRow(ctx, q, doc.ID, doc.UserID, doc.Title, doc.Source, doc.FileName, doc.FileType, doc.FileSize, doc.FilePath, doc.Status, doc.ErrorMessage).Scan(&doc.CreatedAt)
 	if err != nil {
 		return apperror.Database("Failed to create document", err)
 	}
@@ -273,12 +280,18 @@ func (r *postgresRepository) GetDocument(ctx context.Context, id, userID string)
 	}
 
 	const q = `
-		SELECT id, user_id, title, source, created_at
+		SELECT id, user_id, title, source, 
+		       COALESCE(file_name, ''), COALESCE(file_type, ''), file_size, COALESCE(file_path, ''),
+		       status, COALESCE(error_message, ''), created_at
 		FROM documents
 		WHERE id = $1 AND user_id = $2`
 
 	var d model.Document
-	err := r.pool.QueryRow(ctx, q, id, userID).Scan(&d.ID, &d.UserID, &d.Title, &d.Source, &d.CreatedAt)
+	err := r.pool.QueryRow(ctx, q, id, userID).Scan(
+		&d.ID, &d.UserID, &d.Title, &d.Source,
+		&d.FileName, &d.FileType, &d.FileSize, &d.FilePath,
+		&d.Status, &d.ErrorMessage, &d.CreatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -294,11 +307,13 @@ func (r *postgresRepository) ListDocuments(ctx context.Context, userID string) (
 	}
 
 	const q = `
-		SELECT d.id, d.user_id, d.title, d.source, d.created_at, COUNT(dc.id) AS chunk_count
+		SELECT d.id, d.user_id, d.title, d.source,
+		       COALESCE(d.file_name, ''), COALESCE(d.file_type, ''), d.file_size, COALESCE(d.file_path, ''),
+		       d.status, COALESCE(d.error_message, ''), d.created_at, COUNT(dc.id) AS chunk_count
 		FROM documents d
 		LEFT JOIN document_chunks dc ON dc.document_id = d.id
 		WHERE d.user_id = $1
-		GROUP BY d.id, d.user_id, d.title, d.source, d.created_at
+		GROUP BY d.id, d.user_id, d.title, d.source, d.file_name, d.file_type, d.file_size, d.file_path, d.status, d.error_message, d.created_at
 		ORDER BY d.created_at DESC`
 
 	rows, err := r.pool.Query(ctx, q, userID)
@@ -310,7 +325,11 @@ func (r *postgresRepository) ListDocuments(ctx context.Context, userID string) (
 	var docs []model.DocumentDetail
 	for rows.Next() {
 		var dd model.DocumentDetail
-		if err := rows.Scan(&dd.ID, &dd.UserID, &dd.Title, &dd.Source, &dd.CreatedAt, &dd.ChunkCount); err != nil {
+		if err := rows.Scan(
+			&dd.ID, &dd.UserID, &dd.Title, &dd.Source,
+			&dd.FileName, &dd.FileType, &dd.FileSize, &dd.FilePath,
+			&dd.Status, &dd.ErrorMessage, &dd.CreatedAt, &dd.ChunkCount,
+		); err != nil {
 			return nil, apperror.Database("Failed to read document row", err)
 		}
 		docs = append(docs, dd)
@@ -323,6 +342,40 @@ func (r *postgresRepository) ListDocuments(ctx context.Context, userID string) (
 		docs = []model.DocumentDetail{}
 	}
 	return docs, nil
+}
+
+func (r *postgresRepository) UpdateDocumentStatus(ctx context.Context, id, userID, status, errorMsg string) error {
+	if r.pool == nil {
+		return apperror.Database("Database pool is not available", nil)
+	}
+
+	const q = `
+		UPDATE documents
+		SET status = $1, error_message = $2
+		WHERE id = $3 AND user_id = $4`
+
+	ct, err := r.pool.Exec(ctx, q, status, errorMsg, id, userID)
+	if err != nil {
+		return apperror.Database("Failed to update document status", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return apperror.NotFound("Document not found", nil)
+	}
+	return nil
+}
+
+func (r *postgresRepository) GetDocumentChunkCount(ctx context.Context, documentID string) (int, error) {
+	if r.pool == nil {
+		return 0, apperror.Database("Database pool is not available", nil)
+	}
+
+	const q = `SELECT COUNT(*) FROM document_chunks WHERE document_id = $1`
+	var count int
+	err := r.pool.QueryRow(ctx, q, documentID).Scan(&count)
+	if err != nil {
+		return 0, apperror.Database("Failed to count document chunks", err)
+	}
+	return count, nil
 }
 
 func (r *postgresRepository) DeleteDocument(ctx context.Context, id, userID string) error {
@@ -343,6 +396,7 @@ func (r *postgresRepository) DeleteDocument(ctx context.Context, id, userID stri
 	}
 	return nil
 }
+
 
 func (r *postgresRepository) CreateDocumentChunks(ctx context.Context, chunks []model.DocumentChunk) error {
 	if r.pool == nil {
@@ -390,7 +444,7 @@ func (r *postgresRepository) SearchSimilarChunks(ctx context.Context, embedding 
 			       1 - (dc.embedding <=> $1::vector) AS similarity
 			FROM document_chunks dc
 			JOIN documents d ON d.id = dc.document_id
-			WHERE d.user_id = $2 AND d.id = $3
+			WHERE d.user_id = $2 AND d.status = 'ready' AND d.id = $3
 			ORDER BY dc.embedding <=> $1::vector ASC
 			LIMIT $4`
 		rows, err = r.pool.Query(ctx, q, vecStr, userID, documentID, limit)
@@ -400,11 +454,12 @@ func (r *postgresRepository) SearchSimilarChunks(ctx context.Context, embedding 
 			       1 - (dc.embedding <=> $1::vector) AS similarity
 			FROM document_chunks dc
 			JOIN documents d ON d.id = dc.document_id
-			WHERE d.user_id = $2
+			WHERE d.user_id = $2 AND d.status = 'ready'
 			ORDER BY dc.embedding <=> $1::vector ASC
 			LIMIT $3`
 		rows, err = r.pool.Query(ctx, q, vecStr, userID, limit)
 	}
+
 	if err != nil {
 		return nil, apperror.Database("Failed to search similar chunks", err)
 	}
