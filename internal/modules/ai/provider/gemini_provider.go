@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,9 +65,9 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 			case "system":
 				systemParts = append(systemParts, msg.Content)
 			case "assistant":
-				contents = appendGeminiContent(contents, "model", msg.Content)
+				contents = appendGeminiContent(contents, "model", msg.Content, nil)
 			default: // user
-				contents = appendGeminiContent(contents, "user", msg.Content)
+				contents = appendGeminiContent(contents, "user", msg.Content, msg.Images)
 			}
 		}
 	} else {
@@ -75,7 +76,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 		if len(req.Context) > 0 {
 			systemParts = append(systemParts, strings.Join(req.Context, "\n\n"))
 		}
-		contents = appendGeminiContent(contents, "user", req.Prompt)
+		contents = appendGeminiContent(contents, "user", req.Prompt, nil)
 	}
 
 	payload := map[string]interface{}{
@@ -175,16 +176,16 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			case "system":
 				systemParts = append(systemParts, msg.Content)
 			case "assistant":
-				contents = appendGeminiContent(contents, "model", msg.Content)
+				contents = appendGeminiContent(contents, "model", msg.Content, nil)
 			default: // user
-				contents = appendGeminiContent(contents, "user", msg.Content)
+				contents = appendGeminiContent(contents, "user", msg.Content, msg.Images)
 			}
 		}
 	} else {
 		if len(req.Context) > 0 {
 			systemParts = append(systemParts, strings.Join(req.Context, "\n\n"))
 		}
-		contents = appendGeminiContent(contents, "user", req.Prompt)
+		contents = appendGeminiContent(contents, "user", req.Prompt, nil)
 	}
 
 	payload := map[string]interface{}{
@@ -312,24 +313,47 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 	return ch, nil
 }
 
+func buildGeminiParts(text string, images []ImageAttachment) []map[string]interface{} {
+	parts := make([]map[string]interface{}, 0, 1+len(images))
+	if text != "" {
+		parts = append(parts, map[string]interface{}{"text": text})
+	}
+	for _, img := range images {
+		if len(img.Data) > 0 {
+			parts = append(parts, map[string]interface{}{
+				"inlineData": map[string]string{
+					"mimeType": img.MimeType,
+					"data":     base64.StdEncoding.EncodeToString(img.Data),
+				},
+			})
+		}
+	}
+	return parts
+}
+
 // appendGeminiContent appends a content entry to the contents slice and
 // returns the (possibly reallocated) slice. Messages that come in consecutive
 // same-role pairs are merged into a single content entry so the generated
 // request is always valid for the Gemini API.
-func appendGeminiContent(contents []map[string]interface{}, role, text string) []map[string]interface{} {
+func appendGeminiContent(contents []map[string]interface{}, role, text string, images []ImageAttachment) []map[string]interface{} {
+	newParts := buildGeminiParts(text, images)
+	if len(newParts) == 0 {
+		return contents
+	}
+
 	if n := len(contents); n > 0 {
 		last := contents[n-1]
 		if lastRole, _ := last["role"].(string); lastRole == role {
-			parts, _ := last["parts"].([]map[string]string)
-			parts = append(parts, map[string]string{"text": text})
-			last["parts"] = parts
-			contents[n-1] = last
-			return contents
+			if existingParts, ok := last["parts"].([]map[string]interface{}); ok {
+				last["parts"] = append(existingParts, newParts...)
+				contents[n-1] = last
+				return contents
+			}
 		}
 	}
 	return append(contents, map[string]interface{}{
 		"role":  role,
-		"parts": []map[string]string{{"text": text}},
+		"parts": newParts,
 	})
 }
 

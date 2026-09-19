@@ -36,6 +36,8 @@ type mockService struct {
 	docResp      *model.IngestDocumentResponse
 	docList      []model.DocumentDetail
 	docDetail    *model.Document
+	attResp      *model.MessageAttachment
+	attData      []byte
 }
 
 func (m *mockService) Chat(_ context.Context, userID string, req model.ChatRequest) (model.ChatResponse, error) {
@@ -45,14 +47,43 @@ func (m *mockService) Chat(_ context.Context, userID string, req model.ChatReque
 	if m.chatResp.ConversationID != "" {
 		return m.chatResp, nil
 	}
+	var atts []model.MessageAttachment
+	for _, img := range req.Images {
+		atts = append(atts, model.MessageAttachment{
+			ID:       "att-" + img.FileName,
+			FileName: img.FileName,
+			FileType: "png",
+			MimeType: img.MimeType,
+			FileSize: int64(len(img.Data)),
+		})
+	}
 	return model.ChatResponse{
 		ConversationID: "conv-123",
 		Message: model.ChatMessageItem{
-			ID:      "msg-1",
-			Role:    "assistant",
-			Content: "Echo: " + req.Message,
+			ID:          "msg-1",
+			Role:        "assistant",
+			Content:     "Echo: " + req.Message,
+			Attachments: atts,
 		},
 	}, nil
+}
+
+func (m *mockService) GetAttachment(_ context.Context, id, userID string) (*model.MessageAttachment, io.ReadCloser, error) {
+	if m.err != nil {
+		return nil, nil, m.err
+	}
+	if m.attResp != nil {
+		return m.attResp, io.NopCloser(bytes.NewReader(m.attData)), nil
+	}
+	return &model.MessageAttachment{
+		ID:        id,
+		MessageID: "msg-123",
+		FileName:  "test.png",
+		FileType:  "png",
+		FileSize:  int64(len(m.attData)),
+		MimeType:  "image/png",
+		CreatedAt: time.Now(),
+	}, io.NopCloser(bytes.NewReader(m.attData)), nil
 }
 
 func (m *mockService) ChatStream(_ context.Context, _ string, _ model.ChatRequest) (<-chan provider.StreamChunk, string, string, error) {
@@ -676,5 +707,271 @@ func TestGetDocumentStatusNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestChatMultipartWithImage(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20}, config.UploadConfig{MaxSizeBytes: 10 << 20})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("message", "Jelaskan gambar ini")
+	part, err := mw.CreateFormFile("image", "photo.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile error: %v", err)
+	}
+	_, _ = part.Write([]byte("fake-png-binary-data"))
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body struct {
+		Success bool               `json:"success"`
+		Data    model.ChatResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if !body.Success {
+		t.Error("expected success = true")
+	}
+	if body.Data.ConversationID != "conv-123" {
+		t.Errorf("conversation ID = %q, want 'conv-123'", body.Data.ConversationID)
+	}
+	if len(body.Data.Message.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(body.Data.Message.Attachments))
+	}
+	if body.Data.Message.Attachments[0].FileName != "photo.png" {
+		t.Errorf("attachment file name = %q, want 'photo.png'", body.Data.Message.Attachments[0].FileName)
+	}
+}
+
+func TestChatMultipartMissingMessage(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, err := mw.CreateFormFile("image", "photo.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile error: %v", err)
+	}
+	_, _ = part.Write([]byte("fake-data"))
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestChatMultipartExceedsMaxSizeBytes(t *testing.T) {
+	svc := &mockService{}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20}, config.UploadConfig{MaxSizeBytes: 100})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("message", "Exceeds limit")
+	part, err := mw.CreateFormFile("image", "huge.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile error: %v", err)
+	}
+	_, _ = part.Write(make([]byte, 200))
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.Chat(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestChatStreamMultipartWithImage(t *testing.T) {
+	svc := &mockService{streamTokens: []string{"Image", " ", "verified"}}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20}, config.UploadConfig{MaxSizeBytes: 10 << 20})
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("message", "Stream explain image")
+	part, err := mw.CreateFormFile("image", "picture.jpg")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	_, _ = part.Write([]byte("jpg-bytes"))
+	_ = mw.Close()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat/stream", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	h.ChatStream(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/event-stream") {
+		t.Errorf("content-type = %q, want text/event-stream", contentType)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: token") {
+		t.Errorf("missing token event: %s", body)
+	}
+	if !strings.Contains(body, "event: done") {
+		t.Errorf("missing done event: %s", body)
+	}
+}
+
+func TestGetAttachmentSuccess(t *testing.T) {
+	svc := &mockService{
+		attResp: &model.MessageAttachment{
+			ID:       "att-1",
+			FileName: "sample.png",
+			MimeType: "image/png",
+			FileSize: 11,
+		},
+		attData: []byte("sample-data"),
+	}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/ai/attachments/{id}", h.GetAttachment)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/attachments/att-1", nil)
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if rec.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", rec.Header().Get("Content-Type"))
+	}
+	if rec.Body.String() != "sample-data" {
+		t.Errorf("body = %q, want sample-data", rec.Body.String())
+	}
+}
+
+func TestGetAttachmentUnauthorized(t *testing.T) {
+	h := New(&mockService{}, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/attachments/att-1", nil)
+
+	h.GetAttachment(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestGetAttachmentNotFound(t *testing.T) {
+	svc := &mockService{err: apperror.NotFound("Attachment not found", nil)}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/ai/attachments/{id}", h.GetAttachment)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/attachments/missing-id", nil)
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetConversationWithAttachments(t *testing.T) {
+	svc := &mockService{
+		convDetail: &model.ConversationDetail{
+			Conversation: model.Conversation{
+				ID:     "conv-att-1",
+				UserID: "user-123",
+				Title:  "Chat with image",
+			},
+			Messages: []model.Message{
+				{
+					ID:             "m-1",
+					ConversationID: "conv-att-1",
+					Role:           "user",
+					Content:        "Explain this image",
+					Attachments: []model.MessageAttachment{
+						{
+							ID:        "att-1",
+							FileName:  "diagram.png",
+							MimeType:  "image/png",
+							FileSize:  2048,
+							CreatedAt: time.Now(),
+						},
+					},
+					CreatedAt: time.Now(),
+				},
+				{
+					ID:             "m-2",
+					ConversationID: "conv-att-1",
+					Role:           "assistant",
+					Content:        "This diagram represents a flowchart.",
+					CreatedAt:      time.Now(),
+				},
+			},
+		},
+	}
+	h := New(svc, testLogger(), config.AIConfig{MaxBytes: 1 << 20})
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/ai/conversations/{id}", h.GetConversation)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai/conversations/conv-att-1", nil)
+	req = req.WithContext(middleware.WithUserID(req.Context(), "user-123"))
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var body struct {
+		Success bool                     `json:"success"`
+		Data    model.ConversationDetail `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(body.Data.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(body.Data.Messages))
+	}
+	if len(body.Data.Messages[0].Attachments) != 1 {
+		t.Fatalf("expected 1 attachment in message 0, got %d", len(body.Data.Messages[0].Attachments))
+	}
+	if body.Data.Messages[0].Attachments[0].FileName != "diagram.png" {
+		t.Errorf("att filename = %q, want 'diagram.png'", body.Data.Messages[0].Attachments[0].FileName)
 	}
 }

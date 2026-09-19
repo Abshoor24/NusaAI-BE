@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"fmt"
+	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -17,14 +20,30 @@ import (
 
 // Handler exposes the AI assistant, conversation, and document endpoints.
 type Handler struct {
-	ai     service.Service
-	logger *slog.Logger
-	cfg    config.AIConfig
+	ai        service.Service
+	logger    *slog.Logger
+	cfg       config.AIConfig
+	uploadCfg config.UploadConfig
 }
 
 // New creates a new AI Handler.
-func New(svc service.Service, logger *slog.Logger, cfg config.AIConfig) *Handler {
-	return &Handler{ai: svc, logger: logger, cfg: cfg}
+func New(svc service.Service, logger *slog.Logger, cfg config.AIConfig, uploadCfgs ...config.UploadConfig) *Handler {
+	uploadCfg := config.UploadConfig{
+		Dir:          "uploads",
+		MaxSizeBytes: 10 << 20, // 10MB default
+	}
+	if len(uploadCfgs) > 0 {
+		uploadCfg = uploadCfgs[0]
+		if uploadCfg.MaxSizeBytes <= 0 {
+			uploadCfg.MaxSizeBytes = 10 << 20
+		}
+	}
+	return &Handler{
+		ai:        svc,
+		logger:    logger,
+		cfg:       cfg,
+		uploadCfg: uploadCfg,
+	}
 }
 
 // Health handles GET /api/v1/ai/health.
@@ -44,7 +63,82 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Chat handles POST /api/v1/ai/chat. It receives a prompt message,
+// parseChatRequest extracts model.ChatRequest from either multipart/form-data or application/json.
+func (h *Handler) parseChatRequest(w http.ResponseWriter, r *http.Request) (model.ChatRequest, error) {
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Limit multipart buffer to 32MB
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			return model.ChatRequest{}, apperror.Validation("Failed to parse multipart form: " + err.Error())
+		}
+
+		req := model.ChatRequest{
+			ConversationID: strings.TrimSpace(r.FormValue("conversation_id")),
+			Message:        strings.TrimSpace(r.FormValue("message")),
+			System:         strings.TrimSpace(r.FormValue("system")),
+			DocumentID:     strings.TrimSpace(r.FormValue("document_id")),
+		}
+
+		useRAGStr := strings.ToLower(strings.TrimSpace(r.FormValue("use_rag")))
+		req.UseRAG = useRAGStr == "true" || useRAGStr == "1"
+
+		// Extract files from multipart form
+		if r.MultipartForm != nil && r.MultipartForm.File != nil {
+			var fileHeaders []*multipart.FileHeader
+			for _, field := range []string{"image", "images", "file", "files"} {
+				if fhs := r.MultipartForm.File[field]; len(fhs) > 0 {
+					fileHeaders = append(fileHeaders, fhs...)
+				}
+			}
+
+			maxSize := h.uploadCfg.MaxSizeBytes
+			if maxSize <= 0 {
+				maxSize = 10 << 20
+			}
+
+			for _, fh := range fileHeaders {
+				if fh.Size > maxSize {
+					return model.ChatRequest{}, apperror.Validation(fmt.Sprintf("Image size exceeds maximum allowed limit of %d MB", maxSize/(1<<20)))
+				}
+
+				f, err := fh.Open()
+				if err != nil {
+					return model.ChatRequest{}, apperror.Validation("Failed to read attached file: " + err.Error())
+				}
+
+				data, err := io.ReadAll(io.LimitReader(f, maxSize+1))
+				f.Close()
+				if err != nil {
+					return model.ChatRequest{}, apperror.Internal("Failed to read uploaded file", err)
+				}
+				if int64(len(data)) > maxSize {
+					return model.ChatRequest{}, apperror.Validation(fmt.Sprintf("Image size exceeds maximum allowed limit of %d MB", maxSize/(1<<20)))
+				}
+
+				mimeType := fh.Header.Get("Content-Type")
+				req.Images = append(req.Images, model.ImageUploadPayload{
+					FileName: fh.Filename,
+					MimeType: mimeType,
+					Data:     data,
+				})
+			}
+		}
+
+		if req.Message == "" {
+			return model.ChatRequest{}, apperror.Validation("Message is required")
+		}
+
+		return req, nil
+	}
+
+	var req model.ChatRequest
+	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+		return model.ChatRequest{}, err
+	}
+	return req, nil
+}
+
+// Chat handles POST /api/v1/ai/chat. It receives a prompt message (and optional image attachments),
 // creates or continues a conversation, and returns the assistant's reply.
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFrom(r.Context())
@@ -53,8 +147,8 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req model.ChatRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+	req, err := h.parseChatRequest(w, r)
+	if err != nil {
 		h.logger.Error("ai chat request validation failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
@@ -79,8 +173,8 @@ func (h *Handler) ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req model.ChatRequest
-	if err := response.DecodeAndValidate(w, r, &req, h.cfg.MaxBytes); err != nil {
+	req, err := h.parseChatRequest(w, r)
+	if err != nil {
 		h.logger.Error("ai chat-stream request validation failed", "error", err)
 		response.RespondError(w, h.logger, err)
 		return
@@ -326,4 +420,33 @@ func (h *Handler) GetDocumentStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.RespondSuccess(w, http.StatusOK, "Request successful", statusResp)
+}
+
+// GetAttachment handles GET /api/v1/ai/attachments/{id} (and /api/v1/attachments/{id}).
+// It serves an uploaded attachment image to its authenticated owner.
+func (h *Handler) GetAttachment(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFrom(r.Context())
+	if !ok {
+		response.RespondError(w, h.logger, apperror.Unauthorized("Missing authentication token", nil))
+		return
+	}
+
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		response.RespondError(w, h.logger, apperror.Validation("Attachment ID is required"))
+		return
+	}
+
+	att, file, err := h.ai.GetAttachment(r.Context(), id, userID)
+	if err != nil {
+		h.logger.Error("get attachment failed", "attachment_id", id, "user_id", userID, "error", err)
+		response.RespondError(w, h.logger, err)
+		return
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Type", att.MimeType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", att.FileName))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", att.FileSize))
+	_, _ = io.Copy(w, file)
 }
