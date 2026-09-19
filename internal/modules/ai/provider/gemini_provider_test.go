@@ -228,3 +228,81 @@ func TestGeminiProviderCompleteStream(t *testing.T) {
 	}
 }
 
+func TestGeminiProviderBuildsMultimodalRequest(t *testing.T) {
+	var gotPayload map[string]interface{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotPayload)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"That is a golden retriever puppy."}]}}],"modelVersion":"gemini-2.5-flash"}`))
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{
+		APIKey:  "test-api-key",
+		BaseURL: srv.URL,
+		Timeout: 5 * time.Second,
+	}, testLogger())
+
+	fakeData := []byte("raw-image-bytes")
+	resp, err := p.Complete(context.Background(), Request{
+		Model: "gemini-2.5-flash",
+		Messages: []ChatMessage{
+			{
+				Role:    "user",
+				Content: "Describe this puppy image",
+				Images: []ImageAttachment{
+					{
+						MimeType: "image/png",
+						Data:     fakeData,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Complete() multimodal failed: %v", err)
+	}
+
+	if resp.Content != "That is a golden retriever puppy." {
+		t.Errorf("content = %q, want 'That is a golden retriever puppy.'", resp.Content)
+	}
+
+	contents, ok := gotPayload["contents"].([]interface{})
+	if !ok || len(contents) != 1 {
+		t.Fatalf("expected contents of length 1, got %v", gotPayload["contents"])
+	}
+
+	userTurn := contents[0].(map[string]interface{})
+	if userTurn["role"] != "user" {
+		t.Errorf("role = %v, want user", userTurn["role"])
+	}
+
+	parts, ok := userTurn["parts"].([]interface{})
+	if !ok || len(parts) != 2 {
+		t.Fatalf("expected 2 parts (text + inlineData), got %d parts: %v", len(parts), parts)
+	}
+
+	// Part 0: Text
+	part0 := parts[0].(map[string]interface{})
+	if part0["text"] != "Describe this puppy image" {
+		t.Errorf("part0 text = %v, want 'Describe this puppy image'", part0["text"])
+	}
+
+	// Part 1: Inline Data
+	part1 := parts[1].(map[string]interface{})
+	inlineData, ok := part1["inlineData"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("part1 missing inlineData: %v", part1)
+	}
+	if inlineData["mimeType"] != "image/png" {
+		t.Errorf("inlineData mimeType = %v, want image/png", inlineData["mimeType"])
+	}
+	// "raw-image-bytes" base64 is "cmF3LWltYWdlLWJ5dGVz"
+	if inlineData["data"] != "cmF3LWltYWdlLWJ5dGVz" {
+		t.Errorf("inlineData data = %v, want 'cmF3LWltYWdlLWJ5dGVz'", inlineData["data"])
+	}
+}
+
+

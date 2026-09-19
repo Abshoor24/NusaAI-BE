@@ -108,6 +108,17 @@ func (d *dummyAIService) DeleteDocument(_ context.Context, _, _ string) error {
 	return nil
 }
 
+func (d *dummyAIService) GetAttachment(_ context.Context, id, _ string) (*aimodel.MessageAttachment, io.ReadCloser, error) {
+	return &aimodel.MessageAttachment{
+		ID:        id,
+		MessageID: "msg-1",
+		FileName:  "img.png",
+		FileType:  "png",
+		MimeType:  "image/png",
+		FileSize:  4,
+	}, io.NopCloser(strings.NewReader("fake")), nil
+}
+
 var _ aiservice.Service = (*dummyAIService)(nil)
 
 func setupTestRouter() (http.Handler, *jwt.Manager) {
@@ -246,6 +257,8 @@ func TestDocumentEndpointsRequireAuth(t *testing.T) {
 		{http.MethodDelete, "/api/v1/ai/documents/doc-1"},
 		{http.MethodPost, "/api/v1/documents/upload"},
 		{http.MethodGet, "/api/v1/documents/doc-1/status"},
+		{http.MethodGet, "/api/v1/ai/attachments/att-1"},
+		{http.MethodGet, "/api/v1/attachments/att-1"},
 	}
 
 	for _, ep := range endpoints {

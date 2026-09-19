@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,6 +57,9 @@ type Service interface {
 	GetConversation(ctx context.Context, conversationID, userID string) (*model.ConversationDetail, error)
 	DeleteConversation(ctx context.Context, conversationID, userID string) error
 
+	// Attachment operations
+	GetAttachment(ctx context.Context, id, userID string) (*model.MessageAttachment, io.ReadCloser, error)
+
 	// Document and RAG operations
 	IngestDocument(ctx context.Context, userID string, req model.IngestDocumentRequest) (*model.IngestDocumentResponse, error)
 	UploadDocument(ctx context.Context, userID, title, fileName string, fileSize int64, fileReader io.Reader) (*model.Document, error)
@@ -95,6 +99,134 @@ func New(provider provider.Provider, cfg config.AIConfig, uploadCfg config.Uploa
 }
 
 
+var supportedImageMimeTypes = map[string]string{
+	"image/jpeg": "jpeg",
+	"image/jpg":  "jpeg",
+	"image/png":  "png",
+	"image/webp": "webp",
+}
+
+func validateAndNormalizeImage(img *model.ImageUploadPayload, maxSize int64) error {
+	if len(img.Data) == 0 {
+		return apperror.Validation("Image data cannot be empty")
+	}
+	if int64(len(img.Data)) > maxSize {
+		return apperror.Validation(fmt.Sprintf("Image size exceeds maximum allowed limit of %d MB", maxSize/(1<<20)))
+	}
+
+	mime := strings.ToLower(strings.TrimSpace(img.MimeType))
+	if mime == "" || mime == "application/octet-stream" {
+		ext := strings.ToLower(filepath.Ext(img.FileName))
+		switch ext {
+		case ".jpg", ".jpeg":
+			mime = "image/jpeg"
+		case ".png":
+			mime = "image/png"
+		case ".webp":
+			mime = "image/webp"
+		default:
+			sniffed := http.DetectContentType(img.Data)
+			if _, ok := supportedImageMimeTypes[sniffed]; ok {
+				mime = sniffed
+			}
+		}
+	}
+
+	normType, ok := supportedImageMimeTypes[mime]
+	if !ok {
+		return apperror.Validation("Unsupported image type. Only JPEG, PNG, and WebP are supported")
+	}
+
+	img.MimeType = mime
+	if img.FileName == "" {
+		img.FileName = fmt.Sprintf("image.%s", normType)
+	} else {
+		img.FileName = filepath.Base(img.FileName)
+	}
+
+	return nil
+}
+
+func (s *service) processUserAttachments(userID, userMsgID string, images []model.ImageUploadPayload) ([]model.MessageAttachment, []provider.ImageAttachment, error) {
+	if len(images) == 0 {
+		return nil, nil, nil
+	}
+
+	userDir := filepath.Join(s.uploadCfg.Dir, userID)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		s.logger.Error("failed to create attachment directory", "dir", userDir, "error", err)
+		return nil, nil, apperror.Internal("Failed to initialize storage for attachments", err)
+	}
+
+	attachments := make([]model.MessageAttachment, 0, len(images))
+	providerImages := make([]provider.ImageAttachment, 0, len(images))
+
+	for _, img := range images {
+		attID := uuid.New().String()
+		safeFileName := fmt.Sprintf("%s_%s", attID, img.FileName)
+		targetPath := filepath.Join(userDir, safeFileName)
+
+		if err := os.WriteFile(targetPath, img.Data, 0644); err != nil {
+			s.logger.Error("failed to save attachment file", "path", targetPath, "error", err)
+			return nil, nil, apperror.Internal("Failed to save image attachment", err)
+		}
+
+		normType := supportedImageMimeTypes[img.MimeType]
+		att := model.MessageAttachment{
+			ID:          attID,
+			MessageID:   userMsgID,
+			FileName:    img.FileName,
+			FileType:    normType,
+			FileSize:    int64(len(img.Data)),
+			StoragePath: targetPath,
+			MimeType:    img.MimeType,
+			CreatedAt:   time.Now(),
+		}
+		attachments = append(attachments, att)
+		providerImages = append(providerImages, provider.ImageAttachment{
+			MimeType: img.MimeType,
+			Data:     img.Data,
+		})
+	}
+
+	return attachments, providerImages, nil
+}
+
+func buildProviderMessages(systemPrompt string, recentMessages []model.Message, currentMsgID string, currentImages []provider.ImageAttachment) []provider.ChatMessage {
+	msgs := make([]provider.ChatMessage, 0, len(recentMessages)+1)
+	if systemPrompt != "" {
+		msgs = append(msgs, provider.ChatMessage{
+			Role:    "system",
+			Content: systemPrompt,
+		})
+	}
+
+	for _, m := range recentMessages {
+		if m.ID == currentMsgID {
+			msgs = append(msgs, provider.ChatMessage{
+				Role:    m.Role,
+				Content: m.Content,
+				Images:  currentImages,
+			})
+		} else {
+			content := m.Content
+			if len(m.Attachments) > 0 {
+				var refs []string
+				for _, a := range m.Attachments {
+					refs = append(refs, fmt.Sprintf("[Attached image: %s (%s)]", a.FileName, a.MimeType))
+				}
+				content = content + "\n" + strings.Join(refs, "\n")
+			}
+			msgs = append(msgs, provider.ChatMessage{
+				Role:    m.Role,
+				Content: content,
+			})
+		}
+	}
+
+	return msgs
+}
+
 // Chat handles sending a prompt to the general-purpose AI assistant.
 // It creates a new conversation or appends to an existing conversation,
 // retrieves recent messages within the context window, sends them to Gemini,
@@ -108,6 +240,16 @@ func (s *service) Chat(ctx context.Context, userID string, req model.ChatRequest
 	messageText := strings.TrimSpace(req.Message)
 	if messageText == "" {
 		return model.ChatResponse{}, apperror.Validation("Message is required")
+	}
+
+	maxSize := s.uploadCfg.MaxSizeBytes
+	if maxSize <= 0 {
+		maxSize = 10 << 20
+	}
+	for i := range req.Images {
+		if err := validateAndNormalizeImage(&req.Images[i], maxSize); err != nil {
+			return model.ChatResponse{}, err
+		}
 	}
 
 	var convID string
@@ -137,16 +279,29 @@ func (s *service) Chat(ctx context.Context, userID string, req model.ChatRequest
 		convID = conv.ID
 	}
 
-	// 1. Save user message to database
+	// 1. Process attachments and save user message to database
+	userMsgID := uuid.New().String()
+	attachments, currentImages, err := s.processUserAttachments(userID, userMsgID, req.Images)
+	if err != nil {
+		return model.ChatResponse{}, err
+	}
+
 	userMsg := &model.Message{
-		ID:             uuid.New().String(),
+		ID:             userMsgID,
 		ConversationID: convID,
 		Role:           "user",
 		Content:        messageText,
+		Attachments:    attachments,
 	}
 	if err := s.repo.CreateMessage(ctx, userMsg); err != nil {
 		s.logger.Error("failed to save user message", "conversation_id", convID, "error", err)
 		return model.ChatResponse{}, err
+	}
+	if len(attachments) > 0 {
+		if err := s.repo.CreateAttachments(ctx, attachments); err != nil {
+			s.logger.Error("failed to save user message attachments", "conversation_id", convID, "error", err)
+			return model.ChatResponse{}, err
+		}
 	}
 
 	// 2. Fetch context window (recent messages in chronological order)
@@ -179,18 +334,7 @@ func (s *service) Chat(ctx context.Context, userID string, req model.ChatRequest
 		systemPrompt = systemPrompt + "\n\n" + ragContext
 	}
 
-	var msgs []provider.ChatMessage
-	msgs = append(msgs, provider.ChatMessage{
-		Role:    "system",
-		Content: systemPrompt,
-	})
-
-	for _, m := range recentMessages {
-		msgs = append(msgs, provider.ChatMessage{
-			Role:    m.Role,
-			Content: m.Content,
-		})
-	}
+	msgs := buildProviderMessages(systemPrompt, recentMessages, userMsgID, currentImages)
 
 	// 5. Request completion from provider (single call — no classifier needed).
 	resp, err := s.provider.Complete(ctx, provider.Request{
@@ -220,9 +364,10 @@ func (s *service) Chat(ctx context.Context, userID string, req model.ChatRequest
 	return model.ChatResponse{
 		ConversationID: convID,
 		Message: model.ChatMessageItem{
-			ID:      assistantMsg.ID,
-			Role:    assistantMsg.Role,
-			Content: assistantMsg.Content,
+			ID:          assistantMsg.ID,
+			Role:        assistantMsg.Role,
+			Content:     assistantMsg.Content,
+			Attachments: userMsg.Attachments,
 		},
 		Sources: retrievedSources,
 	}, nil
@@ -243,6 +388,16 @@ func (s *service) ChatStream(ctx context.Context, userID string, req model.ChatR
 	messageText := strings.TrimSpace(req.Message)
 	if messageText == "" {
 		return nil, "", "", apperror.Validation("Message is required")
+	}
+
+	maxSize := s.uploadCfg.MaxSizeBytes
+	if maxSize <= 0 {
+		maxSize = 10 << 20
+	}
+	for i := range req.Images {
+		if err := validateAndNormalizeImage(&req.Images[i], maxSize); err != nil {
+			return nil, "", "", err
+		}
 	}
 
 	var convID string
@@ -270,17 +425,29 @@ func (s *service) ChatStream(ctx context.Context, userID string, req model.ChatR
 		convID = conv.ID
 	}
 
-	// Save user message before starting the stream so it is always persisted
-	// regardless of what happens during streaming.
+	// Save user message and attachments before starting the stream
+	userMsgID := uuid.New().String()
+	attachments, currentImages, err := s.processUserAttachments(userID, userMsgID, req.Images)
+	if err != nil {
+		return nil, "", "", err
+	}
+
 	userMsg := &model.Message{
-		ID:             uuid.New().String(),
+		ID:             userMsgID,
 		ConversationID: convID,
 		Role:           "user",
 		Content:        messageText,
+		Attachments:    attachments,
 	}
 	if err := s.repo.CreateMessage(ctx, userMsg); err != nil {
 		s.logger.Error("stream: failed to save user message", "conversation_id", convID, "error", err)
 		return nil, "", "", err
+	}
+	if len(attachments) > 0 {
+		if err := s.repo.CreateAttachments(ctx, attachments); err != nil {
+			s.logger.Error("stream: failed to save user attachments", "conversation_id", convID, "error", err)
+			return nil, "", "", err
+		}
 	}
 
 	// Build message history for context window.
@@ -310,11 +477,7 @@ func (s *service) ChatStream(ctx context.Context, userID string, req model.ChatR
 		systemPrompt = systemPrompt + "\n\n" + ragContext
 	}
 
-	var msgs []provider.ChatMessage
-	msgs = append(msgs, provider.ChatMessage{Role: "system", Content: systemPrompt})
-	for _, m := range recentMessages {
-		msgs = append(msgs, provider.ChatMessage{Role: m.Role, Content: m.Content})
-	}
+	msgs := buildProviderMessages(systemPrompt, recentMessages, userMsgID, currentImages)
 
 	// Start the provider stream. The HTTP request context drives cancellation.
 	providerCh, err := s.provider.CompleteStream(ctx, provider.Request{
@@ -772,6 +935,34 @@ func (s *service) DeleteConversation(ctx context.Context, conversationID, userID
 		return apperror.Unauthorized("User authentication is required", nil)
 	}
 	return s.repo.DeleteConversation(ctx, conversationID, userID)
+}
+
+// GetAttachment retrieves an attachment's metadata and reads its file stream from disk,
+// validating user ownership of the parent conversation.
+func (s *service) GetAttachment(ctx context.Context, id, userID string) (*model.MessageAttachment, io.ReadCloser, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, nil, apperror.Unauthorized("User authentication is required", nil)
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, nil, apperror.Validation("Attachment ID is required")
+	}
+
+	att, err := s.repo.GetAttachment(ctx, id, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if att == nil {
+		return nil, nil, apperror.NotFound("Attachment not found", nil)
+	}
+
+	f, err := os.Open(att.StoragePath)
+	if err != nil {
+		s.logger.Error("failed to open attachment file", "path", att.StoragePath, "error", err)
+		return nil, nil, apperror.NotFound("Attachment file not found on disk", err)
+	}
+
+	return att, f, nil
 }
 
 func generateTitle(msg string) string {

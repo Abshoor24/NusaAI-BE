@@ -79,6 +79,7 @@ func (m *mockProvider) Embed(_ context.Context, _ string, _ string) ([]float32, 
 type inMemoryRepository struct {
 	conversations  map[string]*model.Conversation
 	messages       map[string][]*model.Message
+	attachments    map[string]*model.MessageAttachment
 	documents      map[string]*model.Document
 	documentChunks map[string][]model.DocumentChunk
 }
@@ -87,6 +88,7 @@ func newInMemoryRepo() *inMemoryRepository {
 	return &inMemoryRepository{
 		conversations:  make(map[string]*model.Conversation),
 		messages:       make(map[string][]*model.Message),
+		attachments:    make(map[string]*model.MessageAttachment),
 		documents:      make(map[string]*model.Document),
 		documentChunks: make(map[string][]model.DocumentChunk),
 	}
@@ -138,6 +140,47 @@ func (r *inMemoryRepository) CreateMessage(_ context.Context, msg *model.Message
 	msg.CreatedAt = time.Now()
 	r.messages[msg.ConversationID] = append(r.messages[msg.ConversationID], msg)
 	return nil
+}
+
+func (r *inMemoryRepository) CreateAttachments(_ context.Context, attachments []model.MessageAttachment) error {
+	for _, a := range attachments {
+		attCopy := a
+		r.attachments[a.ID] = &attCopy
+		for _, msgList := range r.messages {
+			for _, m := range msgList {
+				if m.ID == a.MessageID {
+					exists := false
+					for _, existing := range m.Attachments {
+						if existing.ID == a.ID {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						m.Attachments = append(m.Attachments, attCopy)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (r *inMemoryRepository) GetAttachment(_ context.Context, id, userID string) (*model.MessageAttachment, error) {
+	att, ok := r.attachments[id]
+	if !ok {
+		return nil, nil
+	}
+	for convID, msgList := range r.messages {
+		for _, m := range msgList {
+			if m.ID == att.MessageID {
+				if conv, exists := r.conversations[convID]; exists && conv.UserID == userID {
+					return att, nil
+				}
+			}
+		}
+	}
+	return nil, nil
 }
 
 func (r *inMemoryRepository) GetRecentMessages(_ context.Context, conversationID string, limit int) ([]model.Message, error) {
@@ -970,5 +1013,297 @@ func TestGetDocumentStatus(t *testing.T) {
 	_, err = svc.GetDocumentStatus(ctx, ingested.Document.ID, "other-user")
 	if err == nil {
 		t.Error("expected error when other user queries status")
+	}
+}
+
+// --- Multimodal Image & Attachment Tests ---
+
+func TestChatWithImage(t *testing.T) {
+	p := &mockProvider{content: "This image shows a golden retriever sitting on grass."}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 10 << 20}, testLogger(), repo)
+	ctx := context.Background()
+
+	fakePNGData := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRfakeimagebytes")
+	resp, err := svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "What is in this picture?",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "dog.png",
+				MimeType: "image/png",
+				Data:     fakePNGData,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat with image failed: %v", err)
+	}
+
+	if resp.ConversationID == "" {
+		t.Error("expected non-empty conversation ID")
+	}
+	if resp.Message.Content != "This image shows a golden retriever sitting on grass." {
+		t.Errorf("unexpected content: %s", resp.Message.Content)
+	}
+	if len(resp.Message.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment in response, got %d", len(resp.Message.Attachments))
+	}
+	att := resp.Message.Attachments[0]
+	if att.FileName != "dog.png" {
+		t.Errorf("att filename = %q, want dog.png", att.FileName)
+	}
+	if att.MimeType != "image/png" {
+		t.Errorf("att mime = %q, want image/png", att.MimeType)
+	}
+	if att.FileType != "png" {
+		t.Errorf("att type = %q, want png", att.FileType)
+	}
+
+	// Verify provider received the image attachment in the user message
+	var foundProviderImage bool
+	for _, m := range p.lastReq.Messages {
+		if m.Role == "user" && len(m.Images) > 0 {
+			foundProviderImage = true
+			if m.Images[0].MimeType != "image/png" {
+				t.Errorf("provider image mime = %q, want image/png", m.Images[0].MimeType)
+			}
+			if string(m.Images[0].Data) != string(fakePNGData) {
+				t.Errorf("provider image data mismatch")
+			}
+		}
+	}
+	if !foundProviderImage {
+		t.Error("expected provider to receive image attachment in user message")
+	}
+
+	// Verify GetConversation loads the conversation with attachments
+	detail, err := svc.GetConversation(ctx, resp.ConversationID, "user-123")
+	if err != nil {
+		t.Fatalf("GetConversation failed: %v", err)
+	}
+	if len(detail.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(detail.Messages))
+	}
+	userMsg := detail.Messages[0]
+	if len(userMsg.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment in retrieved user message, got %d", len(userMsg.Attachments))
+	}
+	if userMsg.Attachments[0].ID != att.ID {
+		t.Errorf("attachment ID mismatch: %s != %s", userMsg.Attachments[0].ID, att.ID)
+	}
+}
+
+func TestChatWithImage_Validation(t *testing.T) {
+	p := &mockProvider{}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 500}, testLogger(), repo)
+	ctx := context.Background()
+
+	// 1. Unsupported MIME type / file type (e.g. PDF or executable)
+	_, err := svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "Check this file",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "doc.pdf",
+				MimeType: "application/pdf",
+				Data:     []byte("%PDF-1.4..."),
+			},
+		},
+	})
+	if err == nil {
+		t.Error("expected validation error for unsupported image type application/pdf")
+	}
+
+	// 2. Unsupported image type (e.g. GIF)
+	_, err = svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "Check this gif",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "anim.gif",
+				MimeType: "image/gif",
+				Data:     []byte("GIF89a..."),
+			},
+		},
+	})
+	if err == nil {
+		t.Error("expected validation error for unsupported image/gif")
+	}
+
+	// 3. Exceeds max image size (max is 500 bytes)
+	largeData := make([]byte, 600)
+	_, err = svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "Large image",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "large.jpg",
+				MimeType: "image/jpeg",
+				Data:     largeData,
+			},
+		},
+	})
+	if err == nil {
+		t.Error("expected validation error for image exceeding max size")
+	}
+
+	// 4. Empty image data
+	_, err = svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "Empty image",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "empty.png",
+				MimeType: "image/png",
+				Data:     []byte{},
+			},
+		},
+	})
+	if err == nil {
+		t.Error("expected validation error for empty image data")
+	}
+}
+
+func TestChatContextWindowDoesNotResendImageBytes(t *testing.T) {
+	p := &mockProvider{content: "I see a chart showing sales growth."}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 10 << 20}, testLogger(), repo)
+	ctx := context.Background()
+
+	// Turn 1: User sends prompt with image
+	firstResp, err := svc.Chat(ctx, "user-123", model.ChatRequest{
+		Message: "Describe this chart",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "chart.png",
+				MimeType: "image/png",
+				Data:     []byte("chart-image-bytes-12345"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Turn 1 failed: %v", err)
+	}
+
+	// Turn 2: User asks a follow-up question without image
+	p.content = "The highest growth was in Q3."
+	_, err = svc.Chat(ctx, "user-123", model.ChatRequest{
+		ConversationID: firstResp.ConversationID,
+		Message:        "Which quarter had the highest growth?",
+	})
+	if err != nil {
+		t.Fatalf("Turn 2 failed: %v", err)
+	}
+
+	// Inspect the messages sent to the provider in Turn 2
+	var foundTurn1UserMsg bool
+	for _, m := range p.lastReq.Messages {
+		if m.Role == "user" && strings.Contains(m.Content, "Describe this chart") {
+			foundTurn1UserMsg = true
+			// Crucial check: Historical message must NOT resend raw image data!
+			if len(m.Images) != 0 {
+				t.Errorf("historical message unexpectedly sent %d images; should be 0", len(m.Images))
+			}
+			// Crucial check: Historical message contains text reference
+			if !strings.Contains(m.Content, "[Attached image: chart.png (image/png)]") {
+				t.Errorf("historical message does not contain attachment reference: %s", m.Content)
+			}
+		}
+	}
+	if !foundTurn1UserMsg {
+		t.Error("expected to find Turn 1 user message in provider messages for Turn 2")
+	}
+}
+
+func TestAttachmentOwnershipIsolation(t *testing.T) {
+	p := &mockProvider{content: "Image processed"}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 10 << 20}, testLogger(), repo)
+	ctx := context.Background()
+
+	// User A uploads an image in chat
+	respA, err := svc.Chat(ctx, "user-A", model.ChatRequest{
+		Message: "Analyze my private photo",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "private.jpg",
+				MimeType: "image/jpeg",
+				Data:     []byte("private-user-a-image-data"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("User A chat failed: %v", err)
+	}
+	if len(respA.Message.Attachments) == 0 {
+		t.Fatal("expected at least 1 attachment")
+	}
+	attID := respA.Message.Attachments[0].ID
+
+	// User B tries to retrieve User A's attachment
+	_, _, err = svc.GetAttachment(ctx, attID, "user-B")
+	if err == nil {
+		t.Fatal("SECURITY VIOLATION: User B was able to access User A's attachment!")
+	}
+	var ae *apperror.Error
+	if !errors.As(err, &ae) || ae.Code() != "NOT_FOUND" {
+		t.Errorf("expected NOT_FOUND for unauthorized attachment access, got: %v", err)
+	}
+
+	// User A accesses their own attachment -> succeeds
+	attA, fileA, err := svc.GetAttachment(ctx, attID, "user-A")
+	if err != nil {
+		t.Fatalf("User A should be able to access their own attachment: %v", err)
+	}
+	defer fileA.Close()
+	if attA.FileName != "private.jpg" {
+		t.Errorf("filename = %q, want private.jpg", attA.FileName)
+	}
+}
+
+func TestChatStreamWithImage(t *testing.T) {
+	p := &mockProvider{streamContent: "Streaming image description tokens"}
+	repo := newInMemoryRepo()
+	tempUploadDir := t.TempDir()
+	svc := New(p, config.AIConfig{Model: "test-model"}, config.UploadConfig{Dir: tempUploadDir, MaxSizeBytes: 10 << 20}, testLogger(), repo)
+	ctx := context.Background()
+
+	ch, convID, msgID, err := svc.ChatStream(ctx, "user-123", model.ChatRequest{
+		Message: "Stream describe image",
+		Images: []model.ImageUploadPayload{
+			{
+				FileName: "stream_photo.webp",
+				MimeType: "image/webp",
+				Data:     []byte("webp-image-stream-bytes"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream with image failed: %v", err)
+	}
+	if convID == "" || msgID == "" {
+		t.Fatal("expected non-empty convID and msgID")
+	}
+
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("stream error: %v", chunk.Err)
+		}
+	}
+
+	// Verify messages and attachments saved
+	msgs, err := repo.GetMessages(ctx, convID)
+	if err != nil {
+		t.Fatalf("GetMessages failed: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if len(msgs[0].Attachments) != 1 {
+		t.Fatalf("expected 1 attachment on user message, got %d", len(msgs[0].Attachments))
+	}
+	if msgs[0].Attachments[0].FileName != "stream_photo.webp" {
+		t.Errorf("filename = %q, want stream_photo.webp", msgs[0].Attachments[0].FileName)
 	}
 }

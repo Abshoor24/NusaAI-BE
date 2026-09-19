@@ -55,7 +55,7 @@ func New(deps Dependencies) http.Handler {
 		r.Post("/auth/login", authH.Login)
 
 		// AI diagnostic endpoint (public)
-		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI)
+		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI, deps.Config.Upload)
 		r.Get("/ai/health", aiH.Health)
 
 		// Protected endpoints requiring authentication
@@ -77,6 +77,10 @@ func New(deps Dependencies) http.Handler {
 				r.Get("/ai/conversations", aiH.ListConversations)
 				r.Get("/ai/conversations/{id}", aiH.GetConversation)
 				r.Delete("/ai/conversations/{id}", aiH.DeleteConversation)
+
+				// Multimodal Attachment endpoints
+				r.Get("/ai/attachments/{id}", aiH.GetAttachment)
+				r.Get("/attachments/{id}", aiH.GetAttachment)
 
 				// RAG Knowledge Document endpoints
 				r.Post("/ai/documents", aiH.IngestDocument)

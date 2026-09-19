@@ -24,6 +24,8 @@ type Repository interface {
 	CreateMessage(ctx context.Context, msg *model.Message) error
 	GetRecentMessages(ctx context.Context, conversationID string, limit int) ([]model.Message, error)
 	GetMessages(ctx context.Context, conversationID string) ([]model.Message, error)
+	CreateAttachments(ctx context.Context, attachments []model.MessageAttachment) error
+	GetAttachment(ctx context.Context, id, userID string) (*model.MessageAttachment, error)
 
 	// Document & RAG operations
 	CreateDocument(ctx context.Context, doc *model.Document) error
@@ -213,7 +215,7 @@ func (r *postgresRepository) GetRecentMessages(ctx context.Context, conversation
 	if messages == nil {
 		messages = []model.Message{}
 	}
-	return messages, nil
+	return r.loadMessageAttachments(ctx, messages)
 }
 
 func (r *postgresRepository) GetMessages(ctx context.Context, conversationID string) ([]model.Message, error) {
@@ -248,6 +250,99 @@ func (r *postgresRepository) GetMessages(ctx context.Context, conversationID str
 	if messages == nil {
 		messages = []model.Message{}
 	}
+	return r.loadMessageAttachments(ctx, messages)
+}
+
+func (r *postgresRepository) CreateAttachments(ctx context.Context, attachments []model.MessageAttachment) error {
+	if r.pool == nil {
+		return apperror.Database("Database pool is not available", nil)
+	}
+	if len(attachments) == 0 {
+		return nil
+	}
+
+	const q = `
+		INSERT INTO message_attachments (id, message_id, file_name, file_type, file_size, storage_path, mime_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`
+
+	batch := &pgx.Batch{}
+	for _, a := range attachments {
+		batch.Queue(q, a.ID, a.MessageID, a.FileName, a.FileType, a.FileSize, a.StoragePath, a.MimeType)
+	}
+
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range attachments {
+		if _, err := br.Exec(); err != nil {
+			return apperror.Database("Failed to insert message attachment", err)
+		}
+	}
+	return nil
+}
+
+func (r *postgresRepository) GetAttachment(ctx context.Context, id, userID string) (*model.MessageAttachment, error) {
+	if r.pool == nil {
+		return nil, apperror.Database("Database pool is not available", nil)
+	}
+
+	const q = `
+		SELECT a.id, a.message_id, a.file_name, a.file_type, a.file_size, a.storage_path, a.mime_type, a.created_at
+		FROM message_attachments a
+		JOIN messages m ON m.id = a.message_id
+		JOIN conversations c ON c.id = m.conversation_id
+		WHERE a.id = $1 AND c.user_id = $2`
+
+	var a model.MessageAttachment
+	err := r.pool.QueryRow(ctx, q, id, userID).Scan(
+		&a.ID, &a.MessageID, &a.FileName, &a.FileType, &a.FileSize, &a.StoragePath, &a.MimeType, &a.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, apperror.Database("Failed to retrieve attachment", err)
+	}
+	return &a, nil
+}
+
+func (r *postgresRepository) loadMessageAttachments(ctx context.Context, messages []model.Message) ([]model.Message, error) {
+	if len(messages) == 0 {
+		return messages, nil
+	}
+
+	msgIDs := make([]string, len(messages))
+	msgMap := make(map[string]int, len(messages))
+	for i, m := range messages {
+		msgIDs[i] = m.ID
+		msgMap[m.ID] = i
+	}
+
+	const q = `
+		SELECT id, message_id, file_name, file_type, file_size, storage_path, mime_type, created_at
+		FROM message_attachments
+		WHERE message_id = ANY($1)
+		ORDER BY created_at ASC`
+
+	rows, err := r.pool.Query(ctx, q, msgIDs)
+	if err != nil {
+		return nil, apperror.Database("Failed to retrieve message attachments", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var a model.MessageAttachment
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.FileName, &a.FileType, &a.FileSize, &a.StoragePath, &a.MimeType, &a.CreatedAt); err != nil {
+			return nil, apperror.Database("Failed to scan message attachment", err)
+		}
+		if idx, ok := msgMap[a.MessageID]; ok {
+			messages[idx].Attachments = append(messages[idx].Attachments, a)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperror.Database("Failed to retrieve message attachments", err)
+	}
+
 	return messages, nil
 }
 
