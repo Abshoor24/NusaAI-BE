@@ -17,6 +17,8 @@ import (
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	airepo "github.com/Abshoor24/backend-go/internal/modules/ai/repository"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
+	executionrepo "github.com/Abshoor24/backend-go/internal/modules/execution/repository"
+	executionservice "github.com/Abshoor24/backend-go/internal/modules/execution/service"
 	"github.com/Abshoor24/backend-go/internal/repository"
 	"github.com/Abshoor24/backend-go/internal/routes"
 	"github.com/Abshoor24/backend-go/internal/service"
@@ -61,9 +63,13 @@ func run() error {
 	aiRepo := airepo.New(supabase.Pool())
 	aiService := aiservice.New(aiProvider, cfg.AI, cfg.Upload, log, aiRepo)
 
+	execProvider := provider.NewJudgeZeroProvider(cfg.Execution, log)
+	execRepo := executionrepo.New(supabase.Pool())
+	execService := executionservice.New(execProvider, cfg.Execution, log, execRepo)
+
 	srv := &http.Server{
 		Addr:         net.JoinHostPort(cfg.Server.Host, cfg.Server.Port),
-		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, AI: aiService, Tokens: tokens}),
+		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, AI: aiService, Execution: execService, Tokens: tokens}),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,

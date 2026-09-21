@@ -18,8 +18,9 @@ const (
 	KindConflict     Kind = "CONFLICT"
 	KindBadRequest   Kind = "BAD_REQUEST"
 	KindDatabase     Kind = "DATABASE_ERROR"
-	KindAIProvider   Kind = "AI_PROVIDER_ERROR"
-	KindUnavailable  Kind = "SERVICE_UNAVAILABLE"
+	KindAIProvider        Kind = "AI_PROVIDER_ERROR"
+	KindExecutionProvider Kind = "EXECUTION_PROVIDER_ERROR"
+	KindUnavailable       Kind = "SERVICE_UNAVAILABLE"
 	KindInternal     Kind = "INTERNAL_SERVER_ERROR"
 )
 
@@ -54,7 +55,7 @@ func (k Kind) httpStatus() int {
 		return http.StatusNotFound
 	case KindConflict:
 		return http.StatusConflict
-	case KindAIProvider:
+	case KindAIProvider, KindExecutionProvider:
 		return http.StatusBadGateway
 	case KindUnavailable:
 		return http.StatusServiceUnavailable
@@ -95,6 +96,7 @@ func Forbidden(message string, err error) *Error    { return new(KindForbidden, 
 func NotFound(message string, err error) *Error     { return new(KindNotFound, message, err) }
 func Conflict(message string, err error) *Error     { return new(KindConflict, message, err) }
 func Database(message string, err error) *Error     { return new(KindDatabase, message, err) }
-func AIProvider(message string, err error) *Error   { return new(KindAIProvider, message, err) }
-func Unavailable(message string, err error) *Error  { return new(KindUnavailable, message, err) }
+func AIProvider(message string, err error) *Error        { return new(KindAIProvider, message, err) }
+func ExecutionProvider(message string, err error) *Error { return new(KindExecutionProvider, message, err) }
+func Unavailable(message string, err error) *Error       { return new(KindUnavailable, message, err) }
 func Internal(message string, err error) *Error     { return new(KindInternal, message, err) }

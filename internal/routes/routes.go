@@ -14,6 +14,8 @@ import (
 	"github.com/Abshoor24/backend-go/internal/middleware"
 	aihandler "github.com/Abshoor24/backend-go/internal/modules/ai/handler"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
+	executionhandler "github.com/Abshoor24/backend-go/internal/modules/execution/handler"
+	executionservice "github.com/Abshoor24/backend-go/internal/modules/execution/service"
 	"github.com/Abshoor24/backend-go/internal/service"
 	"github.com/Abshoor24/backend-go/storage"
 )
@@ -21,12 +23,13 @@ import (
 // Dependencies are explicitly injected into the router from main.go to avoid
 // global state and make the wiring testable.
 type Dependencies struct {
-	Config *config.Config
-	Logger *slog.Logger
-	DB     *storage.Supabase
-	Auth   service.AuthService
-	AI     aiservice.Service
-	Tokens *jwt.Manager
+	Config    *config.Config
+	Logger    *slog.Logger
+	DB        *storage.Supabase
+	Auth      service.AuthService
+	AI        aiservice.Service
+	Execution executionservice.Service
+	Tokens    *jwt.Manager
 }
 
 // New builds the full HTTP handler with all routes and middleware.
@@ -62,6 +65,23 @@ func New(deps Dependencies) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.Tokens))
 			r.Get("/auth/me", authH.Me)
+
+			// Code Sandbox Execution: dedicated stricter rate limit
+			if deps.Execution != nil {
+				execH := executionhandler.New(deps.Execution, deps.Logger, deps.Config.Execution)
+				r.Group(func(r chi.Router) {
+					if deps.Config.Execution.RateLimitEnabled {
+						r.Use(middleware.RateLimit(config.RateLimitConfig{
+							Enabled:   true,
+							PerMinute: deps.Config.Execution.RateLimitPerMin,
+							Burst:     deps.Config.Execution.RateLimitBurst,
+						}))
+					}
+					r.Post("/execute", execH.Execute)
+					r.Get("/execute/history", execH.ListHistory)
+					r.Get("/execute/{id}", execH.GetDetail)
+				})
+			}
 
 			// AI Assistant, Conversation, & Document interaction: rate limited
 			r.Group(func(r chi.Router) {

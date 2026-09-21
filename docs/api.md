@@ -640,4 +640,166 @@ Status codes:
 - `401` Token tidak valid (`UNAUTHORIZED`)
 - `404` Dokumen tidak ditemukan atau bukan milik pengguna (`NOT_FOUND`)
 
+---
+
+## POST /api/v1/execute
+
+Mengeksekusi kode program di dalam sandbox terisolasi penuh (menggunakan Judge0 CE sebagai execution engine).
+Menerima kode dalam bahasa yang di-whitelist (**Python**, **JavaScript**, dan **Go**), mengeksekusinya dengan pembatasan resource ketat, serta mengembalikan stdout, stderr, exit code, execution time, dan memory usage. Riwayat eksekusi disimpan secara permanen dengan isolasi kepemilikan user.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+- **Rate limiting:** Mengikuti rate limit khusus `EXEC_RATE_LIMIT_PER_MINUTE` per IP (lebih ketat daripada chat biasa).
+- **Batasan Payload:** Maksimal 64 KB (dikonfigurasi via `EXEC_MAX_CODE_BYTES`).
+- **Resource Sandbox:** CPU Time Limit (default 5 detik), Wall Time Limit (default 10 detik), Memory Limit (default 128 MB).
+
+### Request Body
+
+```json
+{
+  "language": "python",
+  "code": "name = input()\nprint(f'Hello, {name}!')",
+  "stdin": "World"
+}
+```
+
+### Supported Languages (Whitelist)
+
+| Language Key | Aliases | Versi / Engine (Judge0 CE) |
+| --- | --- | --- |
+| `python` | `py`, `python3` | Python 3.8.1 (Language ID 71) |
+| `javascript` | `js`, `node`, `nodejs` | Node.js 12.14.0 (Language ID 63) |
+| `go` | `golang` | Go 1.13.5 (Language ID 60) |
+
+Bahasa di luar whitelist akan langsung ditolak dengan status code `400 Bad Request` (`VALIDATION_ERROR`).
+
+### Response `200 OK` (Eksekusi Sukses)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "c7a8b123-...",
+    "language": "python",
+    "stdout": "Hello, World!\n",
+    "stderr": "",
+    "exit_code": 0,
+    "execution_time_ms": 28,
+    "memory_kb": 3120,
+    "status": "Accepted"
+  },
+  "message": "Code executed successfully"
+}
+```
+
+### Response `200 OK` (Infinite Loop / Time Limit Exceeded)
+
+Jika kode berjalan melebihi batas waktu (misal loop tak terhingga), sandbox memutus proses secara aman:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "f8b9c234-...",
+    "language": "python",
+    "stdout": "",
+    "stderr": "Time Limit Exceeded",
+    "exit_code": 124,
+    "execution_time_ms": 5001,
+    "memory_kb": 12450,
+    "status": "Time Limit Exceeded"
+  },
+  "message": "Code executed successfully"
+}
+```
+
+### Response `200 OK` (Compilation / Syntax Error)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "d1e2f345-...",
+    "language": "go",
+    "stdout": "",
+    "stderr": "main.go:3:1: syntax error: non-declaration statement outside function body",
+    "exit_code": 1,
+    "execution_time_ms": 0,
+    "memory_kb": 0,
+    "status": "Compilation Error"
+  },
+  "message": "Code executed successfully"
+}
+```
+
+Status codes:
+- `200` Kode berhasil dieksekusi oleh sandbox (termasuk runtime error / timeout di level kode)
+- `400` Bahasa tidak didukung, kode kosong, atau ukuran kode melebihi batas (`VALIDATION_ERROR` / `BAD_REQUEST`)
+- `401` Token otentikasi tidak ada atau tidak valid (`UNAUTHORIZED`)
+- `429` Rate limit terlampaui (`RATE_LIMIT_EXCEEDED`)
+- `502` Upstream execution provider (Judge0) tidak dapat dihubungi atau error (`EXECUTION_PROVIDER_ERROR`)
+
+---
+
+## GET /api/v1/execute/history
+
+Mengambil daftar riwayat eksekusi kode milik user yang sedang login, diurutkan dari yang paling baru.
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+- **Query Params:** `limit` (default 20, max 100), `offset` (default 0)
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "c7a8b123-...",
+      "user_id": "1a2b3c4d-...",
+      "language": "python",
+      "code": "print('hello')",
+      "stdout": "hello\n",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 28,
+      "memory_kb": 3120,
+      "status": "Accepted",
+      "created_at": "2026-09-21T08:40:00Z"
+    }
+  ],
+  "message": "Request successful"
+}
+```
+
+---
+
+## GET /api/v1/execute/{id}
+
+Mengambil detail satu eksekusi kode milik user yang sedang login. Dilindungi dengan isolasi kepemilikan (`WHERE id = $1 AND user_id = $2`).
+
+- **Auth:** `Authorization: Bearer <token>` wajib
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "c7a8b123-...",
+    "user_id": "1a2b3c4d-...",
+    "language": "python",
+    "code": "print('hello')",
+    "stdout": "hello\n",
+    "stderr": "",
+    "exit_code": 0,
+    "execution_time_ms": 28,
+    "memory_kb": 3120,
+    "status": "Accepted",
+    "created_at": "2026-09-21T08:40:00Z"
+  },
+  "message": "Request successful"
+}
+```
+
+
 
