@@ -17,6 +17,8 @@ import (
 	aimodel "github.com/Abshoor24/backend-go/internal/modules/ai/model"
 	aiprovider "github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
+	executionmodel "github.com/Abshoor24/backend-go/internal/modules/execution/model"
+	executionservice "github.com/Abshoor24/backend-go/internal/modules/execution/service"
 )
 
 type dummyAuthService struct{}
@@ -121,6 +123,30 @@ func (d *dummyAIService) GetAttachment(_ context.Context, id, _ string) (*aimode
 
 var _ aiservice.Service = (*dummyAIService)(nil)
 
+type dummyExecutionService struct{}
+
+func (d *dummyExecutionService) Execute(_ context.Context, _ string, req executionmodel.ExecuteRequest) (*executionmodel.ExecuteResponse, error) {
+	return &executionmodel.ExecuteResponse{
+		ID:              "exec-dummy-1",
+		Language:        req.Language,
+		Stdout:          "Hello from " + req.Language,
+		ExitCode:        0,
+		ExecutionTimeMs: 15,
+		MemoryKB:        1024,
+		Status:          "Accepted",
+	}, nil
+}
+
+func (d *dummyExecutionService) GetExecution(_ context.Context, id, userID string) (*executionmodel.CodeExecution, error) {
+	return &executionmodel.CodeExecution{ID: id, UserID: userID}, nil
+}
+
+func (d *dummyExecutionService) ListExecutions(_ context.Context, _ string, _, _ int) ([]executionmodel.CodeExecution, error) {
+	return []executionmodel.CodeExecution{}, nil
+}
+
+var _ executionservice.Service = (*dummyExecutionService)(nil)
+
 func setupTestRouter() (http.Handler, *jwt.Manager) {
 	cfg := &config.Config{
 		Server: config.ServerConfig{
@@ -138,6 +164,10 @@ func setupTestRouter() (http.Handler, *jwt.Manager) {
 			ChatRateLimitEnabled: false,
 			MaxBytes:             1 << 20,
 		},
+		Execution: config.ExecutionConfig{
+			RateLimitEnabled: false,
+			MaxCodeBytes:     65536,
+		},
 		Rate: config.RateLimitConfig{
 			Enabled: false,
 		},
@@ -146,12 +176,13 @@ func setupTestRouter() (http.Handler, *jwt.Manager) {
 	tokens := jwt.NewManager(cfg.JWT)
 
 	router := New(Dependencies{
-		Config: cfg,
-		Logger: logger,
-		DB:     nil,
-		Auth:   &dummyAuthService{},
-		AI:     &dummyAIService{},
-		Tokens: tokens,
+		Config:    cfg,
+		Logger:    logger,
+		DB:        nil,
+		Auth:      &dummyAuthService{},
+		AI:        &dummyAIService{},
+		Execution: &dummyExecutionService{},
+		Tokens:    tokens,
 	})
 	return router, tokens
 }
@@ -283,3 +314,98 @@ func TestPublicHealthDoesNotRequireAuth(t *testing.T) {
 		t.Errorf("GET /api/v1/ai/health expected 200 OK, got %d", rec.Code)
 	}
 }
+
+func TestExecuteRequiresAuth(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(1)"}`))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/v1/execute without token should return 401, got %d", rec.Code)
+	}
+}
+
+func TestExecuteAuthorized(t *testing.T) {
+	router, tokens := setupTestRouter()
+
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-1", Email: "test@example.com", Role: model.RoleAdmin})
+	if err != nil {
+		t.Fatalf("token generate failed: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print('Hello')"}`))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST /api/v1/execute with token should return 200 OK, got %d", rec.Code)
+	}
+}
+
+func TestExecuteRateLimiting(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: "8080"},
+		CORS:   config.CORSConfig{AllowedOrigins: []string{"*"}},
+		JWT: config.JWTConfig{
+			Secret:     "secret-must-be-long-enough-for-testing",
+			Expiration: time.Hour,
+			Issuer:     "test",
+		},
+		AI: config.AIConfig{ChatRateLimitEnabled: false},
+		Execution: config.ExecutionConfig{
+			RateLimitEnabled: true,
+			RateLimitPerMin:  2,
+			RateLimitBurst:   2,
+			MaxCodeBytes:     65536,
+		},
+		Rate: config.RateLimitConfig{Enabled: false},
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tokens := jwt.NewManager(cfg.JWT)
+
+	router := New(Dependencies{
+		Config:    cfg,
+		Logger:    logger,
+		DB:        nil,
+		Auth:      &dummyAuthService{},
+		AI:        &dummyAIService{},
+		Execution: &dummyExecutionService{},
+		Tokens:    tokens,
+	})
+
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-rate", Email: "rate@example.com", Role: model.RoleAdmin})
+	if err != nil {
+		t.Fatalf("token generate failed: %v", err)
+	}
+
+	// First request - allowed
+	rec1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(1)"}`))
+	req1.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Errorf("request 1 should be 200, got %d", rec1.Code)
+	}
+
+	// Second request - allowed (burst = 2)
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(2)"}`))
+	req2.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Errorf("request 2 should be 200, got %d", rec2.Code)
+	}
+
+	// Third request - rate limited (429)
+	rec3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(3)"}`))
+	req3.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusTooManyRequests {
+		t.Errorf("request 3 should be rate limited with 429, got %d", rec3.Code)
+	}
+}
+

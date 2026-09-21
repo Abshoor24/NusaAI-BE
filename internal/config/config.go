@@ -20,10 +20,11 @@ type Config struct {
 	Server ServerConfig
 	DB     DBConfig
 	JWT    JWTConfig
-	AI     AIConfig
-	CORS   CORSConfig
-	Rate   RateLimitConfig
-	Upload UploadConfig
+	AI        AIConfig
+	Execution ExecutionConfig
+	CORS      CORSConfig
+	Rate      RateLimitConfig
+	Upload    UploadConfig
 }
 
 
@@ -83,6 +84,21 @@ type RateLimitConfig struct {
 	Enabled   bool
 	PerMinute int
 	Burst     int
+}
+
+type ExecutionConfig struct {
+	Provider         string
+	BaseURL          string
+	APIKey           string
+	CPUTimeLimitSec  float64
+	WallTimeLimitSec float64
+	MemoryLimitKB    int64
+	MaxCodeBytes     int64
+	RateLimitEnabled bool
+	RateLimitPerMin  int
+	RateLimitBurst   int
+	PollInterval     time.Duration
+	MaxPollDuration  time.Duration
 }
 
 type UploadConfig struct {
@@ -156,6 +172,20 @@ func Load() (*Config, error) {
 			ChatRateLimitEnabled: getBool("AI_CHAT_RATE_LIMIT_ENABLED", true),
 			ChatRateLimitPerMin:  getInt("AI_CHAT_RATE_LIMIT_PER_MINUTE", 10),
 		},
+		Execution: ExecutionConfig{
+			Provider:         getEnv("EXEC_PROVIDER", "judge0"),
+			BaseURL:          getEnv("EXEC_BASE_URL", "http://localhost:2358"),
+			APIKey:           getEnv("EXEC_API_KEY", ""),
+			CPUTimeLimitSec:  getFloat64("EXEC_CPU_TIME_LIMIT_SEC", 5.0),
+			WallTimeLimitSec: getFloat64("EXEC_WALL_TIME_LIMIT_SEC", 10.0),
+			MemoryLimitKB:    getInt64("EXEC_MEMORY_LIMIT_KB", 131072), // 128 MB default
+			MaxCodeBytes:     getInt64("EXEC_MAX_CODE_BYTES", 65536),   // 64 KB default
+			RateLimitEnabled: getBool("EXEC_RATE_LIMIT_ENABLED", true),
+			RateLimitPerMin:  getInt("EXEC_RATE_LIMIT_PER_MINUTE", 15),
+			RateLimitBurst:   getInt("EXEC_RATE_LIMIT_BURST", 15),
+			PollInterval:     getDuration("EXEC_POLL_INTERVAL", 250*time.Millisecond),
+			MaxPollDuration:  getDuration("EXEC_MAX_POLL_DURATION", 15*time.Second),
+		},
 		CORS: CORSConfig{
 			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 		},
@@ -196,6 +226,9 @@ func (c *Config) validate() error {
 	}
 	if c.Rate.Enabled && c.Rate.PerMinute <= 0 {
 		return fmt.Errorf("config: RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
+	}
+	if c.Execution.RateLimitEnabled && c.Execution.RateLimitPerMin <= 0 {
+		return fmt.Errorf("config: EXEC_RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("config: missing required environment variable(s): %s", strings.Join(missing, ", "))
@@ -270,6 +303,15 @@ func getInt64(key string, fallback int64) int64 {
 	if v, ok := os.LookupEnv(key); ok {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+func getFloat64(key string, fallback float64) float64 {
+	if v, ok := os.LookupEnv(key); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return fallback

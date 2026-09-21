@@ -169,6 +169,9 @@ Endpoint yang tersedia:
 | GET | `/api/v1/ai/documents/{id}` | Bearer | Detail dokumen knowledge milik user |
 | GET | `/api/v1/ai/documents/{id}/status` | Bearer | Cek status background processing dokumen (`processing`, `ready`, `failed`, alias: `/api/v1/documents/{id}/status`) |
 | DELETE | `/api/v1/ai/documents/{id}` | Bearer | Hapus dokumen knowledge beserta vector chunks & file fisik |
+| POST | `/api/v1/execute` | Bearer | Eksekusi kode sandboxed via Judge0 CE (Python, JavaScript, Go) |
+| GET | `/api/v1/execute/history` | Bearer | Riwayat eksekusi kode milik user |
+| GET | `/api/v1/execute/{id}` | Bearer | Detail riwayat eksekusi kode |
 
 Dokumentasi lengkap: [docs/api.md](docs/api.md).
 
