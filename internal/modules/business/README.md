@@ -47,8 +47,8 @@
    - daftarkan route di grup `/api/v1`
 
    Auth belum diputuskan. Saat client menentukan, pilih salah satu:
-   - publik (tanpa middleware) seperti `/ai/chat`
-   - login (butuh `middleware.RequireAuth`) seperti `/auth/me`
+   - publik (tanpa middleware) seperti `/health` atau `/api/v1/auth/login`
+   - login (butuh `middleware.RequireAuth`) seperti `/api/v1/auth/me` atau `/api/v1/ai/chat`
    - admin-only (tambah `middleware.RequireRole`) untuk grup admin
 
 8. **Wire ke `cmd/server/main.go`** — buat repository + service baru dan masukkan

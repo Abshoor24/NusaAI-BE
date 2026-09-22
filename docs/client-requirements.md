@@ -1,96 +1,85 @@
-# Client Requirements
+# Client & Business Requirements Guide
 
-> **Dokumen ini adalah template.**
->
-> PENTING: database dan fitur bisnis **FINAL belum ditentukan** karena client
-> belum ditemukan. Jangan mengisi bagian di bawah dengan asumsi. Semua jawaban
-> hanya boleh diisi setelah wawancara/requirement gathering dengan client.
->
-> Saat ini semua kolom bertanda `TBD` (to be decided) atau diisi oleh tim
-> development setelah client diketahui.
+Dokumen ini merangkum kapabilitas dasar (*core platform features*) yang telah tersedia di backend, serta panduan spesifikasi kebutuhan (*requirements gathering*) ketika mengadaptasi sistem ini untuk klien atau domain bisnis tertentu.
 
-## Client Information
+---
 
-Name:
-TBD
+## 1. Core Platform Capabilities (Out of the Box)
 
-Industry:
-TBD
+Backend saat ini telah menyediakan fondasi fungsional lengkap untuk platform **AI Assistant, Generator, RAG, dan Code Sandbox**:
 
-Website Goal:
-TBD
+| Area | Status | Fitur yang Sudah Tersedia |
+| --- | --- | --- |
+| **Authentication & Access** | **Ready** | Registrasi, Login, JWT HS256, User Profile (`/auth/me`), Role-based baseline (`admin`). |
+| **AI Multi-Turn Assistant** | **Ready** | Percakapan berkelanjutan dengan memori konteks, pembuatan thread otomatis, pengelolaan percakapan (list, get, delete). |
+| **Real-time Streaming (SSE)** | **Ready** | Pengiriman respon bertahap token-by-token menggunakan Server-Sent Events dengan penanganan disconnect yang andal. |
+| **Multimodal Vision** | **Ready** | Upload lampiran gambar (JPEG, PNG, WebP) via JSON base64 atau `multipart/form-data`, persistensi ke disk & database, serta penyajian gambar terisolasi per user. |
+| **RAG Knowledge Base** | **Ready** | Ingest teks langsung atau upload dokumen fisik (PDF, DOCX, TXT) dengan ekstraksi otomatis, semantic chunking + overlap, embedding `text-embedding-004`, dan vector similarity search di PostgreSQL `pgvector`. |
+| **Code Sandbox Execution** | **Ready** | Eksekusi kode sandbox terisolasi penuh via Judge0 CE untuk bahasa Python, JavaScript, dan Go dengan batasan CPU/Memory dan pencatatan riwayat eksekusi. |
+| **Security & Stability** | **Ready** | Rate limiting 3 tingkat (General, AI Chat, Code Execution), CORS configurable, Security Headers, structured logging (`slog`), dan graceful shutdown. |
 
-Target Audience:
-TBD
+---
 
-## Business Requirements
+## 2. Client Specification Worksheet
 
-TBD
+Bagian berikut diisi saat melakukan requirement gathering dengan klien untuk menyesuaikan platform dengan kebutuhan spesifik produk mereka.
 
-## Required Pages
+### 2.1. Profil Klien & Target Produk
 
-TBD
+- **Nama Klien / Organisasi**: `[Isi nama klien/perusahaan]`
+- **Industri / Domain**: `[Contoh: EdTech, Legal, Healthcare, Software Dev, E-commerce, Corporate Internal]`
+- **Tujuan Utama Produk**: `[Contoh: AI Coding Assistant untuk siswa, Customer Service bot cerdas berbasis SOP internal, dsb.]`
+- **Target Pengguna**: `[Contoh: Mahasiswa, staf internal, pelanggan publik, programmer junior]`
 
-## Required Features
+### 2.2. Kebutuhan Persona & Prompting AI
 
-TBD
+Platform mendukung custom prompt override pada setiap sesi percakapan. Tentukan panduan persona default:
+- **Tone & Karakter AI**: `[Formal, kasual, teknis, ramah, dsb.]`
+- **Instruksi Sistem Default (`System Prompt`)**: `[Aturan perilaku dasar, pembatasan jawaban, bahasa yang digunakan]`
+- **Domain Guardrails**: `[Topik terlarang atau instruksi untuk menolak pertanyaan di luar domain]`
 
-## Content
+### 2.3. Kebutuhan RAG & Basis Pengetahuan
 
-TBD
+- **Format Dokumen Sumber**: `[PDF, Word DOCX, TXT, Manual Input]`
+- **Kategori Dokumen**: `[Buku panduan, SOP, dokumentasi API, regulasi hukum, FAQ]`
+- **Akses Dokumen**:
+  - [x] Dokumen privat per pengguna (default backend saat ini)
+  - [ ] Dokumen publik / global yang dapat diakses oleh seluruh pengguna sistem *(memerlukan flag `is_global` di skema `documents`)*
 
-## AI Requirements
+### 2.4. Kebutuhan Code Execution Sandbox
 
-TBD
+- **Bahasa Pemrograman Tambahan**: `[Default: Python, JS, Go. Apakah memerlukan C++, Java, Rust, PHP, Ruby?]`
+- **Batasan Resource per Eksekusi**:
+  - CPU Time Limit: `[Default: 5 detik]`
+  - Memory Limit: `[Default: 128 MB]`
+  - Maximum Code Length: `[Default: 64 KB]`
+- **Eksekusi Interaktif / STDIN**: `[Apakah frontend menyediakan input stdin interaktif atau batch]`
 
-> Gunakan bagian ini untuk menjawab: AI akan dipakai untuk apa?
-> (chatbot, recommendation, document Q&A, semantic search, content assistance,
-> lead qualification, dsb). Jawaban ini menentukan apakah interface AI perlu
-> diperluas (streaming, embeddings, RAG, dsb).
+### 2.5. Autentikasi & Otorisasi Lanjutan
 
-## Authentication Requirements
+- **Metode Registrasi**:
+  - [x] Registrasi mandiri terbuka (default)
+  - [ ] Registrasi melalui undangan (invite-only)
+  - [ ] Persetujuan admin (admin approval)
+  - [ ] SSO / OAuth (Google, GitHub, Microsoft)
+- **Struktur Role Pengguna**:
+  - [x] Admin
+  - [ ] Member / Regular User
+  - [ ] Guest / Read-Only
 
-TBD
+---
 
-> Misalnya: siapa yang boleh register? Apakah perlu verifikasi email, invite,
-> atau admin approval? Berapa role yang dibutuhkan selain `admin`?
+## 3. Menambahkan Modul Bisnis Klien
 
-## Admin Requirements
+Ketika klien membutuhkan fitur bisnis khusus (seperti billing langganan, manajemen lisensi, katalog produk, ticketing), gunakan modul template yang telah disiapkan di [internal/modules/business/](file:///C:/project/pakhir/be/internal/modules/business/README.md):
 
-TBD
-
-> Endpoint admin apa yang dibutuhkan? Content management, user management,
-> analytics, dsb.
-
-## Integrations
-
-TBD
-
-## Non-functional Requirements
-
-Performance:
-TBD
-
-Security:
-TBD
-
-SEO:
-TBD
-
-Accessibility:
-TBD
-
-## Final Database Requirements
-
-TBD
-
-> Berdasarkan bagian di atas, tabel/business schema final akan dirancang
-> setelah requirement diketahui. Saat ini hanya ada tabel `users`
-> (infrastructure untuk authentication foundation) — tabel bisnis belum ada.
-
-## Final API Requirements
-
-TBD
-
-> Endpoint bisnis final belum ada. Saat ini tersedia: health, auth
-> (register/login/me), dan prototype AI chat.
+1. **Duplikasi Template Modul**:
+   Salin direktori template ke nama domain bisnis baru, misalnya `internal/modules/billing` atau `internal/modules/courses`.
+2. **Definisikan DTO & Model**:
+   Rancang struktur data pada `model/model.go`.
+3. **Tambahkan Migrasi Database**:
+   Buat migrasi SQL baru berurutan di `migrations/` (misal `0010_billing_subscriptions.up.sql`).
+4. **Implementasikan Repository & Service**:
+   Bangun query parameterized di `repository/` dan logika bisnis di `service/`.
+5. **Daftarkan Handler ke Router**:
+   Tambahkan dependensi pada struct `Dependencies` di [internal/routes/routes.go](file:///C:/project/pakhir/be/internal/routes/routes.go) dan mapping endpoint di bawah `/api/v1`.
