@@ -21,6 +21,7 @@ const (
 	KindAIProvider        Kind = "AI_PROVIDER_ERROR"
 	KindExecutionProvider Kind = "EXECUTION_PROVIDER_ERROR"
 	KindUnavailable       Kind = "SERVICE_UNAVAILABLE"
+	KindRateLimited       Kind = "RATE_LIMITED"
 	KindInternal     Kind = "INTERNAL_SERVER_ERROR"
 )
 
@@ -55,6 +56,8 @@ func (k Kind) httpStatus() int {
 		return http.StatusNotFound
 	case KindConflict:
 		return http.StatusConflict
+	case KindRateLimited:
+		return http.StatusTooManyRequests
 	case KindAIProvider, KindExecutionProvider:
 		return http.StatusBadGateway
 	case KindUnavailable:
@@ -100,3 +103,4 @@ func AIProvider(message string, err error) *Error        { return new(KindAIProv
 func ExecutionProvider(message string, err error) *Error { return new(KindExecutionProvider, message, err) }
 func Unavailable(message string, err error) *Error       { return new(KindUnavailable, message, err) }
 func Internal(message string, err error) *Error     { return new(KindInternal, message, err) }
+func RateLimited(message string) *Error             { return new(KindRateLimited, message, nil) }

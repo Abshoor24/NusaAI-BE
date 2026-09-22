@@ -84,6 +84,8 @@ func New(deps Dependencies) http.Handler {
 			}
 
 			// AI Assistant, Conversation, & Document interaction: rate limited
+			// NOTE: /ai/chat/stream is registered OUTSIDE this group below so it
+			// can use RequireAuthSSE (accepts token via ?token= query param).
 			r.Group(func(r chi.Router) {
 				if deps.Config.AI.ChatRateLimitEnabled {
 					r.Use(middleware.RateLimit(config.RateLimitConfig{
@@ -93,7 +95,6 @@ func New(deps Dependencies) http.Handler {
 					}))
 				}
 				r.Post("/ai/chat", aiH.Chat)
-				r.Post("/ai/chat/stream", aiH.ChatStream)
 				r.Get("/ai/conversations", aiH.ListConversations)
 				r.Get("/ai/conversations/{id}", aiH.GetConversation)
 				r.Delete("/ai/conversations/{id}", aiH.DeleteConversation)
@@ -110,10 +111,25 @@ func New(deps Dependencies) http.Handler {
 				r.Get("/ai/documents/{id}/status", aiH.GetDocumentStatus)
 				r.Delete("/ai/documents/{id}", aiH.DeleteDocument)
 
-				// Aliases without /ai prefix as specified in requirements
+			// Aliases without /ai prefix as specified in requirements
 				r.Post("/documents/upload", aiH.UploadDocument)
 				r.Get("/documents/{id}/status", aiH.GetDocumentStatus)
 			})
+		})
+
+		// SSE streaming endpoint: uses RequireAuthSSE so the browser
+		// EventSource API can pass the JWT via ?token= query parameter.
+		// This is the ONLY endpoint that accepts the token this way.
+		r.Group(func(r chi.Router) {
+			if deps.Config.AI.ChatRateLimitEnabled {
+				r.Use(middleware.RateLimit(config.RateLimitConfig{
+					Enabled:   true,
+					PerMinute: deps.Config.AI.ChatRateLimitPerMin,
+					Burst:     deps.Config.AI.ChatRateLimitPerMin,
+				}))
+			}
+			r.Use(middleware.RequireAuthSSE(deps.Tokens))
+			r.Post("/ai/chat/stream", aiH.ChatStream)
 		})
 	})
 
