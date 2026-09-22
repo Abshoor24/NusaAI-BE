@@ -53,14 +53,140 @@ Error dengan detail validasi:
 | `FORBIDDEN` | 403 | Role tidak diizinkan |
 | `NOT_FOUND` | 404 | Resource tidak ditemukan |
 | `CONFLICT` | 409 | Duplikat (mis. email sudah terdaftar) |
-| `RATE_LIMIT_EXCEEDED` | 429 | Terlalu banyak request |
+| `RATE_LIMITED` | 429 | Terlalu banyak request (lihat header `Retry-After`) |
 | `AI_PROVIDER_ERROR` | 502 | LLM provider error (detail tidak diekspos) |
+| `EXECUTION_PROVIDER_ERROR` | 502 | Execution provider (Judge0) error (detail tidak diekspos) |
 | `SERVICE_UNAVAILABLE` | 503 | Database tidak tersedia |
 | `INTERNAL_SERVER_ERROR` | 500 | Error tak terduga (detail tidak diekspos) |
 
 Response error **tidak pernah** berisi stack trace, SQL, kredensial, path filesystem, secret, maupun API key.
 
 Setiap response menyertakan header `X-Request-ID`.
+
+---
+
+## SSE Streaming Authentication (`POST /api/v1/ai/chat/stream`)
+
+Endpoint streaming ini dilindungi JWT. Karena browser `EventSource` API **tidak bisa** mengirim custom HTTP header (seperti `Authorization`), endpoint ini menerima token melalui **query parameter** `?token=<jwt>`:
+
+```
+GET /api/v1/ai/chat/stream?token=<your-jwt-here> HTTP/1.1
+```
+
+**HANYA endpoint ini** yang menerima token via query parameter. Semua endpoint lainnya tetap wajib header `Authorization: Bearer <token>`.
+
+### Opsi 1: Browser EventSource (recommended)
+
+```javascript
+// Mendapatkan token dari localStorage setelah login
+const token = localStorage.getItem('jwt_token');
+
+// EventSource tidak bisa set custom header, jadi gunakan query param
+const url = `/api/v1/ai/chat/stream?token=${encodeURIComponent(token)}`;
+const eventSource = new EventSource(url, { withCredentials: true });
+
+eventSource.addEventListener('token', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Token:', data.token);
+  // Tambahkan ke UI
+});
+
+eventSource.addEventListener('done', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Stream selesai. conversation_id:', data.conversation_id);
+  eventSource.close();
+});
+
+eventSource.addEventListener('error', (e) => {
+  const data = JSON.parse(e.data);
+  console.error('Error:', data.error);
+  eventSource.close();
+});
+
+eventSource.onerror = (err) => {
+  console.error('Koneksi terputus', err);
+  eventSource.close();
+};
+```
+
+### Opsi 2: fetch + ReadableStream (alternatif, bisa kirim header custom)
+
+```javascript
+const token = localStorage.getItem('jwt_token');
+
+const response = await fetch('/api/v1/ai/chat/stream', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    message: 'Buatkan hello world',
+  }),
+});
+
+if (!response.ok) {
+  // Handle error (401, 429, dll)
+  const errorData = await response.json();
+  throw new Error(errorData.error.message);
+}
+
+// Baca stream
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split('\\n\\n');
+  buffer = lines.pop(); // simpan potongan terakhir
+
+  for (const line of lines) {
+    if (line.startsWith('event: token')) {
+      const data = line.split('\\ndata: ')[1];
+      const token = JSON.parse(data).token;
+      console.log('Token:', token);
+    }
+  }
+}
+```
+
+---
+
+## Rate Limit 429 Response
+
+Ketika rate limit terlampaui, server mengembalikan HTTP 429 dengan format error standar dan header `Retry-After`:
+
+```
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 60
+X-Request-ID: req_abc123
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests, please try again later"
+  }
+}
+```
+
+Frontend dapat menggunakan header `Retry-After` (detik) untuk menunda retry:
+
+```javascript
+if (response.status === 429) {
+  const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10);
+  console.log(`Rate limited. Coba lagi dalam ${retryAfter} detik.`);
+  await new Promise(r => setTimeout(r, retryAfter * 1000));
+  // retry request
+}
+```
 
 ---
 

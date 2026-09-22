@@ -53,6 +53,35 @@ func RequireRole(role model.Role) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireAuthSSE is identical to RequireAuth but additionally accepts the JWT
+// via a `?token=` query parameter. This exists solely because the browser
+// EventSource API cannot set custom HTTP headers. It is applied ONLY to the
+// SSE streaming endpoint — every other protected route keeps RequireAuth and
+// requires the Authorization header as before.
+func RequireAuthSSE(tokens *jwt.Manager) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := bearerToken(r)
+			if token == "" {
+				token = r.URL.Query().Get("token")
+			}
+			if token == "" {
+				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authentication token")
+				return
+			}
+
+			claims, err := tokens.Parse(token)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired authentication token")
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // ClaimsFrom returns the authenticated user's claims stored by RequireAuth.
 func ClaimsFrom(ctx context.Context) (*jwt.Claims, bool) {
 	claims, ok := ctx.Value(claimsKey).(*jwt.Claims)

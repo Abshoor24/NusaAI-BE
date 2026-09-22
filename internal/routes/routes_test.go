@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -237,16 +238,142 @@ func TestAIChatStreamAuthorized(t *testing.T) {
 		t.Fatalf("token generate failed: %v", err)
 	}
 
+	// Test with Authorization header (fetch approach)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/ai/chat/stream", strings.NewReader(`{"message":"Hello"}`))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("POST /api/v1/ai/chat/stream with token should return 200 OK, got %d", rec.Code)
+		t.Errorf("POST /api/v1/ai/chat/stream with header token should return 200 OK, got %d", rec.Code)
 	}
 	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
 		t.Errorf("Content-Type should be text/event-stream, got %s", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestAIChatStreamAuthorizedViaQueryParam(t *testing.T) {
+	router, tokens := setupTestRouter()
+
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-1", Email: "test@example.com", Role: model.RoleAdmin})
+	if err != nil {
+		t.Fatalf("token generate failed: %v", err)
+	}
+
+	// Test with ?token= query parameter (EventSource approach)
+	rec := httptest.NewRecorder()
+	url := "/api/v1/ai/chat/stream?token=" + tokenStr
+	req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"message":"Hello"}`))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST /api/v1/ai/chat/stream with query token should return 200 OK, got %d", rec.Code)
+	}
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
+		t.Errorf("Content-Type should be text/event-stream, got %s", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestAIChatStreamInvalidTokenQueryParam(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	rec := httptest.NewRecorder()
+	url := "/api/v1/ai/chat/stream?token=invalid-token"
+	req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"message":"Hello"}`))
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/v1/ai/chat/stream with invalid query token should return 401, got %d", rec.Code)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body["success"] != false {
+		t.Errorf("expected success=false, got %v", body["success"])
+	}
+	errObj, ok := body["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected error object, got %T", body["error"])
+	}
+	if errObj["code"] != "UNAUTHORIZED" {
+		t.Errorf("expected error code UNAUTHORIZED, got %v", errObj["code"])
+	}
+}
+
+func TestRateLimitResponseFormat(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: "8080"},
+		CORS:   config.CORSConfig{AllowedOrigins: []string{"*"}},
+		JWT: config.JWTConfig{
+			Secret:     "secret-must-be-long-enough-for-testing",
+			Expiration: time.Hour,
+			Issuer:     "test",
+		},
+		AI: config.AIConfig{ChatRateLimitEnabled: false},
+		Execution: config.ExecutionConfig{
+			RateLimitEnabled: true,
+			RateLimitPerMin:  1,
+			RateLimitBurst:   1,
+			MaxCodeBytes:     65536,
+		},
+		Rate: config.RateLimitConfig{Enabled: false},
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tokens := jwt.NewManager(cfg.JWT)
+
+	router := New(Dependencies{
+		Config:    cfg,
+		Logger:    logger,
+		DB:        nil,
+		Auth:      &dummyAuthService{},
+		AI:        &dummyAIService{},
+		Execution: &dummyExecutionService{},
+		Tokens:    tokens,
+	})
+
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-rate", Email: "rate@example.com", Role: model.RoleAdmin})
+	if err != nil {
+		t.Fatalf("token generate failed: %v", err)
+	}
+
+	// First request - allowed
+	rec1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(1)"}`))
+	req1.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec1, req1)
+
+	// Second request - rate limited (429)
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/execute", strings.NewReader(`{"language":"python","code":"print(2)"}`))
+	req2.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokenStr))
+	router.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("request 2 should be rate limited with 429, got %d", rec2.Code)
+	}
+
+	// Verify Retry-After header
+	retryAfter := rec2.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Error("Retry-After header should be present on 429 response")
+	}
+
+	// Verify error body format
+	var body map[string]interface{}
+	if err := json.NewDecoder(rec2.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body["success"] != false {
+		t.Errorf("expected success=false, got %v", body["success"])
+	}
+	errObj, ok := body["error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected error object, got %T", body["error"])
+	}
+	if errObj["code"] != "RATE_LIMITED" {
+		t.Errorf("expected error code RATE_LIMITED, got %v", errObj["code"])
 	}
 }
 

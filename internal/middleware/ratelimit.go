@@ -73,7 +73,7 @@ func RateLimit(cfg config.RateLimitConfig) func(http.Handler) http.Handler {
 			ip := clientIP(r)
 			if !limiter.allow(ip) {
 				w.Header().Set("Retry-After", "60")
-				writeError(w, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", "Too many requests, please try again later")
+				writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests, please try again later")
 				return
 			}
 			next.ServeHTTP(w, r)
