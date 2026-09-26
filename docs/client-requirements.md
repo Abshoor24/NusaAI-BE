@@ -2,6 +2,9 @@
 
 Dokumen ini merangkum kapabilitas dasar (*core platform features*) yang telah tersedia di backend, serta panduan spesifikasi kebutuhan (*requirements gathering*) ketika mengadaptasi sistem ini untuk klien atau domain bisnis tertentu.
 
+> [!NOTE]
+> **Referensi API (request/response contract):** Untuk detail lengkap setiap endpoint — field schema, tipe data, error codes, dan contoh JSON — lihat **[docs/api.md](./api.md)**. Dokumen tersebut adalah *single source of truth* untuk kontrak API antara backend dan frontend.
+
 ---
 
 ## 1. Core Platform Capabilities (Out of the Box)
