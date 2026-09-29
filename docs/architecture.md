@@ -1,26 +1,40 @@
-# System Architecture
+# System Architecture — AI Website Generator
 
 ## Overview
 
-Backend ini dibangun sebagai platform **AI Assistant, Multimodal Generator, RAG Knowledge Base, dan Code Execution Sandbox** yang tangguh dan modular menggunakan Go (Golang).
+Backend ini adalah platform **AI Website Generator** yang dibangun dengan Go (Golang). User login, menjelaskan website yang ingin dibuat (*brief*), AI menghasilkan website tersebut, lalu user merevisinya lewat instruksi teks sampai puas dan mengunduhnya.
 
-Sistem menerapkan prinsip **Clean Architecture**, **Dependency Injection**, dan **Domain-Driven Modularization** untuk memastikan kode tetap decoupled, mudah diuji (*testable*), serta siap dikembangkan untuk kebutuhan bisnis tingkat lanjut.
+Pengembangan dibagi dua tahap:
+
+| Tahap | Output Website | Status |
+| --- | --- | --- |
+| **A** | **Satu file HTML mandiri** (Tailwind via CDN, JS inline) per versi | **Dikerjakan sekarang** |
+| **B** | Proyek multi-file (mis. React/Vite) | Setelah Tahap A stabil |
+
+Tahap A dipilih karena paling sederhana: mudah dipreview, mudah diunduh, dan mudah direvisi karena AI hanya mengedit satu dokumen. Skema `project_versions` sengaja dibuat agar bisa diperluas ke banyak file pada Tahap B tanpa membuang data Tahap A.
+
+Sistem tetap menerapkan **Clean Architecture**, **Dependency Injection**, dan **Domain-Driven Modularization** yang sudah ada. Yang berubah adalah domain utamanya: dari *chat assistant* generik menjadi *project-based website generator*.
+
+> [!NOTE]
+> Kontrak request/response lengkap ada di **[api.md](./api.md)** (*single source of truth*). Dokumen ini menjelaskan *bagaimana* backend membangun kontrak tersebut. Jika keduanya berbeda, `api.md` yang benar dan dokumen ini harus diperbaiki.
 
 ### Prinsip Desain Utama
 
 1. **Separation of Concerns & Unidirectional Data Flow**:
-   - `Handler` menangani parsing HTTP, validasi request, dan formatting response.
-   - `Service` mengelola orkestrasi logika bisnis, koordinasi RAG, aturan validasi multimodal, dan eksekusi sandbox.
-   - `Repository` mengelola akses database PostgreSQL murni menggunakan parameterized query.
-   - `Provider` mengisolasi komunikasi dengan pihak ketiga (Google Gemini API, Judge0 CE engine).
-2. **Dependency Injection**: Seluruh komponen, koneksi database, logger, dan provider diinisialisasi secara eksplisit di [cmd/server/main.go](file:///C:/project/pakhir/be/cmd/server/main.go) dan diinjeksikan ke router tanpa global mutable state.
-3. **Abstraction Over Implementation**: AI service dan Execution service berinteraksi melalui interface (`provider.Provider` dan `provider.ExecutionProvider`), memungkinkan pergantian provider model tanpa mengubah business logic.
-4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([internal/config/config.go](file:///C:/project/pakhir/be/internal/config/config.go)), database di-ping dengan batas timeout ([storage/supabase.go](file:///C:/project/pakhir/be/storage/supabase.go)), dan migrasi SQL dijalankan secara otomatis saat server boot.
-5. **Safe by Default & Defense in Depth**:
+   - `Handler` menangani parsing HTTP (JSON dan multipart), validasi request, penulisan SSE, dan formatting response.
+   - `Service` mengelola state machine project, penyusunan prompt, validasi HTML hasil AI, dan pembuatan versi.
+   - `Repository` mengelola akses PostgreSQL murni dengan parameterized query.
+   - `Provider` mengisolasi komunikasi dengan Google Gemini API.
+2. **Dependency Injection**: Semua komponen diinisialisasi eksplisit di [cmd/server/main.go](file:///C:/project/pakhir/be/cmd/server/main.go) dan diinjeksikan ke router lewat struct `Dependencies` tanpa global mutable state.
+3. **Abstraction Over Implementation**: Project service hanya bergantung pada interface `provider.Provider`, sehingga model AI bisa diganti tanpa mengubah logika bisnis.
+4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([internal/config/config.go](file:///C:/project/pakhir/be/internal/config/config.go)), database di-ping dengan timeout, dan migrasi SQL berjalan otomatis saat boot. Konfigurasi modul yang **ditunda** (Judge0, RAG) tidak boleh menggagalkan startup.
+5. **System Prompt Dikunci di Server**: Client tidak bisa mengirim atau menimpa system prompt. Input user (brief dan instruksi revisi) selalu diperlakukan sebagai **data**, bukan sebagai instruksi sistem.
+6. **Output AI adalah Konten Tidak Tepercaya**: HTML hasil model divalidasi dan disimpan apa adanya sebagai teks, tidak pernah dieksekusi atau disisipkan di sisi server, dan wajib dirender frontend di `<iframe sandbox>` tanpa `allow-same-origin`.
+7. **Safe by Default & Defense in Depth**:
    - Error internal dan detail SQL tidak pernah bocor ke client ([internal/apperror](file:///C:/project/pakhir/be/internal/apperror)).
-   - Input divalidasi ketat (whitelist bahasa pada sandbox, MIME sniffing pada berkas gambar dan dokumen).
-   - Isolasi kepemilikan resource per user (`user_id = $2`) pada seluruh query database.
-   - Rate limiting bertingkat (General API, AI Chat, dan Code Execution).
+   - Input divalidasi ketat (`DisallowUnknownFields`, whitelist `website_type`/`language`, MIME sniffing gambar).
+   - Isolasi kepemilikan resource per user (`user_id = $2`) pada seluruh query project.
+   - Rate limiting dua tingkat (General API dan Generate).
 
 ---
 
@@ -28,43 +42,42 @@ Sistem menerapkan prinsip **Clean Architecture**, **Dependency Injection**, dan 
 
 ```mermaid
 flowchart TD
-    Client["Client / Frontend (Web/Mobile)"]
+    Client["Client / Frontend (Web)"]
 
-    subgraph "Go HTTP Server (Chi Router)"
+    subgraph Server["Go HTTP Server (Chi Router)"]
         direction TB
         MW_Global["Global Middleware<br>(RequestID, Logger, Recovery, CORS, SecurityHeaders)"]
-        MW_RateLimit["Rate Limiting Middleware<br>(General, AI Chat, Execution)"]
+        MW_RateLimit["Rate Limiting Middleware<br>(General, Generate)"]
         MW_Auth["Authentication Middleware<br>(RequireAuth Bearer & RequireAuthSSE)"]
-        
         Router["Chi Router Mapping"]
     end
 
-    subgraph "Handlers Layer"
+    subgraph Handlers["Handlers Layer"]
         H_Health["HealthHandler"]
         H_Auth["AuthHandler"]
-        H_AI["AIHandler"]
-        H_Exec["ExecutionHandler"]
+        H_Project["ProjectHandler<br>(CRUD, Generate/Revise SSE, Versions, Export, Attachments)"]
     end
 
-    subgraph "Core Services Layer"
+    subgraph Services["Core Services Layer"]
         S_Auth["AuthService<br>(bcrypt, JWT Manager)"]
-        S_AI["AIService<br>(Multi-turn, Context Builder, RAG, Multimodal)"]
-        S_Exec["ExecutionService<br>(Sandbox Validator, Polling Worker)"]
+        S_Project["ProjectService<br>(State Machine, Prompt Builder, HTML Validator, Versioning)"]
     end
 
-    subgraph "Repositories & Providers"
+    subgraph Infra["Repositories & Providers"]
         R_User["UserRepository"]
-        R_AI["AIRepository"]
-        R_Exec["ExecutionRepository"]
+        R_Project["ProjectRepository"]
         P_Gemini["GeminiProvider<br>(Google Generative Language API)"]
-        P_Judge0["JudgeZeroProvider<br>(Judge0 CE Engine)"]
     end
 
-    subgraph "Storage & Infrastructure"
-        DB[("PostgreSQL + pgvector<br>(pgxpool / Supabase)")]
-        Disk[("Local Storage<br>(uploads/ files & images)")]
+    subgraph Storage["Storage & Infrastructure"]
+        DB[("PostgreSQL<br>(pgxpool / Supabase)")]
+        Disk[("Local Storage<br>uploads/ gambar referensi")]
         Ext_Gemini["External Google Gemini API"]
-        Ext_Judge0["Judge0 Sandbox Container"]
+    end
+
+    subgraph Deferred["Ditunda: kode & tabel ada, tidak diregistrasi di router"]
+        D_AI["AI Chat, Conversations, RAG"]
+        D_Exec["Code Execution (Judge0)"]
     end
 
     Client --> MW_Global
@@ -74,32 +87,26 @@ flowchart TD
 
     Router --> H_Health
     Router --> H_Auth
-    Router --> H_AI
-    Router --> H_Exec
+    Router --> H_Project
 
     H_Auth --> S_Auth
-    H_AI --> S_AI
-    H_Exec --> S_Exec
+    H_Project --> S_Project
 
     S_Auth --> R_User
-    S_AI --> R_AI
-    S_AI --> P_Gemini
-    S_AI --> Disk
-    S_Exec --> R_Exec
-    S_Exec --> P_Judge0
+    S_Project --> R_Project
+    S_Project --> P_Gemini
+    S_Project --> Disk
 
     R_User --> DB
-    R_AI --> DB
-    R_Exec --> DB
+    R_Project --> DB
     P_Gemini --> Ext_Gemini
-    P_Judge0 --> Ext_Judge0
 ```
 
 ---
 
 ## Request Flow & Middleware Architecture
 
-Setiap request HTTP melalui rantai middleware bertingkat yang dirancang untuk stabilitas, keamanan, dan perlindungan kuota:
+Setiap request HTTP melalui rantai middleware bertingkat:
 
 ```
 Request Masuk
@@ -107,10 +114,10 @@ Request Masuk
      ▼
 [Global Middlewares]
  ├─ RequestID       → Menghasilkan / memvalidasi X-Request-ID unik untuk trace log & response.
- ├─ RequestLogger   → Structured JSON/text log (metode, path, IP, status, durasi).
- ├─ Recovery        → Menangkap panic, mengembalikan 500 aman, mencatat stacktrace ke log internal.
+ ├─ RequestLogger   → Structured log (metode, path, IP, status, durasi).
+ ├─ Recovery        → Menangkap panic, mengembalikan 500 aman, stacktrace hanya ke log internal.
  ├─ CORS            → Memvalidasi origin berdasarkan CORS_ALLOWED_ORIGINS.
- └─ SecurityHeaders → Menambahkan X-Content-Type-Options: nosniff, Frame Options, Referrer Policy.
+ └─ SecurityHeaders → X-Content-Type-Options: nosniff, Frame Options, Referrer Policy.
      │
      ▼
 [/api/v1 Group]
@@ -122,110 +129,193 @@ Request Masuk
  │   └─ GET  /ai/health
  │
  ├─ [Protected Group: RequireAuth (JWT Bearer)]
- │   ├─ GET /auth/me
- │   │
- │   ├─ [Execution Group: Dedicated Strict RateLimit (15 req/min)]
- │   │   ├─ POST /execute
- │   │   ├─ GET  /execute/history
- │   │   └─ GET  /execute/{id}
- │   │
- │   └─ [AI & Document Group: Dedicated Chat RateLimit (10 req/min)]
- │       ├─ POST   /ai/chat (JSON & multipart)
- │       ├─ GET    /ai/conversations
- │       ├─ GET    /ai/conversations/{id}
- │       ├─ DELETE /ai/conversations/{id}
- │       ├─ GET    /ai/attachments/{id}
- │       ├─ POST   /ai/documents
- │       ├─ POST   /ai/documents/upload
- │       ├─ GET    /ai/documents
- │       ├─ GET    /ai/documents/{id}
- │       ├─ GET    /ai/documents/{id}/status
- │       └─ DELETE /ai/documents/{id}
+ │   ├─ GET    /auth/me
+ │   ├─ POST   /projects
+ │   ├─ GET    /projects
+ │   ├─ GET    /projects/{id}
+ │   ├─ DELETE /projects/{id}
+ │   ├─ GET    /projects/{id}/versions
+ │   ├─ GET    /projects/{id}/versions/{number}
+ │   ├─ GET    /projects/{id}/export
+ │   ├─ GET    /projects/{id}/attachments
+ │   └─ GET    /projects/{id}/attachments/{attachmentId}
  │
- └─ [Streaming Group: RequireAuthSSE (?token= atau Bearer)]
-     └─ POST /ai/chat/stream
+ └─ [Generate Group: Generate RateLimit (5 req/min) + RequireAuthSSE (?token= atau Bearer)]
+     ├─ POST /projects/{id}/generate   (SSE)
+     └─ POST /projects/{id}/revise     (SSE)
 ```
+
+Endpoint lama `/ai/chat*`, `/ai/conversations*`, `/ai/attachments/*`, `/ai/documents*`, dan `/execute*` **tidak diregistrasi** sehingga menghasilkan `404` standar router. `/health` dan `/health/db` berada di luar `/api/v1` dan tidak kena rate limit.
 
 ---
 
 ## Detailed Subsystem Breakdown
 
 ### 1. Authentication & Security Subsystem
-- **Password Hashing**: Menggunakan `bcrypt` dengan cost terstandar. Plaintext password tidak pernah disimpan atau dicatat ke log.
-- **JWT Management**: Ditandatangani menggunakan algoritma HMAC-SHA256 (`HS256`) dengan secret dari `JWT_SECRET`.
-  - Claims standar: `sub` (User UUID), `email`, `role`, `iss`, `iat`, `exp`.
-  - `RequireAuth`: Memvalidasi header `Authorization: Bearer <token>`, mem-parse claims, dan menyisipkan `userID` ke dalam `context.Context`.
-  - `RequireAuthSSE`: Middleware khusus yang memeriksa header `Authorization` terlebih dahulu; bila tidak ada, memeriksa query parameter `?token=`. Khusus digunakan pada rute SSE streaming.
 
-### 2. AI Assistant & Multimodal Subsystem (`internal/modules/ai`)
-- **Conversation & Memory Context**:
-  - Menyimpan riwayat percakapan secara terstruktur di database (`conversations` dan `messages`).
-  - Saat request prompt baru diterima, context builder (`buildProviderMessages`) menyusun riwayat pesan terdahulu (default 10 pesan terakhir) untuk mempertahankan memori percakapan multi-turn.
-- **Multimodal Image Support**:
-  - Menerima berkas gambar baik melalui payload `application/json` (base64) maupun `multipart/form-data`.
-  - Validasi ketat format MIME (`image/jpeg`, `image/png`, `image/webp`) dan batasan ukuran berkas (`UPLOAD_MAX_BYTES`).
-  - Berkas fisik disimpan ke direktori lokal terisolasi (`uploads/`) dengan nama UUID unik.
-  - Metadata disimpan ke tabel `message_attachments`.
-  - Gambar dikirimkan ke model Gemini melalui inline data parts.
-  - Endpoint `GET /api/v1/ai/attachments/{id}` memverifikasi kepemilikan percakapan sebelum mengalirkan berkas biner ke browser.
-- **RAG (Retrieval-Augmented Generation)**:
-  - **Ingestion**: Dokumen dipecah menjadi fragmen teks menggunakan semantic chunker (`rag.NewChunker(800, 150)`) dengan window overlap untuk mencegah hilangnya konteks di perbatasan chunk.
-  - **Embedding**: Fragmen teks diubah menjadi vektor 768 dimensi menggunakan model `text-embedding-004`.
-  - **Vector Storage & Search**: Vektor disimpan pada kolom `embedding VECTOR(768)` di PostgreSQL menggunakan ekstensi `pgvector`.
-  - **Similarity Matching**: Menggunakan cosine distance (`<=>`) untuk menemukan potongan teks paling relevan terhadap query pengguna dan disisipkan ke prompt sebelum dikirim ke LLM.
-- **Asynchronous Document Extraction**:
-  - File dokumen yang diunggah (`.pdf`, `.docx`, `.txt`) disimpan ke storage lokal.
-  - Backend menjalankan goroutine background worker untuk mengekstraksi teks dokumen menggunakan parser khusus:
-    - PDF: `extractor/pdf.go` (menggunakan library `dslipak/pdf`).
-    - DOCX: `extractor/docx.go` (unzip XML reader).
-    - TXT: `extractor/txt.go`.
-  - Status pemrosesan dicatat di kolom `status` (`processing` -> `ready` / `failed`) yang dapat dipantau oleh frontend melalui polling status.
+Tidak berubah dari versi sebelumnya.
 
-### 3. Code Execution Sandbox Subsystem (`internal/modules/execution`)
-- **Sandboxing Engine**: Berintegrasi dengan **Judge0 CE** (API self-hosted via Docker atau cloud).
-- **Execution Pipeline**:
-  1. Validasi bahasa terhadap whitelist (`python`, `javascript`, `go`).
-  2. Validasi ukuran payload kode (maksimal `EXEC_MAX_CODE_BYTES`, default 64 KB).
-  3. Mengirim payload submission ke Judge0 (`POST /submissions?base64_encoded=false&wait=false`).
-  4. Polling status eksekusi secara asinkron dengan interval `EXEC_POLL_INTERVAL` (default 250ms) hingga batas `EXEC_MAX_POLL_DURATION` (default 15s).
-  5. Mencatat hasil eksekusi (stdout, stderr, exit code, execution time, memory usage, status) ke tabel `code_executions` dengan asosiasi `user_id`.
-- **Resource Enforcement**:
-  - CPU Time Limit: `EXEC_CPU_TIME_LIMIT_SEC` (default 5.0 detik).
-  - Wall Time Limit: `EXEC_WALL_TIME_LIMIT_SEC` (default 10.0 detik).
-  - Memory Limit: `EXEC_MEMORY_LIMIT_KB` (default 128 MB).
+- **Password Hashing**: `bcrypt`. Plaintext password tidak pernah disimpan atau di-log.
+- **JWT**: HMAC-SHA256 (`HS256`) dengan secret `JWT_SECRET`. Claims: `sub`, `email`, `role`, `iss`, `iat`, `exp`.
+  - `RequireAuth`: memvalidasi header `Authorization: Bearer <token>` dan menyisipkan `userID` ke `context.Context`.
+  - `RequireAuthSSE`: memeriksa header `Authorization` dulu, lalu query `?token=`. Hanya dipakai pada `generate` dan `revise`.
+- **Role**: saat ini semua user berrole `admin` (baseline). Tidak ada endpoint yang membedakan role.
+
+### 2. Project Subsystem (`internal/modules/project`)
+
+Modul inti produk. Satu **project** = satu website milik satu user, berisi brief dan riwayat versi.
+
+#### 2.1. State Machine Project
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: POST /projects
+    draft --> generating: generate
+    failed --> generating: generate (coba lagi)
+    generating --> ready: sukses
+    generating --> failed: gagal (belum punya versi)
+    ready --> generating: revise
+    generating --> ready: revise gagal (versi lama utuh)
+```
+
+- Transisi ke `generating` dilakukan **atomik** di database, contoh: `UPDATE projects SET status='generating' WHERE id=$1 AND user_id=$2 AND status IN ('draft','failed')`. Jika tidak ada baris terpengaruh, service membedakan `404` (bukan milik user) dan `409` (state tidak cocok). Ini mencegah dua proses generate berjalan bersamaan pada project yang sama.
+- `DELETE` ditolak dengan `409` saat status `generating`.
+- **Pemulihan status macet** (*rekomendasi implementasi*): jika server mati di tengah proses, project bisa tertahan di `generating`. Saat startup, reset semua project `generating` menjadi `ready` (jika `version_count > 0`) atau `failed` (jika belum ada versi).
+
+#### 2.2. Pipeline Generate & Revise
+
+```
+1. Handler   : parse body (JSON atau multipart), validasi field & gambar (tanpa menyentuh DB/AI)
+2. Service   : cek kepemilikan + state, transisi atomik → generating
+3. Service   : simpan gambar referensi (disk + tabel project_attachments)
+4. Service   : bangun prompt (lihat 2.3)
+5. Provider  : buka stream Gemini
+                 └─ gagal sebelum byte pertama → kembalikan status, balas JSON 502 AI_PROVIDER_ERROR
+6. Handler   : kirim header SSE (HTTP 200), teruskan potongan teks sebagai `event: token`
+                 sambil menampung buffer (dibatasi PROJECT_MAX_HTML_BYTES)
+7. Service   : finalisasi (lihat 2.4) → transaksi: insert versi baru + status → ready
+8. Handler   : kirim `event: done` {project_id, version_id, version_number}
+                 └─ gagal di tahap 5-7 → `event: error`, tidak ada versi tersimpan,
+                    status → failed (generate) atau ready (revise)
+```
+
+Catatan implementasi:
+
+- Langkah 5 harus selesai **sebelum** header SSE dikirim, karena error provider awal harus berupa JSON 502 biasa.
+- Jika client terputus, `context` request dibatalkan. Pembersihan status (langkah 8) wajib memakai context terpisah dengan timeout pendek (mis. `context.WithoutCancel` + timeout) agar status project tidak tertinggal di `generating`.
+- **Generate** hanya untuk `draft`/`failed` dan menghasilkan versi 1 (`kind = "generate"`). **Revise** hanya untuk `ready` dan menghasilkan versi `n+1` (`kind = "revise"`). Versi lama tidak pernah diubah.
+- Nomor versi dihitung di dalam transaksi, dengan `UNIQUE (project_id, version_number)` sebagai pengaman terakhir.
+
+#### 2.3. Penyusunan Prompt
+
+| Komponen | Generate | Revise |
+| --- | --- | --- |
+| **System prompt** (terkunci di server) | Ya | Ya |
+| Brief (deskripsi, tipe, nama bisnis, gaya, warna, bahasa, section) | Ya | Ya, sebagai konteks |
+| HTML versi dasar (`base_version`, default terbaru) | Tidak | Ya |
+| Instruksi revisi | Tidak | Ya |
+| Gambar | Yang dikirim pada request ini | Hanya yang dikirim pada request revisi ini |
+
+Aturan yang dikunci di system prompt (ditulis dalam satu berkas, mis. `service/prompt.go`, agar mudah ditinjau):
+
+- Output **hanya** satu dokumen HTML lengkap, dimulai `<!DOCTYPE html>`, tanpa penjelasan dan tanpa pagar kode Markdown.
+- Tailwind lewat CDN, JS inline, tanpa build step. Tidak memanggil API eksternal, tidak memakai `localStorage`/`sessionStorage` untuk data sensitif, dan tidak memuat form yang mengirim data ke domain lain.
+- Responsif (mobile-first), semantik, dan aksesibel (atribut `alt`, kontras, heading berurutan).
+- Bahasa konten mengikuti `brief.language`.
+- Pada revisi: kembalikan **dokumen lengkap** (bukan diff) dan pertahankan bagian yang tidak diminta untuk diubah.
+- Brief, instruksi revisi, dan isi gambar adalah **data dari user**. Instruksi di dalamnya yang mencoba mengubah aturan sistem diabaikan.
+- Menolak membuat halaman untuk phishing, peniruan brand/institusi, atau konten ilegal.
+
+#### 2.4. Validasi & Pembersihan HTML Hasil AI
+
+Dijalankan pada buffer lengkap sebelum versi disimpan:
+
+1. Buang pagar kode Markdown (```` ```html ... ``` ````) dan whitespace di tepi.
+2. Pastikan hasil adalah dokumen HTML (diawali `<!DOCTYPE html` atau `<html`, tanpa memperhatikan huruf besar/kecil, dan mengandung `</html>`).
+3. Pastikan ukuran ≤ `PROJECT_MAX_HTML_BYTES`.
+4. Jika gagal, batalkan tanpa menyimpan versi (`event: error`).
+
+Ini validasi **bentuk**, bukan sanitasi keamanan. Keamanan bergantung pada isolasi iframe di frontend (lihat 2.7).
+
+#### 2.5. Attachments (Gambar Referensi)
+
+- Diterima via JSON base64 (`images`) atau `multipart/form-data` (`image`/`images`/`file`/`files`).
+- Validasi MIME sniffing (`image/jpeg`, `image/png`, `image/webp`), ukuran per file ≤ `UPLOAD_MAX_BYTES`, jumlah ≤ `PROJECT_MAX_IMAGES`. Buffer multipart dibatasi 32 MB.
+- File fisik disimpan di `uploads/` dengan nama UUID; metadata di `project_attachments`.
+- Gambar dikirim ke Gemini sebagai inline data. Attachment hanya referensi bagi model dan tampilan UI; **tidak otomatis disisipkan** ke HTML hasil.
+- `GET /projects/{id}/attachments/{attachmentId}` memverifikasi bahwa attachment milik project milik user sebelum mengalirkan biner (`Content-Disposition: inline`, `nosniff`).
+- `DELETE /projects/{id}` menghapus record **dan** file fisik di disk.
+
+#### 2.6. Versioning & Export
+
+- Setiap generate/revise menyimpan **satu baris baru** di `project_versions` berisi `html` lengkap. Riwayat tidak pernah ditimpa.
+- Daftar versi tidak menyertakan kolom `html` (hemat bandwidth); `html` hanya ada di `GET /versions/{number}` dan `latest_version` pada detail project.
+- `GET /projects/{id}/export` mengalirkan HTML sebagai lampiran (`Content-Type: text/html; charset=utf-8`, `Content-Disposition: attachment`, `nosniff`) dengan nama file dari slug judul + nomor versi, mis. `website-kopi-senja-v2.html`.
+
+#### 2.7. Preview di Frontend (Kontrak Keamanan)
+
+Backend tidak me-render HTML. Frontend wajib:
+
+1. Merender di `<iframe sandbox="allow-scripts allow-popups">`.
+2. **Tidak pernah** menambahkan `allow-same-origin` (agar script hasil AI tidak bisa membaca `localStorage` tempat JWT disimpan).
+3. Tidak menyisipkan HTML hasil AI ke DOM aplikasi (`innerHTML`, `dangerouslySetInnerHTML`).
+4. Tidak menampilkan stream `token` sebagai website; stream hanya indikator progres. HTML final diambil dari `GET /versions/{number}` setelah `done`.
+
+### 3. Modul yang Ditunda
+
+Kode dan tabel dipertahankan, tetapi **tidak diregistrasi di router** dan tidak boleh mempengaruhi startup.
+
+| Modul | Lokasi | Alasan Ditunda | Kemungkinan Pemakaian Kembali |
+| --- | --- | --- | --- |
+| AI Chat & Conversations | `internal/modules/ai` | Digantikan `generate`/`revise` | Tidak direncanakan; `provider` Gemini tetap dipakai |
+| RAG & Document Upload | `internal/modules/ai` (`rag/`, `extractor/`) | Belum dibutuhkan Tahap A | Basis pengetahuan brand/klien untuk memperkaya generate |
+| Code Execution (Judge0) | `internal/modules/execution` | Preview dirender di browser | Menjalankan proyek Tahap B jika dibutuhkan |
+
+Yang **tetap aktif** dari modul `ai` hanya `GET /api/v1/ai/health` dan `GeminiProvider`.
 
 ---
 
 ## Database Architecture & Migrations
 
-Database menggunakan PostgreSQL dengan connection pool `pgxpool` yang dikelola oleh wrapper [storage/supabase.go](file:///C:/project/pakhir/be/storage/supabase.go).
+PostgreSQL dengan connection pool `pgxpool` ([storage/supabase.go](file:///C:/project/pakhir/be/storage/supabase.go)). Migrasi dikelola di [migrations/](file:///C:/project/pakhir/be/migrations/), di-embed ke binary (`embed.FS` + `golang-migrate`), dan berjalan otomatis saat boot.
 
-Migrasi database dikelola secara terpusat di direktori [migrations/](file:///C:/project/pakhir/be/migrations/) dan di-embed ke dalam binary menggunakan `embed.FS` (`golang-migrate`), sehingga migrasi berjalan otomatis saat aplikasi dijalankan:
+### Urutan Skema Migrasi
 
-### Urutan Skema Migrasi:
+| Nomor | File Migrasi | Deskripsi & Entitas | Status |
+| --- | --- | --- | --- |
+| `0001` | `0001_init` | Tabel `users` | Aktif |
+| `0002-0004` | `company_profile_rag` & cleanup | Migrasi transisi & pembersihan skema legacy | Historis |
+| `0005` | `0005_conversations` | `conversations`, `messages` | Legacy (ditunda) |
+| `0006` | `0006_rag_documents` | Ekstensi `vector`, `documents`, `document_chunks` | Legacy (ditunda) |
+| `0007` | `0007_document_uploads` | Kolom upload pada `documents` | Legacy (ditunda) |
+| `0008` | `0008_message_attachments` | `message_attachments` | Legacy (ditunda) |
+| `0009` | `0009_code_executions` | `code_executions` | Legacy (ditunda) |
+| `0010` | `0010_projects` | `projects`, `project_versions`, `project_attachments` | **Baru** |
 
-| Nomor | File Migrasi | Deskripsi & Entitas |
+> Migrasi lama **tidak dihapus atau diubah** karena sudah pernah diterapkan. Tabel legacy dibiarkan; pembersihan (jika diinginkan) dilakukan lewat migrasi baru di kemudian hari.
+
+### Skema Tabel Baru (`0010_projects`)
+
+| Tabel | Kolom | Constraint & Index |
 | --- | --- | --- |
-| `0001` | `0001_init` | Tabel `users` (id, email, password_hash, role, created_at) |
-| `0002-0004` | `company_profile_rag` & cleanup | Migrasi transisi & pembersihan skema legacy |
-| `0005` | `0005_conversations` | Tabel `conversations` dan `messages` untuk riwayat chat multi-turn |
-| `0006` | `0006_rag_documents` | Ekstensi `vector` (`pgvector`), tabel `documents` & `document_chunks` |
-| `0007` | `0007_document_uploads` | Menambahkan kolom `file_name`, `file_type`, `file_size`, `status`, `error_message` pada `documents` |
-| `0008` | `0008_message_attachments` | Tabel `message_attachments` untuk file gambar percakapan multimodal |
-| `0009` | `0009_code_executions` | Tabel `code_executions` untuk riwayat eksekusi kode Judge0 sandbox |
+| `projects` | `id` UUID PK, `user_id` UUID FK → `users` (ON DELETE CASCADE), `title` VARCHAR(200), `status` VARCHAR(20), `brief` JSONB, `created_at`, `updated_at` | `CHECK status IN ('draft','generating','ready','failed')`; index `(user_id, updated_at DESC)` |
+| `project_versions` | `id` UUID PK, `project_id` UUID FK → `projects` (ON DELETE CASCADE), `version_number` INT, `kind` VARCHAR(20), `prompt` TEXT, `html` TEXT, `created_at` | `CHECK kind IN ('generate','revise')`; `UNIQUE (project_id, version_number)` |
+| `project_attachments` | `id` UUID PK, `project_id` UUID FK → `projects` (ON DELETE CASCADE), `file_name`, `file_type`, `file_size` BIGINT, `storage_path` TEXT, `mime_type`, `created_at` | Index `(project_id, created_at DESC)` |
+
+Catatan desain:
+
+- `brief` disimpan sebagai **JSONB** agar field brief bisa bertambah tanpa migrasi. Validasi tetap dilakukan di lapisan Go.
+- `version_count` di `ProjectResponse` dihitung dari `project_versions` (subquery/`COUNT`), bukan kolom tersimpan, agar tidak bisa tidak sinkron.
+- `ON DELETE CASCADE` menghapus baris database; **file gambar di disk dihapus oleh service** sebelum/sesudah baris dihapus.
+- Untuk Tahap B, tabel `project_files (version_id, path, content)` dapat ditambahkan tanpa mengubah `project_versions`.
 
 ### Entity-Relationship Diagram (ERD)
 
 ```mermaid
 erDiagram
-    users ||--o{ conversations : "owns"
-    users ||--o{ documents : "owns"
-    users ||--o{ code_executions : "owns"
-
-    conversations ||--o{ messages : "contains"
-    messages ||--o{ message_attachments : "has"
-
-    documents ||--o{ document_chunks : "split into"
+    users ||--o{ projects : "owns"
+    projects ||--o{ project_versions : "has"
+    projects ||--o{ project_attachments : "has"
 
     users {
         uuid id PK
@@ -235,25 +325,29 @@ erDiagram
         timestamptz created_at
     }
 
-    conversations {
+    projects {
         uuid id PK
         uuid user_id FK
         varchar title
+        varchar status
+        jsonb brief
         timestamptz created_at
         timestamptz updated_at
     }
 
-    messages {
+    project_versions {
         uuid id PK
-        uuid conversation_id FK
-        varchar role
-        text content
+        uuid project_id FK
+        int version_number
+        varchar kind
+        text prompt
+        text html
         timestamptz created_at
     }
 
-    message_attachments {
+    project_attachments {
         uuid id PK
-        uuid message_id FK
+        uuid project_id FK
         varchar file_name
         varchar file_type
         bigint file_size
@@ -261,45 +355,30 @@ erDiagram
         varchar mime_type
         timestamptz created_at
     }
-
-    documents {
-        uuid id PK
-        uuid user_id FK
-        varchar title
-        varchar source
-        varchar file_name
-        varchar file_type
-        bigint file_size
-        text file_path
-        varchar status
-        text error_message
-        timestamptz created_at
-    }
-
-    document_chunks {
-        uuid id PK
-        uuid document_id FK
-        int chunk_index
-        text content
-        vector embedding
-        timestamptz created_at
-    }
-
-    code_executions {
-        uuid id PK
-        uuid user_id FK
-        varchar language
-        text code
-        text stdin
-        text stdout
-        text stderr
-        int exit_code
-        bigint execution_time_ms
-        bigint memory_kb
-        varchar status
-        timestamptz created_at
-    }
 ```
+
+Tabel legacy (`conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, `code_executions`) tidak digambar karena tidak dipakai pada Tahap A.
+
+---
+
+## Configuration
+
+Variabel environment yang relevan untuk Tahap A:
+
+| Variabel | Fungsi |
+| --- | --- |
+| `APP_HOST`, `APP_PORT` | Alamat server |
+| `DATABASE_URL` | Koneksi PostgreSQL |
+| `JWT_SECRET`, `JWT_ISSUER`, `JWT_EXPIRATION` | Konfigurasi JWT |
+| `CORS_ALLOWED_ORIGINS` | Whitelist origin |
+| `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_BURST` | Limit General API (default 120/menit) |
+| `GENERATE_RATE_LIMIT_PER_MINUTE` | Limit `generate`/`revise` (default 5/menit) |
+| `UPLOAD_MAX_BYTES` | Ukuran maksimum per gambar (default 10 MB) |
+| `PROJECT_MAX_IMAGES` | Jumlah gambar maksimum per request (default 4) |
+| `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (nilai default ditentukan saat implementasi) |
+| Konfigurasi Gemini (provider, API key, model) | Diperiksa oleh `GET /ai/health` |
+
+Variabel Judge0 (`EXEC_*`) dan RAG **opsional** dan tidak divalidasi saat startup selama modulnya tidak diregistrasi.
 
 ---
 
@@ -309,53 +388,57 @@ erDiagram
 backend/
 ├── cmd/
 │   └── server/
-│       └── main.go           # Entrypoint: Dependency injection, signal handling, graceful shutdown
+│       └── main.go           # Entrypoint: DI, signal handling, graceful shutdown
 ├── internal/
-│   ├── apperror/             # Sentralisasi typed errors & HTTP mapping yang aman
-│   ├── config/               # Environment parser, casting, validasi fail-fast
-│   ├── database/             # Postgres connection pool runner & embedded migrator
-│   ├── handler/              # Handler untuk Health dan Auth
-│   ├── jwt/                  # JWT token generator, parser, dan validator
-│   ├── middleware/           # Pipeline middleware (Auth, SSE Auth, CORS, Logger, RateLimit, dll)
+│   ├── apperror/             # Typed errors & HTTP mapping yang aman
+│   ├── config/               # Environment parser & validasi fail-fast
+│   ├── database/             # Postgres pool & embedded migrator
+│   ├── handler/              # Handler Health dan Auth
+│   ├── jwt/                  # JWT generator, parser, validator
+│   ├── middleware/           # Auth, SSE Auth, CORS, Logger, RateLimit, dll
 │   ├── model/                # User model & auth DTOs
 │   ├── modules/
-│   │   ├── ai/               # Domain Modul AI Assistant & RAG
-│   │   │   ├── extractor/    # Document parsers (PDF, DOCX, TXT)
-│   │   │   ├── handler/      # HTTP handlers & SSE stream writer
-│   │   │   ├── model/        # AI, Conversation, RAG & Attachment models
-│   │   │   ├── provider/     # Provider abstraction & Gemini implementation
-│   │   │   ├── rag/          # Text chunker & overlap calculator
-│   │   │   ├── repository/   # Parameterized SQL queries untuk AI & RAG
-│   │   │   └── service/      # Business logic, multimodal, context memory, vector search
-│   │   ├── execution/        # Domain Modul Code Execution Sandbox
-│   │   │   ├── handler/      # HTTP handlers untuk /execute
-│   │   │   ├── model/        # DTO & Database models eksekusi kode
-│   │   │   ├── repository/   # SQL queries untuk riwayat eksekusi
-│   │   │   └── service/      # Sandbox polling orchestrator & language validation
-│   │   └── business/         # Template/scaffold untuk modul bisnis masa depan
+│   │   ├── project/          # ★ BARU: domain inti AI Website Generator
+│   │   │   ├── handler/      # CRUD, generate/revise (SSE), versions, export, attachments
+│   │   │   ├── model/        # Brief, Project, Version, Attachment, request DTOs
+│   │   │   ├── repository/   # Parameterized SQL untuk projects, versions, attachments
+│   │   │   └── service/      # State machine, prompt builder, HTML validator, storage gambar
+│   │   ├── ai/               # DITUNDA (kecuali /ai/health & GeminiProvider)
+│   │   │   ├── extractor/    # Parser PDF, DOCX, TXT
+│   │   │   ├── handler/
+│   │   │   ├── model/
+│   │   │   ├── provider/     # Provider abstraction & Gemini (tetap dipakai project)
+│   │   │   ├── rag/
+│   │   │   ├── repository/
+│   │   │   └── service/
+│   │   ├── execution/        # DITUNDA: Code Execution Sandbox (Judge0)
+│   │   └── business/         # Template/scaffold modul bisnis masa depan
 │   ├── repository/           # Repository User dasar
 │   ├── routes/               # Routing Chi & middleware wiring
 │   └── service/              # Service Auth
-├── migrations/               # Berkas migrasi SQL berurutan (0001 s.d. 0009)
+├── migrations/               # 0001 s.d. 0010
 ├── pkg/
-│   ├── logger/               # slog wrapper (text untuk dev, JSON untuk prod)
-│   └── response/             # Format response standar JSON & request validator
+│   ├── logger/               # slog wrapper
+│   └── response/             # Format response standar & request validator
 ├── storage/                  # Supabase & PostgreSQL pool integration
-├── uploads/                  # Penyimpanan berkas lokal (dokumen & gambar lampiran)
-└── docs/                     # Dokumentasi API, Arsitektur, dan Client Requirements
+├── uploads/                  # Gambar referensi project
+└── docs/                     # api.md, architecture.md, client-requirements.md
 ```
 
 ---
 
 ## Observability & Error Handling
 
-1. **Structured Logging**: Menggunakan pustaka standar `log/slog`.
-   - Environment `development`: Text format dengan level `DEBUG`.
-   - Environment `production`: Structured JSON format dengan level `INFO`.
-   - Data sensitif (password, secret, JWT, API key) tidak pernah di-log.
-2. **Canonical Error Handling**:
-   - `apperror.Error` membungkus status HTTP dan kode error standar.
-   - Pesan error internal (`Err`) hanya dicatat pada server log; pesan ke client (`Message`) selalu aman dan disaring.
-3. **Graceful Shutdown**:
-   - Menangkap sinyal `SIGINT` (Ctrl+C) dan `SIGTERM`.
-   - Mengalokasikan window 30 detik untuk menyelesaikan request in-flight (seperti stream AI atau eksekusi sandbox) sebelum server ditutup secara bersih.
+1. **Structured Logging** (`log/slog`): `development` memakai text + `DEBUG`; `production` memakai JSON + `INFO`. Password, secret, JWT, dan API key tidak pernah di-log. Untuk proses generate, catat `project_id`, `version_number`, durasi, dan jumlah byte, **bukan** isi HTML atau prompt lengkap.
+2. **Canonical Error Handling**: `apperror.Error` membungkus status HTTP dan kode error standar. Pesan internal hanya di log; pesan ke client selalu disaring. Mapping kode: `VALIDATION_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `AI_PROVIDER_ERROR`, `SERVICE_UNAVAILABLE`, `DATABASE_ERROR`, `INTERNAL_SERVER_ERROR`. Kode `EXECUTION_PROVIDER_ERROR` dipertahankan tetapi belum dipakai.
+3. **Graceful Shutdown**: menangkap `SIGINT`/`SIGTERM` dan memberi window 30 detik agar stream generate yang sedang berjalan selesai sebelum server ditutup.
+
+---
+
+## Roadmap
+
+| Tahap | Cakupan |
+| --- | --- |
+| **A (sekarang)** | Single-file HTML: project, generate, revise, versions, export, attachments |
+| **B** | Multi-file (mis. React/Vite): tabel `project_files`, parsing banyak file, bundling untuk preview, revisi per file |
+| Opsional | Basis pengetahuan brand via RAG, kuota generate per user, publish/hosting hasil website, rollback ke versi lama sebagai versi baru |
