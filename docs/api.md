@@ -1,7 +1,27 @@
-# API Documentation
+# API Documentation — AI Website Generator
 
-> **Single Source of Truth** untuk semua request/response kontrak antara backend dan frontend.  
-> Setiap field, tipe data, dan constraint di dokumen ini diambil langsung dari kode (struct DTO, handler, validasi, dan apperror package) — bukan dari asumsi atau dokumentasi lama.
+> **Single Source of Truth** untuk semua request/response kontrak antara backend dan frontend.
+> Setiap field, tipe data, dan constraint di dokumen ini harus selalu sama dengan kode (struct DTO, handler, validasi, dan package `apperror`). Jika kode berubah, dokumen ini wajib diperbarui pada commit yang sama.
+
+Produk ini adalah **AI Website Generator**: user login, menjelaskan website yang ingin dibuat (brief), AI menghasilkan website, lalu user merevisinya lewat instruksi teks. Pada **Tahap A** (dokumen ini), setiap versi website adalah **satu file HTML mandiri** (*single self-contained HTML document*).
+
+---
+
+## Perubahan dari Versi Sebelumnya (Generic AI Assistant)
+
+| Area | Status | Keterangan |
+| --- | --- | --- |
+| Auth (`/auth/*`) | Tetap | Tidak ada perubahan kontrak |
+| Health (`/health`, `/health/db`, `/ai/health`) | Tetap | Tidak ada perubahan kontrak |
+| Projects, Generate, Revise, Versions, Export, Attachments | **Baru** | Lihat bagian 3 s.d. 7 |
+| `POST /ai/chat`, `POST /ai/chat/stream` | **Dihapus dari router** | Digantikan `generate` dan `revise` |
+| `/ai/conversations*` | **Dihapus dari router** | Digantikan `/projects*` |
+| `/ai/attachments/{id}` | **Dihapus dari router** | Digantikan `/projects/{id}/attachments/{attachmentId}` |
+| `/ai/documents*` (RAG) | **Ditunda** | Tidak diregistrasi di router; kode dan tabel dipertahankan untuk tahap berikutnya |
+| `/execute*` (Judge0 sandbox) | **Ditunda** | Tidak diregistrasi di router; preview website dirender di browser |
+| Field `system` (override system prompt) | **Dihapus** | System prompt dikunci di server |
+
+Endpoint yang ditandai "dihapus dari router" atau "ditunda" akan mengembalikan `404 Not Found` standar router.
 
 ---
 
@@ -13,33 +33,24 @@
 - [Error Codes](#error-codes)
 - [Rate Limiting](#rate-limiting)
 - [1. System & Health](#1-system--health)
-  - [GET /health](#get-health)
-  - [GET /health/db](#get-healthdb)
-  - [GET /api/v1/ai/health](#get-apiv1aihealth)
 - [2. Auth](#2-auth)
-  - [POST /api/v1/auth/register](#post-apiv1authregister)
-  - [POST /api/v1/auth/login](#post-apiv1authlogin)
-  - [GET /api/v1/auth/me](#get-apiv1authme)
-- [3. AI Chat](#3-ai-chat)
-  - [POST /api/v1/ai/chat](#post-apiv1aichat)
-  - [POST /api/v1/ai/chat/stream (SSE)](#post-apiv1aichatstream-sse)
-- [4. Conversations](#4-conversations)
-  - [GET /api/v1/ai/conversations](#get-apiv1aiconversations)
-  - [GET /api/v1/ai/conversations/{id}](#get-apiv1aiconversationsid)
-  - [DELETE /api/v1/ai/conversations/{id}](#delete-apiv1aiconversationsid)
-- [5. Attachments](#5-attachments)
-  - [GET /api/v1/ai/attachments/{id}](#get-apiv1aiattachmentsid)
-- [6. RAG Documents](#6-rag-documents)
-  - [POST /api/v1/ai/documents (Ingest Teks)](#post-apiv1aidocuments-ingest-teks)
-  - [POST /api/v1/ai/documents/upload (Upload File)](#post-apiv1aidocumentsupload-upload-file)
-  - [GET /api/v1/ai/documents](#get-apiv1aidocuments)
-  - [GET /api/v1/ai/documents/{id}](#get-apiv1aidocumentsid)
-  - [GET /api/v1/ai/documents/{id}/status](#get-apiv1aidocumentsidstatus)
-  - [DELETE /api/v1/ai/documents/{id}](#delete-apiv1aidocumentsid)
-- [7. Code Execution](#7-code-execution)
-  - [POST /api/v1/execute](#post-apiv1execute)
-  - [GET /api/v1/execute/history](#get-apiv1executehistory)
-  - [GET /api/v1/execute/{id}](#get-apiv1executeid)
+- [3. Projects](#3-projects)
+  - [POST /api/v1/projects](#post-apiv1projects)
+  - [GET /api/v1/projects](#get-apiv1projects)
+  - [GET /api/v1/projects/{id}](#get-apiv1projectsid)
+  - [DELETE /api/v1/projects/{id}](#delete-apiv1projectsid)
+- [4. Generate & Revise (SSE)](#4-generate--revise-sse)
+  - [POST /api/v1/projects/{id}/generate](#post-apiv1projectsidgenerate-sse)
+  - [POST /api/v1/projects/{id}/revise](#post-apiv1projectsidrevise-sse)
+- [5. Versions](#5-versions)
+  - [GET /api/v1/projects/{id}/versions](#get-apiv1projectsidversions)
+  - [GET /api/v1/projects/{id}/versions/{number}](#get-apiv1projectsidversionsnumber)
+- [6. Export](#6-export)
+  - [GET /api/v1/projects/{id}/export](#get-apiv1projectsidexport)
+- [7. Attachments (Gambar Referensi)](#7-attachments-gambar-referensi)
+  - [GET /api/v1/projects/{id}/attachments](#get-apiv1projectsidattachments)
+  - [GET /api/v1/projects/{id}/attachments/{attachmentId}](#get-apiv1projectsidattachmentsattachmentid)
+- [8. Menampilkan Preview di Frontend](#8-menampilkan-preview-di-frontend)
 
 ---
 
@@ -71,7 +82,7 @@ Untuk semua endpoint protected, sertakan token di **Authorization header**:
 Authorization: Bearer <token>
 ```
 
-**Pengecualian:** Endpoint `POST /api/v1/ai/chat/stream` (SSE) juga menerima token via query parameter `?token=<jwt>` — hanya untuk endpoint ini saja karena keterbatasan browser `EventSource` API.
+**Pengecualian:** Endpoint SSE (`POST /api/v1/projects/{id}/generate` dan `POST /api/v1/projects/{id}/revise`) juga menerima token via query parameter `?token=<jwt>`. Header tetap direkomendasikan; query param disediakan untuk kompatibilitas klien yang tidak bisa mengirim header kustom.
 
 ### JWT Payload (Claims)
 
@@ -154,8 +165,7 @@ Ketika error code adalah `VALIDATION_ERROR` dan error berasal dari struct valida
     "code": "VALIDATION_ERROR",
     "message": "Invalid request",
     "fields": {
-      "email": "must be a valid email address",
-      "password": "must be at least 8 characters"
+      "brief.description": "must be at least 10 characters"
     }
   }
 }
@@ -166,11 +176,12 @@ Ketika error code adalah `VALIDATION_ERROR` dan error berasal dari struct valida
 >
 > Setiap response menyertakan header tracking `X-Request-ID`.
 
+> [!NOTE]
+> Request JSON yang mengandung **field tidak dikenal** ditolak dengan `BAD_REQUEST`. Contoh: mengirim field `system` (yang sudah dihapus) akan ditolak.
+
 ---
 
 ## Error Codes
-
-Daftar lengkap semua error code yang digunakan di kode (dari `internal/apperror/apperror.go`):
 
 | Code | HTTP Status | Kapan Muncul |
 | --- | --- | --- |
@@ -178,11 +189,11 @@ Daftar lengkap semua error code yang digunakan di kode (dari `internal/apperror/
 | `BAD_REQUEST` | 400 | Body request bukan JSON valid, payload melebihi ukuran maksimum, atau JSON mengandung field yang tidak dikenali. |
 | `UNAUTHORIZED` | 401 | Token JWT hilang, tidak valid, kedaluwarsa, atau kredensial login (email/password) salah. |
 | `FORBIDDEN` | 403 | Role user tidak mencukupi untuk mengakses resource (saat ini belum digunakan di route manapun selain middleware internal). |
-| `NOT_FOUND` | 404 | Resource (conversation, dokumen, attachment, eksekusi) tidak ditemukan, atau bukan milik user yang sedang login. |
-| `CONFLICT` | 409 | Duplikat resource unik — saat ini hanya untuk email yang sudah terdaftar saat register. |
+| `NOT_FOUND` | 404 | Project, versi, atau attachment tidak ditemukan, atau bukan milik user yang sedang login. |
+| `CONFLICT` | 409 | Email sudah terdaftar saat register; **atau** state project tidak mengizinkan operasi (lihat bagian 4: generate/revise). |
 | `RATE_LIMITED` | 429 | Terlalu banyak request dari IP yang sama dalam satu menit. Selalu disertai header `Retry-After: 60`. |
 | `AI_PROVIDER_ERROR` | 502 | Upstream LLM provider (Gemini) error, tidak dapat dijangkau, atau timeout. Detail teknis tidak diekspos ke client. |
-| `EXECUTION_PROVIDER_ERROR` | 502 | Upstream execution engine (Judge0) error, tidak dapat dijangkau, timeout, atau tidak mengembalikan token eksekusi. |
+| `EXECUTION_PROVIDER_ERROR` | 502 | **Tidak digunakan saat ini** (modul execution ditunda). Kode dipertahankan di `apperror` untuk tahap berikutnya. |
 | `SERVICE_UNAVAILABLE` | 503 | Database tidak tersedia atau tidak dapat dijangkau. |
 | `DATABASE_ERROR` | 500 | Operasi database gagal (query error, constraint violation, dsb.). |
 | `INTERNAL_SERVER_ERROR` | 500 | Kesalahan internal server yang tidak terklasifikasi. |
@@ -191,16 +202,15 @@ Daftar lengkap semua error code yang digunakan di kode (dari `internal/apperror/
 
 ## Rate Limiting
 
-Backend menerapkan **3 tingkatan rate limiting** berbasis token bucket per alamat IP client:
+Backend menerapkan **2 tingkatan rate limiting** berbasis token bucket per alamat IP client:
 
 | Tier | Endpoint yang Terkena | Default Limit | Env Var Konfigurasi |
 | --- | --- | --- | --- |
 | **General API** | Semua endpoint `/api/v1/*` | 120 req/menit | `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_BURST` |
-| **AI Chat** | `POST /api/v1/ai/chat`, `POST /api/v1/ai/chat/stream` | 10 req/menit | `AI_CHAT_RATE_LIMIT_PER_MINUTE` |
-| **Execution Sandbox** | `POST /api/v1/execute`, `GET /api/v1/execute/history`, `GET /api/v1/execute/{id}` | 15 req/menit | `EXEC_RATE_LIMIT_PER_MINUTE`, `EXEC_RATE_LIMIT_BURST` |
+| **Generate** | `POST /projects/{id}/generate`, `POST /projects/{id}/revise` | 5 req/menit | `GENERATE_RATE_LIMIT_PER_MINUTE` |
 
 > [!IMPORTANT]
-> AI Chat limit dan Execution limit adalah **tambahan** di atas General API limit — request yang melampaui salah satunya akan mendapat 429.
+> Limit Generate adalah **tambahan** di atas General API limit — request yang melampaui salah satunya akan mendapat 429.
 
 Endpoint `/health` dan `/health/db` **tidak kena rate limit**.
 
@@ -499,12 +509,6 @@ Mengambil data profil pengguna yang sedang login berdasarkan token JWT.
 - **Auth:** Wajib (`Authorization: Bearer <token>`)
 - **Rate Limit:** General API (120 req/menit)
 
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
 #### Response `200 OK`
 
 ```json
@@ -538,82 +542,190 @@ Mengambil data profil pengguna yang sedang login berdasarkan token JWT.
 
 ---
 
-## 3. AI Chat
+## 3. Projects
 
-### POST /api/v1/ai/chat
+**Project** adalah satu website yang sedang dibuat user. Setiap project menyimpan **brief** (deskripsi keinginan user) dan riwayat **versi** hasil generate/revisi.
 
-Interaksi utama AI Assistant. Mendukung percakapan multi-turn, integrasi RAG knowledge base, dan multimodal image attachments.
+### Alur Penggunaan Utama
+
+```
+Login
+  └─► Halaman "Website seperti apa yang ingin kamu buat?"
+        └─► POST /projects            (kirim brief)
+              └─► POST /projects/{id}/generate   (SSE, versi 1)
+                    └─► GET  /projects/{id}/versions/1   (ambil HTML final → preview)
+                          └─► POST /projects/{id}/revise (SSE, versi 2, 3, ...)
+                                └─► GET /projects/{id}/export (unduh .html)
+```
+
+### Status Project
+
+| `status` | Arti | Operasi yang Diizinkan |
+| --- | --- | --- |
+| `draft` | Project dibuat, belum pernah di-generate | `generate` |
+| `generating` | Sedang ada proses generate/revise berjalan | *(tidak ada; `generate`/`revise` → `409 CONFLICT`)* |
+| `ready` | Punya minimal satu versi dan tidak sedang diproses | `revise` |
+| `failed` | Generate pertama gagal (belum punya versi) | `generate` (coba lagi) |
+
+Transisi: `draft → generating → ready | failed`, `failed → generating → ready | failed`, `ready → generating → ready`.
+Jika **revise** gagal, status kembali ke `ready` (versi sebelumnya tetap utuh).
+
+### Schema `Brief`
+
+| Field | Tipe | Wajib | Constraint | Deskripsi |
+| --- | --- | --- | --- | --- |
+| `description` | `string` | Ya | 10–4000 karakter | Penjelasan bebas website yang diinginkan |
+| `website_type` | `string` | Tidak | Salah satu: `landing_page`, `portfolio`, `company_profile`, `online_store`, `blog`, `other`. Default `landing_page` | Jenis website |
+| `business_name` | `string` | Tidak | Maks 120 karakter | Nama bisnis / brand / pemilik |
+| `style` | `string` | Tidak | Maks 200 karakter | Gaya visual (mis. "modern minimalis", "playful", "elegan") |
+| `color_palette` | `string` | Tidak | Maks 200 karakter | Preferensi warna (mis. "biru navy dan putih", `#0F172A`) |
+| `language` | `string` | Tidak | `id` atau `en`. Default `id` | Bahasa konten website |
+| `sections` | `array<string>` | Tidak | Maks 12 item, tiap item maks 50 karakter | Section yang diinginkan (mis. `["hero","about","pricing","contact"]`) |
+
+### Schema `ProjectResponse`
+
+| Field | Tipe | Deskripsi |
+| --- | --- | --- |
+| `id` | `string` (UUID) | ID project |
+| `title` | `string` | Judul project |
+| `status` | `string` | `draft`, `generating`, `ready`, atau `failed` |
+| `brief` | `Brief` | Brief yang tersimpan |
+| `version_count` | `integer` | Jumlah versi yang sudah ada |
+| `latest_version` | `VersionResponse` \| `null` | **Hanya ada di `GET /projects/{id}`.** Versi terbaru lengkap dengan `html`; `null` jika belum ada versi |
+| `created_at` | `string` (RFC3339) | Waktu project dibuat |
+| `updated_at` | `string` (RFC3339) | Waktu project terakhir berubah |
+
+---
+
+### POST /api/v1/projects
+
+Membuat project baru dari brief. **Tidak** memanggil AI — hanya menyimpan brief. Generate dilakukan lewat endpoint terpisah.
 
 - **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** AI Chat (default 10 req/menit per IP) **+ General API (120 req/menit)**
-- **Content-Type yang Didukung:**
-  - `application/json` — untuk teks murni atau gambar dalam base64
-  - `multipart/form-data` — untuk upload file gambar langsung
+- **Rate Limit:** General API (120 req/menit)
 
-#### Opsi A: Request `application/json`
+#### Request
 
 | Header | Nilai |
 | --- | --- |
 | `Content-Type` | `application/json` |
 | `Authorization` | `Bearer <token>` |
 
-**Body Schema:**
+**Body:**
 
 | Field | Tipe | Wajib | Constraint | Deskripsi |
 | --- | --- | --- | --- | --- |
-| `message` | `string` | Ya | Max 10.000 karakter | Teks prompt pengguna |
-| `conversation_id` | `string` (UUID) | Tidak | — | ID thread yang ingin dilanjutkan. Jika kosong/tidak ada, percakapan baru dibuat otomatis |
-| `system` | `string` | Tidak | — | Override system prompt default. Jika kosong, server menggunakan system prompt bawaan |
-| `use_rag` | `boolean` | Tidak | Default `false` | Aktifkan RAG retrieval dari knowledge base dokumen user |
-| `document_id` | `string` (UUID) | Tidak | — | Batasi RAG ke dokumen spesifik. Hanya dipakai jika `use_rag: true` |
-| `images` | `array<ImagePayload>` | Tidak | — | Daftar gambar yang dilampirkan (multimodal) |
-
-**Schema `ImagePayload` (untuk JSON):**
-
-| Field | Tipe | Wajib | Constraint |
-| --- | --- | --- | --- |
-| `mime_type` | `string` | Ya | `"image/jpeg"`, `"image/jpg"`, `"image/png"`, atau `"image/webp"` |
-| `data` | `string` (base64) | Ya | Data biner gambar dikodekan base64. Maks ukuran setelah decode sesuai `UPLOAD_MAX_BYTES` (default 10 MB) |
-| `file_name` | `string` | Tidak | Nama file opsional (digunakan untuk fallback MIME detection jika `mime_type` kosong) |
+| `title` | `string` | Tidak | Maks 200 karakter | Judul project. Jika kosong, server memakai `brief.business_name`; jika itu juga kosong, memakai 60 karakter pertama `brief.description` |
+| `brief` | `Brief` | Ya | Lihat schema `Brief` | Brief website |
 
 ```json
 {
-  "conversation_id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-  "message": "Analisis diagram arsitektur ini dan berikan rekomendasi perbaikan",
-  "system": "Anda adalah Lead Solutions Architect berpengalaman.",
-  "use_rag": true,
-  "document_id": "8f3a1b2c-473d-4c31-9014-cb9aa15df41e",
-  "images": [
+  "title": "Website Kopi Senja",
+  "brief": {
+    "description": "Landing page untuk kedai kopi lokal di Purwokerto dengan menu, jam buka, lokasi, dan tombol pesan via WhatsApp.",
+    "website_type": "landing_page",
+    "business_name": "Kopi Senja",
+    "style": "hangat, rustic, modern",
+    "color_palette": "cokelat kopi dan krem",
+    "language": "id",
+    "sections": ["hero", "menu", "about", "location", "contact"]
+  }
+}
+```
+
+#### Response `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "Project created",
+  "data": {
+    "id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+    "title": "Website Kopi Senja",
+    "status": "draft",
+    "brief": {
+      "description": "Landing page untuk kedai kopi lokal di Purwokerto dengan menu, jam buka, lokasi, dan tombol pesan via WhatsApp.",
+      "website_type": "landing_page",
+      "business_name": "Kopi Senja",
+      "style": "hangat, rustic, modern",
+      "color_palette": "cokelat kopi dan krem",
+      "language": "id",
+      "sections": ["hero", "menu", "about", "location", "contact"]
+    },
+    "version_count": 0,
+    "created_at": "2026-09-30T08:00:00Z",
+    "updated_at": "2026-09-30T08:00:00Z"
+  }
+}
+```
+
+#### Error Responses
+
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `brief.description` kosong/terlalu pendek/terlalu panjang, `website_type` atau `language` di luar daftar, atau melebihi batas panjang lainnya |
+| 400 | `BAD_REQUEST` | Body bukan JSON valid, melebihi ukuran maksimum, atau mengandung field tidak dikenal |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
+
+---
+
+### GET /api/v1/projects
+
+Mengambil daftar project milik user yang sedang login, diurutkan dari yang terakhir diperbarui.
+
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
+
+**Query Parameters:**
+
+| Parameter | Tipe | Default | Constraint | Deskripsi |
+| --- | --- | --- | --- | --- |
+| `limit` | `integer` | `20` | Min 1, maks 100 | Jumlah item yang dikembalikan |
+| `offset` | `integer` | `0` | Min 0 | Offset untuk pagination |
+
+> Nilai `limit`/`offset` yang tidak valid diabaikan dan server memakai default.
+
+#### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Request successful",
+  "data": [
     {
-      "file_name": "diagram.png",
-      "mime_type": "image/png",
-      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      "id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+      "title": "Website Kopi Senja",
+      "status": "ready",
+      "brief": { "description": "Landing page untuk kedai kopi lokal ...", "website_type": "landing_page", "language": "id" },
+      "version_count": 3,
+      "created_at": "2026-09-30T08:00:00Z",
+      "updated_at": "2026-09-30T08:20:00Z"
     }
   ]
 }
 ```
 
-#### Opsi B: Request `multipart/form-data`
+> Item array memakai schema `ProjectResponse` **tanpa** `latest_version`. Jika user belum punya project, `data` adalah array kosong `[]`.
 
-Gunakan format ini saat pengguna memilih file gambar langsung dari input `<input type="file">` di browser.
+#### Error Responses
 
-| Header | Nilai |
-| --- | --- |
-| `Content-Type` | `multipart/form-data; boundary=...` (di-set browser otomatis) |
-| `Authorization` | `Bearer <token>` |
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
-**Form Fields:**
+---
 
-| Field | Tipe | Wajib | Deskripsi |
-| --- | --- | --- | --- |
-| `message` | `string` | Ya | Teks prompt pengguna |
-| `conversation_id` | `string` | Tidak | UUID thread yang dilanjutkan |
-| `system` | `string` | Tidak | Override system prompt |
-| `use_rag` | `string` | Tidak | Nilai string `"true"` atau `"1"` untuk mengaktifkan RAG |
-| `document_id` | `string` | Tidak | UUID dokumen untuk batasi RAG |
-| `image` / `images` / `file` / `files` | `file (binary)` | Tidak | File gambar yang diupload. Server membaca dari semua field name ini. Mendukung multi-file |
+### GET /api/v1/projects/{id}
 
-> Ukuran total multipart dibatasi 32 MB buffer. Ukuran per file dibatasi oleh `UPLOAD_MAX_BYTES` (default 10 MB).
+Mengambil detail satu project beserta **versi terbaru lengkap dengan HTML**-nya (untuk langsung ditampilkan di preview).
+
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
+- **Security:** Hanya mengembalikan project milik user yang sedang login (`WHERE id = $1 AND user_id = $2`)
+
+**Path param:** `{id}` — UUID project
 
 #### Response `200 OK`
 
@@ -622,113 +734,77 @@ Gunakan format ini saat pengguna memilih file gambar langsung dari input `<input
   "success": true,
   "message": "Request successful",
   "data": {
-    "conversation_id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-    "message": {
-      "id": "9d1e2f3a-7a8b-4c5d-9e0f-1a2b3c4d5e6f",
-      "role": "assistant",
-      "content": "Berdasarkan diagram arsitektur yang dilampirkan, saya melihat beberapa area yang dapat ditingkatkan...",
-      "attachments": [
-        {
-          "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
-          "message_id": "8c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-          "file_name": "diagram.png",
-          "file_type": "png",
-          "file_size": 154200,
-          "mime_type": "image/png",
-          "created_at": "2026-09-26T10:15:00Z"
-        }
-      ]
+    "id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+    "title": "Website Kopi Senja",
+    "status": "ready",
+    "brief": { "description": "Landing page untuk kedai kopi lokal ...", "website_type": "landing_page", "language": "id" },
+    "version_count": 2,
+    "latest_version": {
+      "id": "b3c1d2e4-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+      "project_id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+      "version_number": 2,
+      "kind": "revise",
+      "prompt": "Ganti warna hero menjadi biru tua",
+      "html": "<!DOCTYPE html><html lang=\"id\">...</html>",
+      "created_at": "2026-09-30T08:20:00Z"
     },
-    "sources": [
-      {
-        "id": "f1e2d3c4-b5a6-4789-8901-234567890abc",
-        "document_id": "8f3a1b2c-473d-4c31-9014-cb9aa15df41e",
-        "chunk_index": 2,
-        "content": "Standar keamanan sistem mengharuskan enkripsi end-to-end pada semua layer komunikasi...",
-        "similarity": 0.875
-      }
-    ]
+    "created_at": "2026-09-30T08:00:00Z",
+    "updated_at": "2026-09-30T08:20:00Z"
   }
 }
 ```
-
-**Schema `data` (`ChatResponse`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `conversation_id` | `string` (UUID) | ID thread percakapan (baru atau yang dilanjutkan) |
-| `message.id` | `string` (UUID) | ID pesan asisten |
-| `message.role` | `string` | Selalu `"assistant"` |
-| `message.content` | `string` | Isi respons AI |
-| `message.attachments` | `array<MessageAttachment>` | Lampiran gambar dari user message. **Ada hanya jika user melampirkan gambar**; field ini berisi attachment milik user message, bukan assistant |
-| `sources` | `array<ChunkSearchResult>` | Chunk dokumen yang digunakan untuk RAG. **Ada hanya jika `use_rag: true`**; kosong jika RAG tidak menemukan hasil relevan |
-
-**Schema `MessageAttachment`:**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID attachment |
-| `message_id` | `string` (UUID) | ID pesan yang memiliki attachment ini |
-| `file_name` | `string` | Nama file original |
-| `file_type` | `string` | Tipe file yang dinormalisasi (`"jpeg"`, `"png"`, `"webp"`) |
-| `file_size` | `integer` | Ukuran file dalam bytes |
-| `mime_type` | `string` | MIME type (`"image/jpeg"`, `"image/png"`, `"image/webp"`) |
-| `created_at` | `string` (RFC3339) | Waktu attachment dibuat |
-
-**Schema `ChunkSearchResult`:**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID chunk |
-| `document_id` | `string` (UUID) | ID dokumen induk |
-| `chunk_index` | `integer` | Urutan chunk dalam dokumen (0-based) |
-| `content` | `string` | Isi teks chunk |
-| `similarity` | `float64` | Skor kemiripan cosine (0.0 – 1.0, semakin tinggi semakin relevan) |
 
 #### Error Responses
 
 | Status | Code | Kapan |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `message` kosong, gambar format tidak didukung, ukuran gambar melebihi limit, atau parsing multipart gagal |
-| 400 | `BAD_REQUEST` | Body request melebihi ukuran maksimum atau bukan JSON valid |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | `conversation_id` tidak ditemukan atau bukan milik user |
-| 429 | `RATE_LIMITED` | Limit AI Chat atau General API terlampaui |
-| 502 | `AI_PROVIDER_ERROR` | Gemini provider error atau tidak bisa dijangkau |
-
-**Catatan format gambar yang didukung:** `image/jpeg`, `image/jpg`, `image/png`, `image/webp`. Format lain (GIF, BMP, TIFF, dsb.) akan ditolak dengan `VALIDATION_ERROR`: `"Unsupported image type. Only JPEG, PNG, and WebP are supported"`.
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
 ---
 
-### POST /api/v1/ai/chat/stream (SSE)
+### DELETE /api/v1/projects/{id}
 
-Mengalirkan respons AI secara real-time token-by-token menggunakan **Server-Sent Events (SSE)**. Fungsional identik dengan `/ai/chat` tetapi mengembalikan streaming response alih-alih satu response JSON.
+Menghapus project beserta seluruh versi dan attachment-nya (record database **dan** file gambar di disk).
 
-- **Auth:** Wajib. Menerima dua cara:
-  1. `Authorization: Bearer <token>` (header — direkomendasikan)
-  2. `?token=<jwt>` (query param — hanya untuk endpoint ini, untuk kompatibilitas `EventSource` API browser)
-- **Rate Limit:** AI Chat (default 10 req/menit per IP) **+ General API (120 req/menit)**
-- **Format Request:** Identik dengan `POST /api/v1/ai/chat` — mendukung `application/json` dan `multipart/form-data`
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
+- **Security:** Hanya project milik user yang sedang login
 
-> [!WARNING]
-> Endpoint ini adalah **satu-satunya** endpoint yang menerima JWT via query param `?token=`. Semua endpoint lain **harus** menggunakan header `Authorization: Bearer`.
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Content-Type` | `application/json` atau `multipart/form-data` |
-| `Authorization` | `Bearer <token>` (atau gunakan `?token=<jwt>` di URL) |
+#### Response `200 OK`
 
 ```json
 {
-  "conversation_id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-  "message": "Buatkan fungsi generator prima di Go",
-  "use_rag": false
+  "success": true,
+  "message": "Project deleted",
+  "data": null
 }
 ```
 
-#### Response Headers (HTTP 200 OK — SSE dimulai)
+#### Error Responses
+
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 409 | `CONFLICT` | Project sedang `generating` |
+
+---
+
+## 4. Generate & Revise (SSE)
+
+Kedua endpoint ini mengalirkan hasil AI secara real-time menggunakan **Server-Sent Events (SSE)**. Isi stream adalah **potongan teks HTML** yang sedang ditulis AI.
+
+- **Auth:** Wajib. `Authorization: Bearer <token>` (direkomendasikan) atau `?token=<jwt>`
+- **Rate Limit:** Generate (default 5 req/menit per IP) **+ General API (120 req/menit)**
+- **Content-Type yang Didukung:** `application/json` dan `multipart/form-data`
+
+### Format Event SSE (berlaku untuk generate dan revise)
+
+**Response Headers (HTTP 200 OK — SSE dimulai)**
 
 ```http
 Content-Type: text/event-stream
@@ -738,146 +814,267 @@ X-Accel-Buffering: no
 ```
 
 > [!NOTE]
-> Server **segera** mengirim HTTP 200 dan membuka koneksi SSE sebelum token pertama diterima dari AI provider. Jika ada error **sebelum** streaming dimulai (mis. token tidak valid, conversation not found), server masih mengembalikan JSON error biasa dengan HTTP 4xx/5xx.
+> Server mengirim HTTP 200 dan membuka koneksi SSE segera setelah semua validasi awal lolos. Error yang terjadi **sebelum** itu (token invalid, project tidak ditemukan, `409 CONFLICT`, validasi gagal) dikembalikan sebagai JSON error biasa dengan HTTP 4xx/5xx.
 
-#### Format Event SSE
-
-Server mengirim tiga jenis event dalam urutan:
-
-**1. `event: token`** — Dikirim berulang kali selama teks dihasilkan
+**1. `event: token`** — dikirim berulang selama HTML ditulis
 
 ```
 event: token
-data: {"token":"Berikut"}
-
-event: token
-data: {"token":" adalah"}
-
-event: token
-data: {"token":" fungsi"}
+data: {"token":"<!DOCTYPE html>\n<html lang=\"id\">"}
 ```
-
-**Data schema:**
 
 | Field | Tipe | Deskripsi |
 | --- | --- | --- |
-| `token` | `string` | Potongan teks (bisa satu kata, satu karakter, atau beberapa kata) |
+| `token` | `string` | Potongan teks (bisa satu kata, satu baris, atau beberapa baris) |
 
-**2. `event: done`** — Dikirim **setelah** seluruh teks selesai dihasilkan dan respons sudah tersimpan ke database
+**2. `event: done`** — dikirim **setelah** HTML lolos validasi dan versi baru tersimpan di database
 
 ```
 event: done
-data: {"conversation_id":"7b8e1f54-3e9a-4c2f-b441-1188339900aa","message_id":"9d1e2f3a-7a8b-4c5d-9e0f-1a2b3c4d5e6f"}
+data: {"project_id":"5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01","version_id":"b3c1d2e4-1f2a-4b3c-9d4e-5f6a7b8c9d0e","version_number":2}
 ```
-
-**Data schema:**
 
 | Field | Tipe | Deskripsi |
 | --- | --- | --- |
-| `conversation_id` | `string` (UUID) | ID thread percakapan (baru atau yang dilanjutkan) |
-| `message_id` | `string` (UUID) | ID pesan asisten yang sudah tersimpan di database |
+| `project_id` | `string` (UUID) | ID project |
+| `version_id` | `string` (UUID) | ID versi baru |
+| `version_number` | `integer` | Nomor versi baru (mulai dari 1) |
 
-> [!IMPORTANT]
-> Event `done` hanya dikirim setelah pesan asisten berhasil disimpan ke database. Gunakan `message_id` ini untuk mengambil detail pesan via `GET /api/v1/ai/conversations/{id}` jika diperlukan.
-
-**3. `event: error`** — Dikirim jika AI provider mengembalikan error **di tengah streaming** (setelah HTTP 200 sudah terkirim)
+**3. `event: error`** — dikirim jika terjadi kegagalan **di tengah streaming**
 
 ```
 event: error
 data: {"error":"The AI provider returned an error"}
 ```
 
-**Data schema:**
-
 | Field | Tipe | Deskripsi |
 | --- | --- | --- |
 | `error` | `string` | Pesan error generic (detail teknis disembunyikan) |
 
-#### Contoh Implementasi Frontend (fetch + ReadableStream)
+Penyebab `error` di tengah stream: provider Gemini error/timeout, koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pada semua kasus ini **tidak ada versi baru yang disimpan**.
 
-```javascript
-const token = localStorage.getItem('jwt_token');
+> [!IMPORTANT]
+> **Jangan render stream `token` langsung sebagai website.** Stream hanya untuk indikator progres (mis. menampilkan kode yang sedang ditulis). Model kadang membungkus output dengan pagar kode Markdown; server membersihkannya sebelum menyimpan. Sumber HTML final yang valid adalah `GET /projects/{id}/versions/{number}` setelah event `done`.
 
-const response = await fetch('/api/v1/ai/chat/stream', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    message: 'Buatkan fungsi generator prima di Go',
-    use_rag: false
-  }),
-});
+---
 
-// Tangani error sebelum stream dimulai (401, 404, 429, 502, dsb.)
-if (!response.ok) {
-  const errData = await response.json();
-  throw new Error(errData.error?.message || 'Streaming request failed');
-}
+### POST /api/v1/projects/{id}/generate (SSE)
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let buffer = '';
+Membuat **versi 1** website dari brief project.
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
+**Syarat state:** status project harus `draft` atau `failed` (belum punya versi).
 
-  buffer += decoder.decode(value, { stream: true });
-  const events = buffer.split('\n\n');
-  buffer = events.pop(); // simpan fragmen yang belum lengkap
+#### Request
 
-  for (const eventBlock of events) {
-    const lines = eventBlock.split('\n');
-    let eventType = '';
-    let eventData = '';
+**Opsi A: `application/json`**
 
-    for (const line of lines) {
-      if (line.startsWith('event: ')) eventType = line.slice(7).trim();
-      if (line.startsWith('data: ')) eventData = line.slice(6).trim();
+| Field | Tipe | Wajib | Constraint | Deskripsi |
+| --- | --- | --- | --- | --- |
+| `images` | `array<ImagePayload>` | Tidak | Maks `PROJECT_MAX_IMAGES` (default 4) | Gambar referensi (logo, contoh desain, screenshot) |
+
+Body boleh berupa objek kosong `{}`.
+
+**Schema `ImagePayload`:**
+
+| Field | Tipe | Wajib | Constraint |
+| --- | --- | --- | --- |
+| `mime_type` | `string` | Ya | `"image/jpeg"`, `"image/jpg"`, `"image/png"`, atau `"image/webp"` |
+| `data` | `string` (base64) | Ya | Data biner gambar base64. Maks ukuran setelah decode sesuai `UPLOAD_MAX_BYTES` (default 10 MB) |
+| `file_name` | `string` | Tidak | Nama file opsional |
+
+```json
+{
+  "images": [
+    {
+      "file_name": "logo.png",
+      "mime_type": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     }
-
-    if (eventType === 'token') {
-      const { token } = JSON.parse(eventData);
-      appendToUI(token); // tampilkan token ke UI secara inkremental
-    } else if (eventType === 'done') {
-      const { conversation_id, message_id } = JSON.parse(eventData);
-      console.log(`Selesai. Conv: ${conversation_id}, Msg: ${message_id}`);
-    } else if (eventType === 'error') {
-      const { error } = JSON.parse(eventData);
-      showError(error);
-    }
-  }
+  ]
 }
 ```
+
+**Opsi B: `multipart/form-data`**
+
+| Field | Tipe | Wajib | Deskripsi |
+| --- | --- | --- | --- |
+| `image` / `images` / `file` / `files` | `file (binary)` | Tidak | File gambar referensi. Mendukung multi-file |
+
+> Ukuran total multipart dibatasi 32 MB buffer. Ukuran per file dibatasi `UPLOAD_MAX_BYTES` (default 10 MB). Format selain JPEG, PNG, WebP ditolak dengan `VALIDATION_ERROR`.
+
+#### Yang Dilakukan Server
+
+1. Memvalidasi kepemilikan project dan state.
+2. Menandai project `generating` secara atomik.
+3. Menyimpan gambar referensi (jika ada) sebagai attachment project.
+4. Membangun prompt: system prompt terkunci di server + brief + gambar.
+5. Mengalirkan output Gemini sebagai event `token`.
+6. Setelah selesai: membersihkan pagar kode, memvalidasi dokumen HTML, menyimpan sebagai **versi 1** (`kind = "generate"`), status → `ready`, lalu mengirim `done`.
 
 #### Error Responses (sebelum streaming dimulai)
 
 | Status | Code | Kapan |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `message` kosong atau gambar tidak valid |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID, gambar format tidak didukung, ukuran gambar melebihi limit, jumlah gambar melebihi `PROJECT_MAX_IMAGES`, atau parsing multipart gagal |
+| 400 | `BAD_REQUEST` | Body bukan JSON valid, melebihi ukuran maksimum, atau mengandung field tidak dikenal |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | `conversation_id` tidak ditemukan atau bukan milik user |
-| 429 | `RATE_LIMITED` | Limit AI Chat atau General API terlampaui |
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 409 | `CONFLICT` | Project sedang `generating`, **atau** project sudah punya versi (gunakan `revise`) |
+| 429 | `RATE_LIMITED` | Limit Generate atau General API terlampaui |
 | 502 | `AI_PROVIDER_ERROR` | Provider gagal memulai stream (sebelum HTTP 200 dikirim) |
+
+**Contoh 409 (sudah punya versi):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CONFLICT",
+    "message": "Project already has a version, use revise instead"
+  }
+}
+```
+
+**Contoh 409 (sedang diproses):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CONFLICT",
+    "message": "A generation is already in progress for this project"
+  }
+}
+```
 
 ---
 
-## 4. Conversations
+### POST /api/v1/projects/{id}/revise (SSE)
 
-### GET /api/v1/ai/conversations
+Membuat **versi baru** berdasarkan HTML versi sebelumnya ditambah instruksi revisi. AI selalu mengembalikan **dokumen HTML lengkap** (bukan diff), yang disimpan sebagai versi baru. Versi lama tidak pernah diubah.
 
-Mengambil daftar seluruh thread percakapan milik user yang sedang login, diurutkan berdasarkan aktivitas terbaru (`updated_at DESC`).
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
+**Syarat state:** status project harus `ready` (sudah punya minimal satu versi).
 
 #### Request
 
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
+**Opsi A: `application/json`**
+
+| Field | Tipe | Wajib | Constraint | Deskripsi |
+| --- | --- | --- | --- | --- |
+| `instruction` | `string` | Ya | 1–4000 karakter | Instruksi revisi, mis. "Tambahkan section testimoni dan ganti warna tombol jadi hijau" |
+| `base_version` | `integer` | Tidak | ≥ 1, harus ada | Nomor versi yang dijadikan dasar revisi. Default: versi terbaru |
+| `images` | `array<ImagePayload>` | Tidak | Maks `PROJECT_MAX_IMAGES` | Gambar tambahan untuk revisi ini |
+
+```json
+{
+  "instruction": "Ganti warna hero menjadi biru tua dan tambahkan section testimoni",
+  "base_version": 2
+}
+```
+
+**Opsi B: `multipart/form-data`**
+
+| Field | Tipe | Wajib | Deskripsi |
+| --- | --- | --- | --- |
+| `instruction` | `string` | Ya | Instruksi revisi |
+| `base_version` | `string` | Tidak | Nomor versi dasar (string angka) |
+| `image` / `images` / `file` / `files` | `file (binary)` | Tidak | Gambar tambahan |
+
+> Hanya gambar yang dikirim **pada request revisi ini** yang diberikan ke model. Gambar dari request sebelumnya tidak dikirim ulang.
+
+Event SSE identik dengan generate. Event `done` berisi `version_number` baru (versi terakhir + 1).
+
+#### Error Responses (sebelum streaming dimulai)
+
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `instruction` kosong/terlalu panjang, `base_version` tidak valid, gambar tidak valid |
+| 400 | `BAD_REQUEST` | Body bukan JSON valid, melebihi ukuran maksimum, atau mengandung field tidak dikenal |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 404 | `NOT_FOUND` | Project atau `base_version` tidak ditemukan / bukan milik user |
+| 409 | `CONFLICT` | Project sedang `generating`, **atau** belum punya versi (gunakan `generate`) |
+| 429 | `RATE_LIMITED` | Limit Generate atau General API terlampaui |
+| 502 | `AI_PROVIDER_ERROR` | Provider gagal memulai stream |
+
+---
+
+### Contoh Implementasi Frontend (fetch + ReadableStream)
+
+```javascript
+const token = localStorage.getItem('jwt_token');
+
+async function streamGenerate(projectId, onToken) {
+  const response = await fetch(`/api/v1/projects/${projectId}/generate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  });
+
+  // Error sebelum stream dimulai (401, 404, 409, 429, 502, dsb.)
+  if (!response.ok) {
+    const errData = await response.json();
+    throw new Error(errData.error?.message || 'Generate request failed');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop(); // simpan fragmen yang belum lengkap
+
+    for (const block of events) {
+      let eventType = '';
+      let eventData = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+        if (line.startsWith('data: ')) eventData = line.slice(6).trim();
+      }
+
+      if (eventType === 'token') {
+        onToken(JSON.parse(eventData).token);          // progres saja
+      } else if (eventType === 'done') {
+        const { version_number } = JSON.parse(eventData);
+        return version_number;                          // lalu GET /versions/{n}
+      } else if (eventType === 'error') {
+        throw new Error(JSON.parse(eventData).error);
+      }
+    }
+  }
+}
+```
+
+---
+
+## 5. Versions
+
+### Schema `VersionResponse`
+
+| Field | Tipe | Deskripsi |
+| --- | --- | --- |
+| `id` | `string` (UUID) | ID versi |
+| `project_id` | `string` (UUID) | ID project |
+| `version_number` | `integer` | Nomor urut versi per project, mulai dari 1 |
+| `kind` | `string` | `"generate"` (versi 1) atau `"revise"` |
+| `prompt` | `string` | Teks yang memicu versi ini: untuk `generate` berisi `brief.description`, untuk `revise` berisi `instruction` |
+| `html` | `string` | Dokumen HTML lengkap. **Hanya ada di `GET /versions/{number}` dan `latest_version`; tidak ada di daftar versi** |
+| `created_at` | `string` (RFC3339) | Waktu versi dibuat |
+
+---
+
+### GET /api/v1/projects/{id}/versions
+
+Daftar riwayat versi project (tanpa `html`), diurutkan dari versi terbaru.
+
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
+- **Security:** Hanya project milik user yang sedang login
 
 #### Response `200 OK`
 
@@ -887,58 +1084,46 @@ Mengambil daftar seluruh thread percakapan milik user yang sedang login, diurutk
   "message": "Request successful",
   "data": [
     {
-      "id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "title": "Analisis arsitektur berikut dan berikan",
-      "created_at": "2026-09-26T10:15:00Z",
-      "updated_at": "2026-09-26T10:15:30Z"
+      "id": "b3c1d2e4-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+      "project_id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+      "version_number": 2,
+      "kind": "revise",
+      "prompt": "Ganti warna hero menjadi biru tua",
+      "created_at": "2026-09-30T08:20:00Z"
     },
     {
-      "id": "3a4b5c6d-7e8f-4a1b-9c2d-3e4f5a6b7c8d",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "title": "Buatkan fungsi generator prima",
-      "created_at": "2026-09-26T09:00:00Z",
-      "updated_at": "2026-09-26T09:05:00Z"
+      "id": "a1b2c3d4-0000-4b3c-9d4e-5f6a7b8c9d0e",
+      "project_id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+      "version_number": 1,
+      "kind": "generate",
+      "prompt": "Landing page untuk kedai kopi lokal ...",
+      "created_at": "2026-09-30T08:05:00Z"
     }
   ]
 }
 ```
 
-**Schema item array (`Conversation`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID thread percakapan |
-| `user_id` | `string` (UUID) | ID pemilik percakapan |
-| `title` | `string` | Judul otomatis berdasarkan pesan pertama (maks 40 karakter) |
-| `created_at` | `string` (RFC3339) | Waktu thread dibuat |
-| `updated_at` | `string` (RFC3339) | Waktu terakhir ada pesan di thread ini |
-
-> Jika user belum punya percakapan, `data` adalah array kosong `[]`.
+> Jika project belum punya versi, `data` adalah array kosong `[]`.
 
 #### Error Responses
 
 | Status | Code | Kapan |
 | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
 ---
 
-### GET /api/v1/ai/conversations/{id}
+### GET /api/v1/projects/{id}/versions/{number}
 
-Mengambil riwayat lengkap sebuah percakapan beserta seluruh pesan dan lampiran.
+Mengambil satu versi lengkap dengan `html`.
 
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
+- **Auth:** Wajib
 - **Rate Limit:** General API (120 req/menit)
-- **Security:** Hanya mengembalikan percakapan milik user yang sedang login (`WHERE id = $1 AND user_id = $2`)
 
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID percakapan
+**Path params:** `{id}` — UUID project; `{number}` — nomor versi (integer ≥ 1)
 
 #### Response `200 OK`
 
@@ -947,812 +1132,183 @@ Mengambil riwayat lengkap sebuah percakapan beserta seluruh pesan dan lampiran.
   "success": true,
   "message": "Request successful",
   "data": {
-    "id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-    "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-    "title": "Analisis arsitektur berikut dan berikan",
-    "created_at": "2026-09-26T10:15:00Z",
-    "updated_at": "2026-09-26T10:15:30Z",
-    "messages": [
-      {
-        "id": "8c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-        "conversation_id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-        "role": "user",
-        "content": "Analisis arsitektur berikut dan berikan rekomendasi",
-        "attachments": [
-          {
-            "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
-            "message_id": "8c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
-            "file_name": "diagram.png",
-            "file_type": "png",
-            "file_size": 154200,
-            "mime_type": "image/png",
-            "created_at": "2026-09-26T10:15:00Z"
-          }
-        ],
-        "created_at": "2026-09-26T10:15:00Z"
-      },
-      {
-        "id": "9d1e2f3a-7a8b-4c5d-9e0f-1a2b3c4d5e6f",
-        "conversation_id": "7b8e1f54-3e9a-4c2f-b441-1188339900aa",
-        "role": "assistant",
-        "content": "Berdasarkan diagram yang dilampirkan, berikut rekomendasi saya...",
-        "attachments": null,
-        "created_at": "2026-09-26T10:15:05Z"
-      }
-    ]
+    "id": "b3c1d2e4-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+    "project_id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+    "version_number": 2,
+    "kind": "revise",
+    "prompt": "Ganti warna hero menjadi biru tua",
+    "html": "<!DOCTYPE html><html lang=\"id\">...</html>",
+    "created_at": "2026-09-30T08:20:00Z"
   }
 }
 ```
-
-**Schema `data` (`ConversationDetail`):**
-
-Mewarisi semua field `Conversation` (`id`, `user_id`, `title`, `created_at`, `updated_at`) ditambah:
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `messages` | `array<Message>` | Semua pesan dalam percakapan, urutan kronologis |
-
-**Schema `Message`:**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID pesan |
-| `conversation_id` | `string` (UUID) | ID percakapan induk |
-| `role` | `string` | `"user"` atau `"assistant"` |
-| `content` | `string` | Isi teks pesan |
-| `attachments` | `array<MessageAttachment>` \| `null` | Lampiran gambar. `null` atau tidak ada jika pesan tidak punya lampiran |
-| `created_at` | `string` (RFC3339) | Waktu pesan dibuat |
 
 #### Error Responses
 
 | Status | Code | Kapan |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid atau `number` bukan integer ≥ 1 |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Percakapan tidak ditemukan atau bukan milik user |
+| 404 | `NOT_FOUND` | Project atau versi tidak ditemukan / bukan milik user |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
 ---
 
-### DELETE /api/v1/ai/conversations/{id}
+## 6. Export
 
-Menghapus thread percakapan beserta seluruh pesan dan lampiran terkait.
+### GET /api/v1/projects/{id}/export
 
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
+Mengunduh website sebagai **file `.html`**. Response adalah **file langsung**, bukan JSON.
+
+- **Auth:** Wajib
 - **Rate Limit:** General API (120 req/menit)
-- **Security:** Hanya bisa menghapus percakapan milik user sendiri
 
-#### Request
+**Query Parameters:**
 
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
+| Parameter | Tipe | Default | Deskripsi |
+| --- | --- | --- | --- |
+| `version` | `integer` | Versi terbaru | Nomor versi yang diunduh |
 
-**Path param:** `{id}` — UUID percakapan
+#### Response `200 OK`
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Disposition: attachment; filename="website-kopi-senja-v2.html"
+X-Content-Type-Options: nosniff
+```
+
+Body adalah dokumen HTML lengkap. Karena endpoint membutuhkan header `Authorization`, unduh via `fetch` lalu buat Blob URL:
+
+```javascript
+const res = await fetch(`/api/v1/projects/${id}/export?version=2`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const blob = await res.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'website.html';
+a.click();
+URL.revokeObjectURL(url);
+```
+
+#### Error Responses
+
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID atau `version` bukan integer ≥ 1 |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 404 | `NOT_FOUND` | Project tidak ditemukan / bukan milik user, atau project belum punya versi, atau versi tidak ada |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
+
+---
+
+## 7. Attachments (Gambar Referensi)
+
+Gambar yang diunggah saat `generate`/`revise` disimpan sebagai attachment milik project. Attachment hanya untuk referensi bagi model dan tampilan di UI; **tidak** otomatis disisipkan ke file HTML hasil.
+
+### Schema `ProjectAttachment`
+
+| Field | Tipe | Deskripsi |
+| --- | --- | --- |
+| `id` | `string` (UUID) | ID attachment |
+| `project_id` | `string` (UUID) | ID project |
+| `file_name` | `string` | Nama file original |
+| `file_type` | `string` | Tipe ternormalisasi (`"jpeg"`, `"png"`, `"webp"`) |
+| `file_size` | `integer` | Ukuran file dalam bytes |
+| `mime_type` | `string` | `"image/jpeg"`, `"image/png"`, atau `"image/webp"` |
+| `created_at` | `string` (RFC3339) | Waktu attachment dibuat |
+
+---
+
+### GET /api/v1/projects/{id}/attachments
+
+Daftar attachment sebuah project, dari yang terbaru.
+
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
 
 #### Response `200 OK`
 
 ```json
 {
   "success": true,
-  "message": "Conversation deleted successfully",
-  "data": null
+  "message": "Request successful",
+  "data": [
+    {
+      "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+      "project_id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+      "file_name": "logo.png",
+      "file_type": "png",
+      "file_size": 154200,
+      "mime_type": "image/png",
+      "created_at": "2026-09-30T08:01:00Z"
+    }
+  ]
 }
 ```
+
+> Jika tidak ada attachment, `data` adalah array kosong `[]`.
 
 #### Error Responses
 
 | Status | Code | Kapan |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Percakapan tidak ditemukan atau bukan milik user |
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
 ---
 
-## 5. Attachments
+### GET /api/v1/projects/{id}/attachments/{attachmentId}
 
-### GET /api/v1/ai/attachments/{id}
+Mengunduh atau menampilkan biner gambar attachment. Response adalah **biner gambar langsung**, bukan JSON.
 
-*(Alias: `GET /api/v1/attachments/{id}`)*
-
-Mengunduh atau menampilkan biner gambar yang pernah dilampirkan pada pesan. Response adalah **biner gambar langsung**, bukan JSON.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
+- **Auth:** Wajib
 - **Rate Limit:** General API (120 req/menit)
-- **Security:** Server memvalidasi bahwa attachment tersebut adalah milik conversation user yang sedang login
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID attachment (dari field `attachments[].id` di response chat/conversation)
+- **Security:** Server memvalidasi bahwa attachment milik project yang dimiliki user yang sedang login
 
 #### Response `200 OK` — Binary Image
 
 ```http
 HTTP/1.1 200 OK
 Content-Type: image/png
-Content-Disposition: inline; filename="diagram.png"
+Content-Disposition: inline; filename="logo.png"
 Content-Length: 154200
+X-Content-Type-Options: nosniff
 ```
 
-Response body adalah stream biner gambar. Gunakan langsung sebagai `src` pada `<img>` tag dengan Blob URL, atau tampilkan via `<img src="/api/v1/ai/attachments/{id}">` dengan header autentikasi (via interceptor fetch/axios).
+Karena membutuhkan header `Authorization`, ambil via `fetch` lalu gunakan Blob URL sebagai `src` pada `<img>`.
 
 #### Error Responses
 
 | Status | Code | Kapan |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
+| 400 | `VALIDATION_ERROR` | `id` atau `attachmentId` bukan UUID valid |
 | 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
 | 404 | `NOT_FOUND` | Attachment tidak ditemukan atau bukan milik user |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
 
 ---
 
-## 6. RAG Documents
+## 8. Menampilkan Preview di Frontend
 
-### POST /api/v1/ai/documents (Ingest Teks)
+HTML hasil AI adalah **konten tidak tepercaya** (*untrusted*). Aturan wajib untuk frontend:
 
-Ingest dokumen teks langsung untuk knowledge base RAG. Server melakukan **chunking** (ukuran 800 karakter, overlap 150 karakter) dan **vector embedding** menggunakan model `text-embedding-004` secara **sinkron** — response dikembalikan setelah seluruh proses selesai, status langsung `"ready"`.
+1. Render di `<iframe>` dengan atribut `sandbox="allow-scripts allow-popups"`.
+2. **Jangan pernah** menambahkan `allow-same-origin` pada sandbox tersebut. Tanpa itu, script di dalam website hasil tidak bisa mengakses `localStorage` (tempat JWT disimpan) maupun DOM aplikasi utama.
+3. Jangan menyisipkan HTML hasil AI langsung ke DOM aplikasi (`innerHTML`, `dangerouslySetInnerHTML`, dsb.).
 
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Content-Type` | `application/json` |
-| `Authorization` | `Bearer <token>` |
-
-**Body Schema (`IngestDocumentRequest`):**
-
-| Field | Tipe | Wajib | Constraint | Deskripsi |
-| --- | --- | --- | --- | --- |
-| `title` | `string` | Ya | Min 1, maks 255 karakter | Judul dokumen |
-| `content` | `string` | Ya | Min 5, maks 500.000 karakter | Isi teks lengkap dokumen |
-| `source` | `string` | Tidak | — | Label sumber dokumen (mis. `"manual"`, `"website"`, `"pdf"`). Default: `"text"` |
-
-```json
-{
-  "title": "Standard Operating Procedure v2.0",
-  "content": "BAB 1: PENDAHULUAN\n\nDokumen ini menjelaskan prosedur operasional standar untuk seluruh karyawan...\n\nBAB 2: KEAMANAN DATA\n\nSeluruh data pelanggan harus dienkripsi menggunakan AES-256...",
-  "source": "manual"
-}
+```jsx
+// React
+<iframe
+  title="Preview"
+  sandbox="allow-scripts allow-popups"
+  srcDoc={version.html}
+  style={{ width: '100%', height: '100%', border: 0 }}
+/>
 ```
 
-#### Response `201 Created`
-
-```json
-{
-  "success": true,
-  "message": "Document ingested successfully",
-  "data": {
-    "document": {
-      "id": "8f3a1b2c-473d-4c31-9014-cb9aa15df41e",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "title": "Standard Operating Procedure v2.0",
-      "source": "manual",
-      "status": "ready",
-      "created_at": "2026-09-26T08:00:00Z"
-    },
-    "chunk_count": 6
-  }
-}
-```
-
-**Schema `data` (`IngestDocumentResponse`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `document` | `Document` | Metadata dokumen yang baru dibuat (lihat schema di bawah) |
-| `chunk_count` | `integer` | Jumlah chunk yang berhasil di-embed dan disimpan |
-
-**Schema `Document`:**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID dokumen |
-| `user_id` | `string` (UUID) | ID pemilik dokumen |
-| `title` | `string` | Judul dokumen |
-| `source` | `string` | Label sumber (`"text"`, `"manual"`, `"upload"`, dsb.) |
-| `file_name` | `string` | Nama file (hanya ada untuk dokumen upload; omitted untuk ingest teks) |
-| `file_type` | `string` | Tipe file (hanya ada untuk dokumen upload; omitted untuk ingest teks) |
-| `file_size` | `integer` | Ukuran file bytes (hanya ada untuk dokumen upload; omitted/0 untuk ingest teks) |
-| `status` | `string` | `"processing"`, `"ready"`, atau `"failed"` |
-| `error_message` | `string` | Pesan error jika status `"failed"` (omitted jika tidak ada error) |
-| `created_at` | `string` (RFC3339) | Waktu dokumen dibuat |
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `title` kosong/terlalu panjang, `content` terlalu pendek/panjang, atau field wajib tidak ada |
-| 400 | `BAD_REQUEST` | Body bukan JSON valid |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 502 | `AI_PROVIDER_ERROR` | Gagal generate embedding (Gemini tidak bisa dijangkau) |
-
----
-
-### POST /api/v1/ai/documents/upload (Upload File)
-
-*(Alias: `POST /api/v1/documents/upload`)*
-
-Mengunggah file dokumen fisik (PDF, DOCX, atau TXT). Server menyimpan file, membuat record dengan status `"processing"`, dan menjalankan ekstraksi teks + embedding secara **asinkron di background**. Response dikembalikan segera setelah file tersimpan.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-- **Format file yang didukung:** `.pdf`, `.docx`, `.txt`
-- **Ukuran file maks:** Default 10 MB (dikonfigurasi via `UPLOAD_MAX_BYTES`)
-- **Background processing timeout:** 5 menit
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Content-Type` | `multipart/form-data` |
-| `Authorization` | `Bearer <token>` |
-
-**Form Fields:**
-
-| Field | Tipe | Wajib | Deskripsi |
-| --- | --- | --- | --- |
-| `file` | `file (binary)` | Ya | File dokumen. Wajib menggunakan field name `file` |
-| `title` | `string` | Tidak | Judul dokumen. Jika tidak diisi, menggunakan nama file asli |
-
-#### Response `202 Accepted`
-
-```json
-{
-  "success": true,
-  "message": "Document uploaded and queued for processing",
-  "data": {
-    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-    "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-    "title": "Buku Pedoman Karyawan 2026",
-    "source": "upload",
-    "file_name": "buku_pedoman.pdf",
-    "file_type": "pdf",
-    "file_size": 524288,
-    "status": "processing",
-    "created_at": "2026-09-26T08:30:00Z"
-  }
-}
-```
-
-> `status` selalu `"processing"` di response ini. Gunakan `GET /api/v1/ai/documents/{id}/status` untuk polling sampai status menjadi `"ready"` atau `"failed"`.
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | Field `file` tidak ada, nama file kosong, format file tidak didukung, atau ukuran file melebihi limit |
-| 400 | `BAD_REQUEST` | Multipart form tidak valid |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-
----
-
-### GET /api/v1/ai/documents
-
-Mengambil daftar seluruh dokumen knowledge base milik user yang sedang login beserta metadata dan jumlah chunk.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-#### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": [
-    {
-      "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "title": "Buku Pedoman Karyawan 2026",
-      "source": "upload",
-      "file_name": "buku_pedoman.pdf",
-      "file_type": "pdf",
-      "file_size": 524288,
-      "status": "ready",
-      "created_at": "2026-09-26T08:30:00Z",
-      "chunk_count": 18
-    },
-    {
-      "id": "8f3a1b2c-473d-4c31-9014-cb9aa15df41e",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "title": "Standard Operating Procedure v2.0",
-      "source": "manual",
-      "status": "ready",
-      "created_at": "2026-09-26T08:00:00Z",
-      "chunk_count": 6
-    }
-  ]
-}
-```
-
-**Schema item array (`DocumentDetail`):**
-
-Mewarisi semua field `Document` ditambah:
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `chunk_count` | `integer` | Jumlah chunk yang sudah terindeks. `0` jika masih `"processing"` atau `"failed"` |
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-
----
-
-### GET /api/v1/ai/documents/{id}
-
-Mengambil detail metadata satu dokumen knowledge base.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-- **Security:** Hanya mengembalikan dokumen milik user yang sedang login
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID dokumen
-
-#### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": {
-    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-    "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-    "title": "Buku Pedoman Karyawan 2026",
-    "source": "upload",
-    "file_name": "buku_pedoman.pdf",
-    "file_type": "pdf",
-    "file_size": 524288,
-    "status": "ready",
-    "created_at": "2026-09-26T08:30:00Z"
-  }
-}
-```
-
-> Perhatian: endpoint ini mengembalikan `Document` (tanpa `chunk_count`). Untuk mendapatkan `chunk_count`, gunakan `GET /api/v1/ai/documents` (list) atau `GET /api/v1/ai/documents/{id}/status`.
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Dokumen tidak ditemukan atau bukan milik user |
-
----
-
-### GET /api/v1/ai/documents/{id}/status
-
-*(Alias: `GET /api/v1/documents/{id}/status`)*
-
-Memeriksa status background processing dokumen yang diunggah. Gunakan endpoint ini untuk **polling** setelah `POST /api/v1/ai/documents/upload`.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID dokumen
-
-#### Response `200 OK`
-
-Response selalu `200` terlepas dari status dokumen. Status aktual ada di field `status`:
-
-**Status `"processing"` (masih diproses):**
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": {
-    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-    "title": "Buku Pedoman Karyawan 2026",
-    "status": "processing",
-    "chunk_count": 0
-  }
-}
-```
-
-**Status `"ready"` (selesai, siap digunakan untuk RAG):**
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": {
-    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-    "title": "Buku Pedoman Karyawan 2026",
-    "status": "ready",
-    "chunk_count": 18
-  }
-}
-```
-
-**Status `"failed"` (gagal ekstraksi atau embedding):**
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": {
-    "id": "e98e4d94-31ea-42f7-a36c-941da7ce3920",
-    "title": "Buku Pedoman Karyawan 2026",
-    "status": "failed",
-    "chunk_count": 0,
-    "error_message": "Document contains no extractable text"
-  }
-}
-```
-
-**Schema `data` (`DocumentStatusResponse`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID dokumen |
-| `title` | `string` | Judul dokumen |
-| `status` | `string` | `"processing"`, `"ready"`, atau `"failed"` |
-| `chunk_count` | `integer` | Jumlah chunk terindeks. `0` selama `"processing"` atau jika `"failed"` |
-| `error_message` | `string` | Pesan error yang bisa ditampilkan ke user jika `status: "failed"` (field ini tidak ada jika status bukan failed) |
-
-#### Polling Pattern yang Direkomendasikan
-
-```javascript
-async function pollDocumentStatus(docId, token, intervalMs = 2000, maxWaitMs = 300000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    const res = await fetch(`/api/v1/ai/documents/${docId}/status`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const { data } = await res.json();
-
-    if (data.status === 'ready') return data;
-    if (data.status === 'failed') throw new Error(data.error_message || 'Processing failed');
-
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-  throw new Error('Polling timeout exceeded');
-}
-```
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Dokumen tidak ditemukan atau bukan milik user |
-
----
-
-### DELETE /api/v1/ai/documents/{id}
-
-Menghapus dokumen knowledge base beserta seluruh chunk vektor terkait dari database, dan file fisik dari storage jika dokumen berasal dari upload.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** General API (120 req/menit)
-- **Security:** Hanya bisa menghapus dokumen milik user sendiri
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID dokumen
-
-#### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Document deleted successfully",
-  "data": null
-}
-```
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Dokumen tidak ditemukan atau bukan milik user |
-
----
-
-## 7. Code Execution
-
-Backend menyediakan eksekusi kode terisolasi via **Judge0 CE**. Kode dijalankan dalam container dengan pembatasan ketat pada CPU time, wall time, dan memory.
-
-**Bahasa yang Didukung (Whitelist):**
-
-| Bahasa | Alias yang Diterima | Judge0 Language ID |
-| --- | --- | --- |
-| `python` | `py`, `python3` | 71 (Python 3.8.1) |
-| `javascript` | `js`, `node`, `nodejs` | 63 (Node.js 12.14.0) |
-| `go` | `golang` | 60 (Go 1.13.5) |
-
-**Default Resource Limits (dikonfigurasi via env):**
-
-| Limit | Default | Env Var |
-| --- | --- | --- |
-| CPU time | 5 detik | `EXEC_CPU_TIME_LIMIT_SEC` |
-| Wall time | 10 detik | `EXEC_WALL_TIME_LIMIT_SEC` |
-| Memory | 128 MB | `EXEC_MEMORY_LIMIT_KB` |
-| Source code size | 64 KB | `EXEC_MAX_CODE_BYTES` |
-
----
-
-### POST /api/v1/execute
-
-Mengeksekusi kode program di sandbox Judge0.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** Execution Sandbox (default 15 req/menit) **+ General API (120 req/menit)**
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Content-Type` | `application/json` |
-| `Authorization` | `Bearer <token>` |
-
-**Body Schema (`ExecuteRequest`):**
-
-| Field | Tipe | Wajib | Constraint | Deskripsi |
-| --- | --- | --- | --- | --- |
-| `language` | `string` | Ya | Harus salah satu dari whitelist di atas | Bahasa pemrograman |
-| `code` | `string` | Ya | Maks 64 KB (default) | Source code yang akan dieksekusi |
-| `stdin` | `string` | Tidak | — | Input standar yang dikirim ke program saat runtime |
-
-```json
-{
-  "language": "python",
-  "code": "import sys\nname = sys.stdin.read().strip()\nprint(f'Hello, {name}!')",
-  "stdin": "Antigravity"
-}
-```
-
-#### Response `200 OK`
-
-> [!IMPORTANT]
-> Response selalu `200 OK` terlepas dari apakah program berhasil berjalan atau tidak. Hasil eksekusi (sukses, error, timeout, dsb.) ada di dalam field `data` — periksa `exit_code`, `status`, dan `stderr`.
-
-**Eksekusi berhasil (Accepted):**
-```json
-{
-  "success": true,
-  "message": "Code executed successfully",
-  "data": {
-    "id": "c7a8b123-5e6f-4a1b-9c2d-3e4f5a6b7c8d",
-    "language": "python",
-    "stdout": "Hello, Antigravity!\n",
-    "stderr": "",
-    "exit_code": 0,
-    "execution_time_ms": 28,
-    "memory_kb": 3120,
-    "status": "Accepted"
-  }
-}
-```
-
-**Time Limit Exceeded (infinite loop, dsb.):**
-```json
-{
-  "success": true,
-  "message": "Code executed successfully",
-  "data": {
-    "id": "f8b9c234-1a2b-4c3d-8e4f-5a6b7c8d9e0f",
-    "language": "python",
-    "stdout": "",
-    "stderr": "Time Limit Exceeded",
-    "exit_code": 124,
-    "execution_time_ms": 5002,
-    "memory_kb": 12450,
-    "status": "Time Limit Exceeded"
-  }
-}
-```
-
-**Compilation/Syntax Error:**
-```json
-{
-  "success": true,
-  "message": "Code executed successfully",
-  "data": {
-    "id": "d1e2f345-2b3c-4d5e-9f0a-1b2c3d4e5f6a",
-    "language": "go",
-    "stdout": "",
-    "stderr": "main.go:3:1: syntax error: non-declaration statement outside function body",
-    "exit_code": 1,
-    "execution_time_ms": 0,
-    "memory_kb": 0,
-    "status": "Compilation Error"
-  }
-}
-```
-
-**Schema `data` (`ExecuteResponse`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID record eksekusi yang tersimpan di database |
-| `language` | `string` | Bahasa yang dieksekusi (canonical: `"python"`, `"javascript"`, `"go"`) |
-| `stdout` | `string` | Output standar dari program |
-| `stderr` | `string` | Error output + compile output (jika ada) digabung |
-| `exit_code` | `integer` | Exit code program. `0` = sukses; `124` = TLE; `1` = error lain |
-| `execution_time_ms` | `integer` | Waktu eksekusi dalam milidetik |
-| `memory_kb` | `integer` | Memori yang digunakan dalam kilobytes |
-| `status` | `string` | Deskripsi status dari Judge0 (mis. `"Accepted"`, `"Time Limit Exceeded"`, `"Runtime Error"`, `"Compilation Error"`) |
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `code` kosong, ukuran code melebihi limit, atau bahasa tidak dikenali |
-| 400 | `BAD_REQUEST` | Body bukan JSON valid atau payload melebihi ukuran maksimum |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 429 | `RATE_LIMITED` | Limit Execution Sandbox atau General API terlampaui |
-| 502 | `EXECUTION_PROVIDER_ERROR` | Judge0 tidak bisa dijangkau, timeout saat polling, atau tidak mengembalikan execution token |
-
-**Contoh 400 untuk bahasa tidak dikenali:**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Language 'ruby' is not supported. Supported languages are: python, javascript, go"
-  }
-}
-```
-
----
-
-### GET /api/v1/execute/history
-
-Mengambil daftar riwayat eksekusi kode milik user yang sedang login, diurutkan dari yang terbaru.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** Execution Sandbox (default 15 req/menit) **+ General API (120 req/menit)**
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Query Parameters:**
-
-| Parameter | Tipe | Default | Constraint | Deskripsi |
-| --- | --- | --- | --- | --- |
-| `limit` | `integer` | `20` | Min 1, maks 100 | Jumlah item yang dikembalikan |
-| `offset` | `integer` | `0` | Min 0 | Offset untuk pagination |
-
-Contoh: `GET /api/v1/execute/history?limit=10&offset=0`
-
-> Nilai `limit` yang tidak valid (bukan integer, ≤0, atau >100) diabaikan dan server menggunakan default `20`. Nilai `offset` yang tidak valid diabaikan dan menggunakan default `0`.
-
-#### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": [
-    {
-      "id": "c7a8b123-5e6f-4a1b-9c2d-3e4f5a6b7c8d",
-      "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-      "language": "python",
-      "code": "import sys\nname = sys.stdin.read().strip()\nprint(f'Hello, {name}!')",
-      "stdin": "Antigravity",
-      "stdout": "Hello, Antigravity!\n",
-      "stderr": "",
-      "exit_code": 0,
-      "execution_time_ms": 28,
-      "memory_kb": 3120,
-      "status": "Accepted",
-      "created_at": "2026-09-26T09:00:00Z"
-    }
-  ]
-}
-```
-
-**Schema item array (`CodeExecution`):**
-
-| Field | Tipe | Deskripsi |
-| --- | --- | --- |
-| `id` | `string` (UUID) | ID record eksekusi |
-| `user_id` | `string` (UUID) | ID pemilik |
-| `language` | `string` | Bahasa yang dieksekusi |
-| `code` | `string` | Source code yang dieksekusi |
-| `stdin` | `string` | Input standar (field tidak ada jika kosong) |
-| `stdout` | `string` | Output standar |
-| `stderr` | `string` | Error output |
-| `exit_code` | `integer` | Exit code |
-| `execution_time_ms` | `integer` | Waktu eksekusi dalam milidetik |
-| `memory_kb` | `integer` | Memori yang digunakan dalam kilobytes |
-| `status` | `string` | Status dari Judge0 |
-| `created_at` | `string` (RFC3339) | Waktu eksekusi dicatat |
-
-> Jika user belum punya riwayat eksekusi, `data` adalah array kosong `[]`.
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 429 | `RATE_LIMITED` | Limit Execution Sandbox atau General API terlampaui |
-
----
-
-### GET /api/v1/execute/{id}
-
-Mengambil detail satu riwayat eksekusi kode berdasarkan ID.
-
-- **Auth:** Wajib (`Authorization: Bearer <token>`)
-- **Rate Limit:** Execution Sandbox (default 15 req/menit) **+ General API (120 req/menit)**
-- **Security:** Hanya mengembalikan eksekusi milik user yang sedang login (`WHERE id = $1 AND user_id = $2`)
-
-#### Request
-
-| Header | Nilai |
-| --- | --- |
-| `Authorization` | `Bearer <token>` |
-
-**Path param:** `{id}` — UUID record eksekusi
-
-#### Response `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Request successful",
-  "data": {
-    "id": "c7a8b123-5e6f-4a1b-9c2d-3e4f5a6b7c8d",
-    "user_id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
-    "language": "python",
-    "code": "import sys\nname = sys.stdin.read().strip()\nprint(f'Hello, {name}!')",
-    "stdin": "Antigravity",
-    "stdout": "Hello, Antigravity!\n",
-    "stderr": "",
-    "exit_code": 0,
-    "execution_time_ms": 28,
-    "memory_kb": 3120,
-    "status": "Accepted",
-    "created_at": "2026-09-26T09:00:00Z"
-  }
-}
-```
-
-> Schema `data` identik dengan item di `GET /api/v1/execute/history`.
-
-#### Error Responses
-
-| Status | Code | Kapan |
-| --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `id` di path kosong |
-| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
-| 404 | `NOT_FOUND` | Record eksekusi tidak ditemukan atau bukan milik user |
-| 429 | `RATE_LIMITED` | Limit Execution Sandbox atau General API terlampaui |
+Untuk preview responsif, ubah lebar `<iframe>` (mis. 375px untuk mobile, 768px untuk tablet, 100% untuk desktop).
