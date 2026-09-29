@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -37,6 +38,8 @@ type stubService struct {
 	createOut *model.Project
 	createErr error
 
+	listOut []*model.Project
+
 	getProj *model.Project
 	getVer  *model.Version
 	getErr  error
@@ -57,7 +60,10 @@ func (s *stubService) Create(_ context.Context, _ string, _ model.CreateProjectR
 	return s.createOut, nil
 }
 func (s *stubService) List(_ context.Context, _ string, _, _ int) ([]*model.Project, error) {
-	return []*model.Project{}, nil
+	if s.listOut == nil {
+		return []*model.Project{}, nil
+	}
+	return s.listOut, nil
 }
 func (s *stubService) Get(_ context.Context, _, _ string) (*model.Project, *model.Version, error) {
 	if s.getErr != nil {
@@ -361,4 +367,119 @@ func TestGetAttachmentHeaders(t *testing.T) {
 	if v := rec.Header().Get("X-Content-Type-Options"); v != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q", v)
 	}
+}
+
+func decodeData(t *testing.T, rec *httptest.ResponseRecorder) any {
+	t.Helper()
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	return body["data"]
+}
+
+// Per api.md, list items carry no latest_version key at all, while the
+// detail endpoint returns it as null when the project has no versions.
+func TestListOmitsLatestVersionKey(t *testing.T) {
+	stub := &stubService{listOut: []*model.Project{
+		{ID: "p1", Title: "T", Status: "draft", Brief: model.Brief{Description: "x"}, VersionCount: 0},
+	}}
+	h := newTestHandler(stub)
+	req := authed(httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil), nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	items, ok := decodeData(t, rec).([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("data = %v, want 1-item array", decodeData(t, rec))
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("item = %v, want object", items[0])
+	}
+	if _, present := item["latest_version"]; present {
+		t.Errorf("list item must not contain latest_version key, got %v", item)
+	}
+}
+
+func TestDetailNullLatestVersion(t *testing.T) {
+	stub := &stubService{getProj: &model.Project{ID: "p1", Title: "T", Status: "draft"}}
+	h := newTestHandler(stub)
+	req := authed(httptest.NewRequest(http.MethodGet, "/api/v1/projects/p1", nil),
+		map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	data, ok := decodeData(t, rec).(map[string]any)
+	if !ok {
+		t.Fatalf("data = %v, want object", decodeData(t, rec))
+	}
+	latest, present := data["latest_version"]
+	if !present {
+		t.Fatal("detail must contain latest_version key")
+	}
+	if latest != nil {
+		t.Errorf("latest_version = %v, want null for a project without versions", latest)
+	}
+}
+
+// Generate/revise accept a larger JSON body (AI_MAX_GENERATE_BODY_BYTES,
+// 32 MB by default) than other endpoints (AI_MAX_REQUEST_BYTES, 1 MB).
+// A ~2 MB body must pass body parsing on generate/revise but be rejected
+// as too large on POST /projects.
+func TestGenerateBodyLimit(t *testing.T) {
+	bigPayload := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 1500000)))
+	if len(bigPayload) < 1<<20 {
+		t.Fatalf("test payload = %d bytes, want > 1 MB", len(bigPayload))
+	}
+
+	newHandler := func() *Handler {
+		return New(&stubService{beginErr: apperror.AIProvider("AI provider is not configured", nil)},
+			testHandlerLogger(),
+			config.AIConfig{MaxBytes: 1 << 20, MaxGenerateBodyBytes: 32 << 20},
+			config.UploadConfig{MaxSizeBytes: 10 << 20},
+			config.ProjectConfig{MaxImages: 4, MaxHTMLBytes: 524288})
+	}
+
+	t.Run("generate accepts ~2MB JSON", func(t *testing.T) {
+		h := newHandler()
+		body := `{"images":[{"mime_type":"image/png","file_name":"big.png","data":"` + bigPayload + `"}]}`
+		req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects/p1/generate",
+			strings.NewReader(body)), map[string]string{"id": "p1"})
+		rec := httptest.NewRecorder()
+		h.Generate(rec, req)
+		// 502 from the stubbed service proves the body was parsed and
+		// reached the service instead of being rejected as too large.
+		if status, code := decodeErr(t, rec); status != http.StatusBadGateway || code != "AI_PROVIDER_ERROR" {
+			t.Errorf("status=%d code=%q, want 502 AI_PROVIDER_ERROR", status, code)
+		}
+	})
+
+	t.Run("revise accepts ~2MB JSON", func(t *testing.T) {
+		h := newHandler()
+		body := `{"instruction":"ganti warna","images":[{"mime_type":"image/png","file_name":"big.png","data":"` + bigPayload + `"}]}`
+		req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects/p1/revise",
+			strings.NewReader(body)), map[string]string{"id": "p1"})
+		rec := httptest.NewRecorder()
+		h.Revise(rec, req)
+		if status, code := decodeErr(t, rec); status != http.StatusBadGateway || code != "AI_PROVIDER_ERROR" {
+			t.Errorf("status=%d code=%q, want 502 AI_PROVIDER_ERROR", status, code)
+		}
+	})
+
+	t.Run("create rejects ~2MB JSON", func(t *testing.T) {
+		h := newHandler()
+		body := `{"title":"x","brief":{"description":"` + strings.Repeat("b", 2<<20) + `"}}`
+		req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects",
+			strings.NewReader(body)), nil)
+		rec := httptest.NewRecorder()
+		h.Create(rec, req)
+		if status, code := decodeErr(t, rec); status != http.StatusBadRequest || code != "BAD_REQUEST" {
+			t.Errorf("status=%d code=%q, want 400 BAD_REQUEST", status, code)
+		}
+	})
 }

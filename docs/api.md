@@ -801,6 +801,7 @@ Kedua endpoint ini mengalirkan hasil AI secara real-time menggunakan **Server-Se
 - **Auth:** Wajib. `Authorization: Bearer <token>` (direkomendasikan) atau `?token=<jwt>`
 - **Rate Limit:** Generate (default 5 req/menit per IP) **+ General API (120 req/menit)**
 - **Content-Type yang Didukung:** `application/json` dan `multipart/form-data`
+- **Ukuran body:** klien sebaiknya memakai `multipart/form-data` saat mengirim gambar, sedangkan body JSON dibatasi sesuai konfigurasi (`AI_MAX_GENERATE_BODY_BYTES`, default 32 MB).
 
 ### Format Event SSE (berlaku untuk generate dan revise)
 

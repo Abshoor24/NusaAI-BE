@@ -113,6 +113,7 @@ Variabel wajib:
 Variabel penting lainnya:
 - `APP_ENV`, `APP_PORT`, `DATABASE_URL` (atau `DATABASE_HOST`, `DATABASE_PORT`, dsb.)
 - `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`
+- `AI_MAX_REQUEST_BYTES` (default 1 MB, batas body JSON global), `AI_MAX_GENERATE_BODY_BYTES` (default 32 MB, khusus JSON generate/revise — pakai `multipart/form-data` untuk gambar)
 - `UPLOAD_DIR`, `UPLOAD_MAX_BYTES`
 - `CORS_ALLOWED_ORIGINS`, `RATE_LIMIT_*`
 - `GENERATE_RATE_LIMIT_PER_MINUTE` (default 5), `PROJECT_MAX_IMAGES` (default 4), `PROJECT_MAX_HTML_BYTES` (default 524288 = 512 KiB)
@@ -131,6 +132,19 @@ Jalankan integration test database (membutuhkan database aktif):
 ```bash
 TEST_DB_INTEGRATION=true go test ./tests/...
 ```
+
+Jalankan integration test repository project dengan Postgres asli
+(menjalankan migrasi 0001–0010 dan menguji atomisitas `generating` serta
+penomoran versi konkuren). Database harus kosong dan bukan produksi —
+butuh image pgvector karena migrasi 0006 memakai ekstensi `vector`:
+```bash
+docker run -d --name be-test-pg \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=backend_test \
+  -p 5433:5432 pgvector/pgvector:pg17
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/backend_test?sslmode=disable \
+  go test ./tests/ -run TestProjectIntegration -v -count=1
+```
+Tanpa `TEST_DATABASE_URL`, test-test tersebut di-skip otomatis.
 
 ## Docker
 
