@@ -17,8 +17,8 @@ import (
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	airepo "github.com/Abshoor24/backend-go/internal/modules/ai/repository"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
-	executionrepo "github.com/Abshoor24/backend-go/internal/modules/execution/repository"
-	executionservice "github.com/Abshoor24/backend-go/internal/modules/execution/service"
+	projectrepo "github.com/Abshoor24/backend-go/internal/modules/project/repository"
+	projectservice "github.com/Abshoor24/backend-go/internal/modules/project/service"
 	"github.com/Abshoor24/backend-go/internal/repository"
 	"github.com/Abshoor24/backend-go/internal/routes"
 	"github.com/Abshoor24/backend-go/internal/service"
@@ -56,6 +56,12 @@ func run() error {
 	userRepo := repository.NewUserRepository(supabase.Pool())
 	authService := service.NewAuthService(userRepo, tokens, log)
 
+	// The Gemini provider never requires an API key at construction time:
+	// without one, /ai/health reports configured=false and generate/revise
+	// fail with a JSON 502 only when actually streamed. The server always
+	// boots. RAG and Judge0 execution modules are deferred (not registered
+	// in the router), so their services are intentionally not initialized
+	// here and their configuration is optional.
 	aiProvider, err := provider.New(cfg.AI, log)
 	if err != nil {
 		return err
@@ -63,13 +69,23 @@ func run() error {
 	aiRepo := airepo.New(supabase.Pool())
 	aiService := aiservice.New(aiProvider, cfg.AI, cfg.Upload, log, aiRepo)
 
-	execProvider := provider.NewJudgeZeroProvider(cfg.Execution, log)
-	execRepo := executionrepo.New(supabase.Pool())
-	execService := executionservice.New(execProvider, cfg.Execution, log, execRepo)
+	projectRepo := projectrepo.New(supabase.Pool())
+	projectService := projectservice.New(projectRepo, aiProvider, cfg.AI, cfg.Upload, cfg.Project, log)
+
+	// Recovery: a crash mid-generation can leave projects stuck in
+	// "generating". Reset them to "ready" (if they have versions) or
+	// "failed" so they become usable again after a restart.
+	recoverCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if reset, rerr := projectRepo.ResetStuckGenerating(recoverCtx); rerr != nil {
+		log.Warn("failed to recover stuck projects", "error", rerr)
+	} else if reset > 0 {
+		log.Info("recovered stuck projects", "count", reset)
+	}
+	cancel()
 
 	srv := &http.Server{
 		Addr:         net.JoinHostPort(cfg.Server.Host, cfg.Server.Port),
-		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, AI: aiService, Execution: execService, Tokens: tokens}),
+		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, AI: aiService, Project: projectService, Tokens: tokens}),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,

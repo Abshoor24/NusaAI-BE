@@ -375,7 +375,7 @@ Variabel environment yang relevan untuk Tahap A:
 | `GENERATE_RATE_LIMIT_PER_MINUTE` | Limit `generate`/`revise` (default 5/menit) |
 | `UPLOAD_MAX_BYTES` | Ukuran maksimum per gambar (default 10 MB) |
 | `PROJECT_MAX_IMAGES` | Jumlah gambar maksimum per request (default 4) |
-| `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (nilai default ditentukan saat implementasi) |
+| `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (default 512 KiB / 524288: longgar untuk satu file mandiri berisi Tailwind via CDN + JS inline, sekaligus membatasi memori/DB) |
 | Konfigurasi Gemini (provider, API key, model) | Diperiksa oleh `GET /ai/health` |
 
 Variabel Judge0 (`EXEC_*`) dan RAG **opsional** dan tidak divalidasi saat startup selama modulnya tidak diregistrasi.
