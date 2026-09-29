@@ -1,28 +1,29 @@
 # Project Name
 
-> Backend AI Assistant, Multimodal Generator, RAG Knowledge Base, & Code Execution Sandbox.
+> Backend AI Website Generator (Tahap A): user menjelaskan website yang diinginkan (brief), AI menghasilkan satu file HTML mandiri, lalu user merevisinya lewat instruksi teks.
 
 ## Overview
 
-Backend komprehensif untuk platform **AI Assistant & Code Execution** (konsep terpadu layaknya ChatGPT / Claude dengan sandbox eksekusi kode terisolasi).
+Backend untuk platform **AI Website Generator** (konsep: deskripsikan → generate → preview → revisi → unduh).
 
 Sistem menyediakan fitur lengkap out-of-the-box:
 - **REST API Clean Architecture**: Handler, Service, Repository, dan Provider abstraction.
 - **PostgreSQL + pgvector**: Connection pool terkelola (`pgxpool`), migrasi embedded otomatis via `embed.FS`.
 - **Autentikasi & Autorisasi**: Registrasi, login, verifikasi profil, JWT (`HS256`), role-based access control.
-- **AI Assistant Multi-Turn & SSE Streaming**: Integrasi Google Gemini API, context memory, streaming token real-time via Server-Sent Events (mendukung `Authorization` header dan query param `?token=`).
-- **Multimodal Image Attachments**: Pengiriman gambar (JPEG, PNG, WebP) via JSON base64 atau `multipart/form-data`, persistensi media lokal, dan serving gambar terisolasi per user.
-- **RAG Knowledge Base**: Ingest teks dan upload berkas fisik (PDF, DOCX, TXT) dengan ekstraksi teks asinkron, semantic chunking + overlap, embedding `text-embedding-004`, dan vector search cosine similarity.
-- **Code Execution Sandbox**: Eksekusi kode terisolasi via **Judge0 CE** untuk bahasa Python, JavaScript, dan Go dengan batasan CPU time, memory, dan wall time.
-- **Keamanan & Stabilitas**: Rate limiting 3 tingkat (General, AI Chat, Code Execution), CORS configurable, Security Headers, structured logging (`slog`), dan graceful shutdown.
+- **AI Website Generate & Revise (SSE Streaming)**: Integrasi Google Gemini API, system prompt terkunci di server, streaming token real-time via Server-Sent Events (mendukung `Authorization` header dan query param `?token=`).
+- **Versioning**: Setiap generate/revise menyimpan versi HTML lengkap baru; versi lama tidak pernah diubah.
+- **Multimodal Image Attachments**: Gambar referensi (JPEG, PNG, WebP) via JSON base64 atau `multipart/form-data`, persistensi media lokal, dan serving gambar terisolasi per user.
+- **Export**: Unduh website sebagai file `.html` tunggal.
+- **Keamanan & Stabilitas**: Rate limiting 2 tingkat (General, Generate), CORS configurable, Security Headers, structured logging (`slog`), graceful shutdown, dan pemulihan status project saat startup.
+
+Modul **AI Chat & Conversations**, **RAG Knowledge Base**, dan **Code Execution Sandbox (Judge0)** ditunda pada Tahap A: kode dan tabelnya dipertahankan, tetapi route-nya tidak diregistrasi (mengembalikan `404`) dan konfigurasinya opsional. Preview website dirender di browser (`<iframe sandbox>`).
 
 ## Tech Stack
 
 - **Bahasa & Routing**: Go (net/http + chi router v5)
 - **Database**: PostgreSQL dengan ekstensi `pgvector` (driver `pgx/v5`, connection pooling)
 - **Autentikasi**: JWT (golang-jwt/v5) + bcrypt
-- **AI & Embedding**: Google Generative Language API (Gemini, `text-embedding-004`)
-- **Code Execution Sandbox**: Judge0 CE API (Docker / self-hosted)
+- **AI**: Google Generative Language API (Gemini)
 - **Containerization**: Docker & Docker Compose
 
 ## Project Structure
@@ -40,18 +41,19 @@ backend/
 │   ├── middleware/        request ID, logger, recovery, CORS, auth, SSE auth, rate limit, security
 │   ├── model/             database models + user auth DTOs
 │   ├── modules/
-│   │   ├── ai/            modul AI Assistant, Multimodal, & RAG (extractor, rag, provider, service, repo, handler)
-│   │   ├── execution/     modul Code Sandbox Execution (Judge0 provider, service, repo, handler)
+│   │   ├── project/       domain inti AI Website Generator (handler/model/repository/service)
+│   │   ├── ai/            DITUNDA kecuali /ai/health & GeminiProvider (chat, RAG, extractor, dsb.)
+│   │   ├── execution/     DITUNDA: Code Sandbox Execution (Judge0)
 │   │   └── business/      TEMPLATE/scaffold modul bisnis (handler/service/repository/migration)
 │   ├── repository/        database access (UserRepository)
 │   ├── routes/            route definition & middleware wiring
 │   └── service/           business logic (AuthService)
-├── migrations/            SQL migrations berurutan (0001 s.d. 0009, embedded via embed.FS)
+├── migrations/            SQL migrations berurutan (0001 s.d. 0010, embedded via embed.FS)
 ├── pkg/
 │   ├── logger/            structured logging (slog), env-aware formatting (text / JSON)
 │   └── response/          standard JSON API response + request validation helpers
 ├── storage/               Supabase & PostgreSQL integration point
-├── uploads/               penyimpanan berkas lokal (dokumen RAG & lampiran gambar)
+├── uploads/               penyimpanan gambar referensi project
 ├── docs/                  api.md, architecture.md, client-requirements.md
 ├── tests/                 database integration tests
 ├── .env.example
@@ -63,7 +65,7 @@ backend/
 ## Requirements
 
 - Go 1.25+
-- Docker + Docker Compose (untuk database PostgreSQL dan Judge0 CE)
+- Docker + Docker Compose (untuk database PostgreSQL)
 - PostgreSQL (dengan pgvector) jika tidak menggunakan Docker
 
 ## Installation
@@ -73,7 +75,7 @@ backend/
    ```bash
    cp .env.example .env
    ```
-3. Sesuaikan nilai di `.env` — minimal ganti `JWT_SECRET` dengan string acak panjang serta masukkan `AI_API_KEY` untuk mengaktifkan Gemini.
+3. Sesuaikan nilai di `.env` — minimal ganti `JWT_SECRET` dengan string acak panjang serta masukkan `AI_API_KEY` untuk mengaktifkan Gemini (server tetap boot tanpa API key; generate/revise akan mengembalikan `502` sampai key dikonfigurasi).
 4. Download dependencies:
    ```bash
    go mod tidy
@@ -111,9 +113,10 @@ Variabel wajib:
 Variabel penting lainnya:
 - `APP_ENV`, `APP_PORT`, `DATABASE_URL` (atau `DATABASE_HOST`, `DATABASE_PORT`, dsb.)
 - `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`
-- `EXEC_PROVIDER`, `EXEC_BASE_URL`, `EXEC_API_KEY`
 - `UPLOAD_DIR`, `UPLOAD_MAX_BYTES`
-- `CORS_ALLOWED_ORIGINS`, `RATE_LIMIT_*`, `AI_CHAT_RATE_LIMIT_*`, `EXEC_RATE_LIMIT_*`
+- `CORS_ALLOWED_ORIGINS`, `RATE_LIMIT_*`
+- `GENERATE_RATE_LIMIT_PER_MINUTE` (default 5), `PROJECT_MAX_IMAGES` (default 4), `PROJECT_MAX_HTML_BYTES` (default 524288 = 512 KiB)
+- `EXEC_*` (Judge0) dan RAG: opsional, tidak dibutuhkan Tahap A
 
 > Jangan pernah commit `.env` yang berisi secret nyata.
 
@@ -148,21 +151,17 @@ docker compose down -v        # Hentikan container dan reset volume database
 | POST | `/api/v1/auth/login` | - | Login, menerima JWT |
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
 | GET | `/api/v1/ai/health` | - | Cek konfigurasi AI lokal |
-| POST | `/api/v1/ai/chat` | Bearer | Interaksi AI multi-turn, RAG, & multimodal image attachment |
-| POST | `/api/v1/ai/chat/stream` | Bearer / `?token=` | Streaming respon AI token-by-token via SSE |
-| GET | `/api/v1/ai/conversations` | Bearer | Daftar riwayat percakapan user |
-| GET | `/api/v1/ai/conversations/{id}` | Bearer | Detail percakapan beserta seluruh pesan & lampiran |
-| DELETE | `/api/v1/ai/conversations/{id}` | Bearer | Hapus percakapan |
-| GET | `/api/v1/ai/attachments/{id}` | Bearer | Mengunduh/menampilkan file gambar lampiran (alias: `/attachments/{id}`) |
-| POST | `/api/v1/ai/documents` | Bearer | Ingest dokumen teks untuk RAG knowledge base |
-| POST | `/api/v1/ai/documents/upload` | Bearer | Upload file dokumen (PDF, DOCX, TXT) dengan pemrosesan asinkron (alias: `/documents/upload`) |
-| GET | `/api/v1/ai/documents` | Bearer | Daftar dokumen knowledge milik user |
-| GET | `/api/v1/ai/documents/{id}` | Bearer | Detail dokumen knowledge milik user |
-| GET | `/api/v1/ai/documents/{id}/status` | Bearer | Cek status background processing dokumen (`processing`, `ready`, `failed`, alias: `/documents/{id}/status`) |
-| DELETE | `/api/v1/ai/documents/{id}` | Bearer | Hapus dokumen knowledge beserta vector chunks & file fisik |
-| POST | `/api/v1/execute` | Bearer | Eksekusi kode sandboxed via Judge0 CE (Python, JavaScript, Go) |
-| GET | `/api/v1/execute/history` | Bearer | Riwayat eksekusi kode milik user |
-| GET | `/api/v1/execute/{id}` | Bearer | Detail riwayat eksekusi kode |
+| POST | `/api/v1/projects` | Bearer | Membuat project baru dari brief |
+| GET | `/api/v1/projects` | Bearer | Daftar project milik user |
+| GET | `/api/v1/projects/{id}` | Bearer | Detail project + versi terbaru (HTML) |
+| DELETE | `/api/v1/projects/{id}` | Bearer | Hapus project + versi + file gambar |
+| POST | `/api/v1/projects/{id}/generate` | Bearer / `?token=` | Generate versi 1 via SSE |
+| POST | `/api/v1/projects/{id}/revise` | Bearer / `?token=` | Revisi menjadi versi baru via SSE |
+| GET | `/api/v1/projects/{id}/versions` | Bearer | Riwayat versi (tanpa HTML) |
+| GET | `/api/v1/projects/{id}/versions/{number}` | Bearer | Satu versi lengkap dengan HTML |
+| GET | `/api/v1/projects/{id}/export` | Bearer | Unduh website sebagai file `.html` |
+| GET | `/api/v1/projects/{id}/attachments` | Bearer | Daftar gambar referensi project |
+| GET | `/api/v1/projects/{id}/attachments/{attachmentId}` | Bearer | Biner gambar attachment |
 
 Dokumentasi lengkap:
 - [API Reference & Specification](docs/api.md)

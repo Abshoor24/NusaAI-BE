@@ -14,22 +14,28 @@ import (
 	"github.com/Abshoor24/backend-go/internal/middleware"
 	aihandler "github.com/Abshoor24/backend-go/internal/modules/ai/handler"
 	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
-	executionhandler "github.com/Abshoor24/backend-go/internal/modules/execution/handler"
-	executionservice "github.com/Abshoor24/backend-go/internal/modules/execution/service"
+	projecthandler "github.com/Abshoor24/backend-go/internal/modules/project/handler"
+	projectservice "github.com/Abshoor24/backend-go/internal/modules/project/service"
 	"github.com/Abshoor24/backend-go/internal/service"
 	"github.com/Abshoor24/backend-go/storage"
 )
 
 // Dependencies are explicitly injected into the router from main.go to avoid
 // global state and make the wiring testable.
+//
+// AI stays because GET /ai/health and the Gemini provider (used by the
+// project module) remain active. The legacy AI chat/conversation/document
+// handlers and the code execution module are intentionally NOT wired here:
+// their code and tables are kept for later stages, but their routes return
+// the router's standard 404.
 type Dependencies struct {
-	Config    *config.Config
-	Logger    *slog.Logger
-	DB        *storage.Supabase
-	Auth      service.AuthService
-	AI        aiservice.Service
-	Execution executionservice.Service
-	Tokens    *jwt.Manager
+	Config  *config.Config
+	Logger  *slog.Logger
+	DB      *storage.Supabase
+	Auth    service.AuthService
+	AI      aiservice.Service
+	Project projectservice.Service
+	Tokens  *jwt.Manager
 }
 
 // New builds the full HTTP handler with all routes and middleware.
@@ -57,7 +63,8 @@ func New(deps Dependencies) http.Handler {
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
 
-		// AI diagnostic endpoint (public)
+		// AI diagnostic endpoint (public). The only active route of the
+		// deferred ai module; everything else under /ai/* is unregistered.
 		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI, deps.Config.Upload)
 		r.Get("/ai/health", aiH.Health)
 
@@ -66,70 +73,35 @@ func New(deps Dependencies) http.Handler {
 			r.Use(middleware.RequireAuth(deps.Tokens))
 			r.Get("/auth/me", authH.Me)
 
-			// Code Sandbox Execution: dedicated stricter rate limit
-			if deps.Execution != nil {
-				execH := executionhandler.New(deps.Execution, deps.Logger, deps.Config.Execution)
-				r.Group(func(r chi.Router) {
-					if deps.Config.Execution.RateLimitEnabled {
-						r.Use(middleware.RateLimit(config.RateLimitConfig{
-							Enabled:   true,
-							PerMinute: deps.Config.Execution.RateLimitPerMin,
-							Burst:     deps.Config.Execution.RateLimitBurst,
-						}))
-					}
-					r.Post("/execute", execH.Execute)
-					r.Get("/execute/history", execH.ListHistory)
-					r.Get("/execute/{id}", execH.GetDetail)
-				})
+			if deps.Project != nil {
+				projectH := projecthandler.New(deps.Project, deps.Logger, deps.Config.AI, deps.Config.Upload, deps.Config.Project)
+				r.Post("/projects", projectH.Create)
+				r.Get("/projects", projectH.List)
+				r.Get("/projects/{id}", projectH.Get)
+				r.Delete("/projects/{id}", projectH.Delete)
+				r.Get("/projects/{id}/versions", projectH.ListVersions)
+				r.Get("/projects/{id}/versions/{number}", projectH.GetVersion)
+				r.Get("/projects/{id}/export", projectH.Export)
+				r.Get("/projects/{id}/attachments", projectH.ListAttachments)
+				r.Get("/projects/{id}/attachments/{attachmentId}", projectH.GetAttachment)
 			}
-
-			// AI Assistant, Conversation, & Document interaction: rate limited
-			// NOTE: /ai/chat/stream is registered OUTSIDE this group below so it
-			// can use RequireAuthSSE (accepts token via ?token= query param).
-			r.Group(func(r chi.Router) {
-				if deps.Config.AI.ChatRateLimitEnabled {
-					r.Use(middleware.RateLimit(config.RateLimitConfig{
-						Enabled:   true,
-						PerMinute: deps.Config.AI.ChatRateLimitPerMin,
-						Burst:     deps.Config.AI.ChatRateLimitPerMin,
-					}))
-				}
-				r.Post("/ai/chat", aiH.Chat)
-				r.Get("/ai/conversations", aiH.ListConversations)
-				r.Get("/ai/conversations/{id}", aiH.GetConversation)
-				r.Delete("/ai/conversations/{id}", aiH.DeleteConversation)
-
-				// Multimodal Attachment endpoints
-				r.Get("/ai/attachments/{id}", aiH.GetAttachment)
-				r.Get("/attachments/{id}", aiH.GetAttachment)
-
-				// RAG Knowledge Document endpoints
-				r.Post("/ai/documents", aiH.IngestDocument)
-				r.Post("/ai/documents/upload", aiH.UploadDocument)
-				r.Get("/ai/documents", aiH.ListDocuments)
-				r.Get("/ai/documents/{id}", aiH.GetDocument)
-				r.Get("/ai/documents/{id}/status", aiH.GetDocumentStatus)
-				r.Delete("/ai/documents/{id}", aiH.DeleteDocument)
-
-			// Aliases without /ai prefix as specified in requirements
-				r.Post("/documents/upload", aiH.UploadDocument)
-				r.Get("/documents/{id}/status", aiH.GetDocumentStatus)
-			})
 		})
 
-		// SSE streaming endpoint: uses RequireAuthSSE so the browser
-		// EventSource API can pass the JWT via ?token= query parameter.
-		// This is the ONLY endpoint that accepts the token this way.
+		// SSE streaming endpoints: Generate rate limit (on top of the General
+		// limit above) + RequireAuthSSE so EventSource clients can pass the
+		// JWT via ?token= query parameter. The provider stream is opened
+		// BEFORE the SSE headers are sent, so an early provider failure is
+		// still a JSON 502, not a broken stream.
 		r.Group(func(r chi.Router) {
-			if deps.Config.AI.ChatRateLimitEnabled {
-				r.Use(middleware.RateLimit(config.RateLimitConfig{
-					Enabled:   true,
-					PerMinute: deps.Config.AI.ChatRateLimitPerMin,
-					Burst:     deps.Config.AI.ChatRateLimitPerMin,
-				}))
+			if deps.Config.Generate.Enabled {
+				r.Use(middleware.RateLimit(deps.Config.Generate))
 			}
 			r.Use(middleware.RequireAuthSSE(deps.Tokens))
-			r.Post("/ai/chat/stream", aiH.ChatStream)
+			if deps.Project != nil {
+				projectH := projecthandler.New(deps.Project, deps.Logger, deps.Config.AI, deps.Config.Upload, deps.Config.Project)
+				r.Post("/projects/{id}/generate", projectH.Generate)
+				r.Post("/projects/{id}/revise", projectH.Revise)
+			}
 		})
 	})
 

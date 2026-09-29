@@ -103,7 +103,7 @@ System prompt **dikunci di server**; user tidak dapat menimpanya. Kustomisasi pe
 | Rate limit API umum | 120 req/menit per IP | `[ ]` |
 | Jumlah gambar referensi per request | 4 (`PROJECT_MAX_IMAGES`) | `[ ]` |
 | Ukuran maksimum per gambar | 10 MB (`UPLOAD_MAX_BYTES`) | `[ ]` |
-| Ukuran maksimum HTML hasil | `PROJECT_MAX_HTML_BYTES` | `[ ]` |
+| Ukuran maksimum HTML hasil | 512 KiB / 524288 bytes (`PROJECT_MAX_HTML_BYTES`) | `[ ]` |
 | Format gambar | JPEG, PNG, WebP | `[ ]` |
 
 Pertanyaan terbuka:

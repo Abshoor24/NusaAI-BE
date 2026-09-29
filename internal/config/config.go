@@ -16,17 +16,18 @@ import (
 // Secrets (database password, JWT secret, AI API key) are only read from the
 // environment and never hardcoded or written into source code.
 type Config struct {
-	App    AppConfig
-	Server ServerConfig
-	DB     DBConfig
-	JWT    JWTConfig
+	App       AppConfig
+	Server    ServerConfig
+	DB        DBConfig
+	JWT       JWTConfig
 	AI        AIConfig
 	Execution ExecutionConfig
 	CORS      CORSConfig
 	Rate      RateLimitConfig
+	Generate  RateLimitConfig
+	Project   ProjectConfig
 	Upload    UploadConfig
 }
-
 
 type AppConfig struct {
 	Env  string // development | production
@@ -106,6 +107,15 @@ type UploadConfig struct {
 	MaxSizeBytes int64
 }
 
+// ProjectConfig holds AI Website Generator (Tahap A) limits.
+type ProjectConfig struct {
+	// MaxImages caps reference images per generate/revise request.
+	MaxImages int
+	// MaxHTMLBytes caps the validated AI-produced HTML document size.
+	// Default 512 KiB: generous for a single self-contained file
+	// (Tailwind via CDN, inline JS) while bounding memory/DB growth.
+	MaxHTMLBytes int64
+}
 
 // loadEnvFile loads the local .env file for development when it is present.
 // It never crashes when the file is missing and it never overrides variables
@@ -194,12 +204,20 @@ func Load() (*Config, error) {
 			PerMinute: getInt("RATE_LIMIT_PER_MINUTE", 120),
 			Burst:     getInt("RATE_LIMIT_BURST", 120),
 		},
+		Generate: RateLimitConfig{
+			Enabled:   getBool("GENERATE_RATE_LIMIT_ENABLED", true),
+			PerMinute: getInt("GENERATE_RATE_LIMIT_PER_MINUTE", 5),
+			Burst:     getInt("GENERATE_RATE_LIMIT_PER_MINUTE", 5),
+		},
+		Project: ProjectConfig{
+			MaxImages:    getInt("PROJECT_MAX_IMAGES", 4),
+			MaxHTMLBytes: getInt64("PROJECT_MAX_HTML_BYTES", 524288), // 512 KiB default
+		},
 		Upload: UploadConfig{
 			Dir:          getEnv("UPLOAD_DIR", "uploads"),
 			MaxSizeBytes: getInt64("UPLOAD_MAX_BYTES", 10<<20), // 10 MB default
 		},
 	}
-
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -226,6 +244,15 @@ func (c *Config) validate() error {
 	}
 	if c.Rate.Enabled && c.Rate.PerMinute <= 0 {
 		return fmt.Errorf("config: RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
+	}
+	if c.Generate.Enabled && c.Generate.PerMinute <= 0 {
+		return fmt.Errorf("config: GENERATE_RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
+	}
+	if c.Project.MaxImages <= 0 {
+		return fmt.Errorf("config: PROJECT_MAX_IMAGES must be greater than 0")
+	}
+	if c.Project.MaxHTMLBytes <= 0 {
+		return fmt.Errorf("config: PROJECT_MAX_HTML_BYTES must be greater than 0")
 	}
 	if c.Execution.RateLimitEnabled && c.Execution.RateLimitPerMin <= 0 {
 		return fmt.Errorf("config: EXEC_RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
