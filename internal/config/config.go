@@ -73,8 +73,7 @@ type AIConfig struct {
 	BaseURL              string
 	Timeout              time.Duration
 	MaxBytes             int64
-	ChatRateLimitEnabled bool
-	ChatRateLimitPerMin  int
+	MaxGenerateBodyBytes int64
 }
 
 type CORSConfig struct {
@@ -95,9 +94,6 @@ type ExecutionConfig struct {
 	WallTimeLimitSec float64
 	MemoryLimitKB    int64
 	MaxCodeBytes     int64
-	RateLimitEnabled bool
-	RateLimitPerMin  int
-	RateLimitBurst   int
 	PollInterval     time.Duration
 	MaxPollDuration  time.Duration
 }
@@ -173,14 +169,16 @@ func Load() (*Config, error) {
 			Issuer:     getEnv("JWT_ISSUER", "backend"),
 		},
 		AI: AIConfig{
-			Provider:             getEnv("AI_PROVIDER", "gemini"),
-			APIKey:               getEnv("AI_API_KEY", ""),
-			Model:                getEnv("AI_MODEL", ""),
-			BaseURL:              getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
-			Timeout:              getDuration("AI_TIMEOUT", 30*time.Second),
-			MaxBytes:             getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
-			ChatRateLimitEnabled: getBool("AI_CHAT_RATE_LIMIT_ENABLED", true),
-			ChatRateLimitPerMin:  getInt("AI_CHAT_RATE_LIMIT_PER_MINUTE", 10),
+			Provider: getEnv("AI_PROVIDER", "gemini"),
+			APIKey:   getEnv("AI_API_KEY", ""),
+			Model:    getEnv("AI_MODEL", ""),
+			BaseURL:  getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+			Timeout:  getDuration("AI_TIMEOUT", 30*time.Second),
+			MaxBytes: getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
+			// Separate JSON body cap for generate/revise: base64 images inflate
+			// ~33%, so these endpoints allow up to the 32 MB multipart buffer.
+			// Other endpoints keep the global AI_MAX_REQUEST_BYTES limit.
+			MaxGenerateBodyBytes: getInt64("AI_MAX_GENERATE_BODY_BYTES", 32<<20), // 32 MB default
 		},
 		Execution: ExecutionConfig{
 			Provider:         getEnv("EXEC_PROVIDER", "judge0"),
@@ -190,9 +188,6 @@ func Load() (*Config, error) {
 			WallTimeLimitSec: getFloat64("EXEC_WALL_TIME_LIMIT_SEC", 10.0),
 			MemoryLimitKB:    getInt64("EXEC_MEMORY_LIMIT_KB", 131072), // 128 MB default
 			MaxCodeBytes:     getInt64("EXEC_MAX_CODE_BYTES", 65536),   // 64 KB default
-			RateLimitEnabled: getBool("EXEC_RATE_LIMIT_ENABLED", true),
-			RateLimitPerMin:  getInt("EXEC_RATE_LIMIT_PER_MINUTE", 15),
-			RateLimitBurst:   getInt("EXEC_RATE_LIMIT_BURST", 15),
 			PollInterval:     getDuration("EXEC_POLL_INTERVAL", 250*time.Millisecond),
 			MaxPollDuration:  getDuration("EXEC_MAX_POLL_DURATION", 15*time.Second),
 		},
@@ -248,14 +243,14 @@ func (c *Config) validate() error {
 	if c.Generate.Enabled && c.Generate.PerMinute <= 0 {
 		return fmt.Errorf("config: GENERATE_RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
 	}
+	if c.AI.MaxGenerateBodyBytes <= 0 {
+		return fmt.Errorf("config: AI_MAX_GENERATE_BODY_BYTES must be greater than 0")
+	}
 	if c.Project.MaxImages <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_IMAGES must be greater than 0")
 	}
 	if c.Project.MaxHTMLBytes <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_HTML_BYTES must be greater than 0")
-	}
-	if c.Execution.RateLimitEnabled && c.Execution.RateLimitPerMin <= 0 {
-		return fmt.Errorf("config: EXEC_RATE_LIMIT_PER_MINUTE must be greater than 0 when rate limiting is enabled")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("config: missing required environment variable(s): %s", strings.Join(missing, ", "))

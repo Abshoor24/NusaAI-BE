@@ -133,4 +133,7 @@ func TestLoadWithoutDeferredModuleConfig(t *testing.T) {
 	if cfg.Project.MaxHTMLBytes != 524288 {
 		t.Errorf("Project.MaxHTMLBytes = %d, want 524288", cfg.Project.MaxHTMLBytes)
 	}
+	if cfg.AI.MaxGenerateBodyBytes != 32<<20 {
+		t.Errorf("AI.MaxGenerateBodyBytes = %d, want %d", cfg.AI.MaxGenerateBodyBytes, 32<<20)
+	}
 }

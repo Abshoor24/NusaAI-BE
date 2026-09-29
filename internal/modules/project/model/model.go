@@ -103,9 +103,9 @@ type ProjectAttachment struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// ProjectResponse is the api.md ProjectResponse shape.
-// LatestVersion is only populated on GET /projects/{id} (null when the
-// project has no versions yet); list items leave it nil.
+// ProjectResponse is the api.md ProjectResponse shape for the detail
+// endpoint (GET /projects/{id}). LatestVersion is null when the project
+// has no versions yet.
 type ProjectResponse struct {
 	ID            string           `json:"id"`
 	Title         string           `json:"title"`
@@ -115,6 +115,31 @@ type ProjectResponse struct {
 	LatestVersion *VersionResponse `json:"latest_version"`
 	CreatedAt     time.Time        `json:"created_at"`
 	UpdatedAt     time.Time        `json:"updated_at"`
+}
+
+// ProjectListItemResponse is the api.md shape for items of GET /projects.
+// Unlike the detail response it carries no latest_version key at all.
+type ProjectListItemResponse struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	Status       string    `json:"status"`
+	Brief        Brief     `json:"brief"`
+	VersionCount int       `json:"version_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ToProjectListItemResponse converts a Project to its list-item shape.
+func ToProjectListItemResponse(p *Project) ProjectListItemResponse {
+	return ProjectListItemResponse{
+		ID:           p.ID,
+		Title:        p.Title,
+		Status:       p.Status,
+		Brief:        p.Brief,
+		VersionCount: p.VersionCount,
+		CreatedAt:    p.CreatedAt,
+		UpdatedAt:    p.UpdatedAt,
+	}
 }
 
 // VersionResponse is the api.md VersionResponse shape.

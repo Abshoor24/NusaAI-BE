@@ -36,6 +36,9 @@ func New(svc service.Service, logger *slog.Logger, aiCfg config.AIConfig, upload
 	if uploadCfg.MaxSizeBytes <= 0 {
 		uploadCfg.MaxSizeBytes = 10 << 20
 	}
+	if aiCfg.MaxGenerateBodyBytes <= 0 {
+		aiCfg.MaxGenerateBodyBytes = 32 << 20
+	}
 	return &Handler{svc: svc, logger: logger, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg}
 }
 
@@ -116,9 +119,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		response.RespondError(w, h.logger, err)
 		return
 	}
-	out := make([]model.ProjectResponse, 0, len(projects))
+	out := make([]model.ProjectListItemResponse, 0, len(projects))
 	for _, p := range projects {
-		out = append(out, model.ToProjectResponse(p, nil))
+		out = append(out, model.ToProjectListItemResponse(p))
 	}
 	response.RespondSuccess(w, http.StatusOK, "Request successful", out)
 }
@@ -314,7 +317,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		var req model.GenerateRequest
-		if err := decodeStrict(w, r, &req, h.aiCfg.MaxBytes); err != nil {
+		if err := decodeStrict(w, r, &req, h.aiCfg.MaxGenerateBodyBytes); err != nil {
 			response.RespondError(w, h.logger, err)
 			return
 		}
@@ -371,7 +374,7 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		var req model.ReviseRequest
-		if err := decodeStrict(w, r, &req, h.aiCfg.MaxBytes); err != nil {
+		if err := decodeStrict(w, r, &req, h.aiCfg.MaxGenerateBodyBytes); err != nil {
 			response.RespondError(w, h.logger, err)
 			return
 		}
