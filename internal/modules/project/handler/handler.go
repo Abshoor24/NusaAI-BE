@@ -94,7 +94,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		response.RespondError(w, h.logger, err)
 		return
 	}
-	response.RespondSuccess(w, http.StatusCreated, "Project created", model.ToProjectResponse(p, nil))
+	response.RespondSuccess(w, http.StatusCreated, "Project created", model.ToProjectSummaryResponse(p))
 }
 
 // List handles GET /api/v1/projects. Invalid limit/offset fall back to defaults.
@@ -119,9 +119,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		response.RespondError(w, h.logger, err)
 		return
 	}
-	out := make([]model.ProjectListItemResponse, 0, len(projects))
+	out := make([]model.ProjectSummaryResponse, 0, len(projects))
 	for _, p := range projects {
-		out = append(out, model.ToProjectListItemResponse(p))
+		out = append(out, model.ToProjectSummaryResponse(p))
 	}
 	response.RespondSuccess(w, http.StatusOK, "Request successful", out)
 }
@@ -151,6 +151,25 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.RespondSuccess(w, http.StatusOK, "Project deleted", nil)
+}
+
+// UpdateTitle handles PATCH /api/v1/projects/{id}.
+func (h *Handler) UpdateTitle(w http.ResponseWriter, r *http.Request) {
+	uid, ok := userID(w, r, h)
+	if !ok {
+		return
+	}
+	var req model.UpdateTitleRequest
+	if err := decodeStrict(w, r, &req, h.aiCfg.MaxBytes); err != nil {
+		response.RespondError(w, h.logger, err)
+		return
+	}
+	p, err := h.svc.UpdateTitle(r.Context(), uid, strings.TrimSpace(chi.URLParam(r, "id")), req.Title)
+	if err != nil {
+		response.RespondError(w, h.logger, err)
+		return
+	}
+	response.RespondSuccess(w, http.StatusOK, "Project renamed", model.ToProjectSummaryResponse(p))
 }
 
 // ListVersions handles GET /api/v1/projects/{id}/versions (no HTML).
@@ -393,39 +412,70 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 
 // streamPending relays the provider stream as SSE token events, then stores
 // the version and emits done — or emits error with no version stored.
+// A heartbeat comment is emitted while waiting so idle streams survive
+// proxies; every write refreshes the write deadline.
 func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending *service.PendingStream) {
 	sse := newSSEWriter(w)
 	var buf strings.Builder
 	start := time.Now()
 
-	for chunk := range pending.Stream {
-		// Client gone: roll back on a detached context and stop silently.
+	var tickCh <-chan time.Time
+	if sse.heartbeat > 0 {
+		ticker := time.NewTicker(sse.heartbeat)
+		defer ticker.Stop()
+		tickCh = ticker.C
+	}
+
+loop:
+	for {
 		select {
 		case <-r.Context().Done():
+			// Client gone: roll back on a detached context and stop silently.
 			h.svc.FailStream(r.Context(), pending)
 			return
-		default:
-		}
-		if chunk.Err != nil {
-			h.logger.Error("project stream chunk error",
-				"project_id", pending.Project.ID, "kind", pending.Kind, "error", chunk.Err)
-			h.svc.FailStream(r.Context(), pending)
-			sse.writeEvent("error", map[string]string{"error": "The AI provider returned an error"})
-			return
-		}
-		if chunk.Done {
-			break
-		}
-		if chunk.Token != "" {
+		case <-tickCh:
+			sse.writeHeartbeat()
+			continue
+		case chunk, ok := <-pending.Stream:
+			if !ok {
+				break loop
+			}
+			pending.Chunks++
+			// Record terminal metadata for FinishStream diagnostics and
+			// end-of-stream classification; harmless when empty or repeated.
+			if chunk.FinishReason != "" {
+				pending.FinishReason = chunk.FinishReason
+			}
+			if chunk.BlockReason != "" {
+				pending.BlockReason = chunk.BlockReason
+			}
+			if chunk.Usage != nil {
+				pending.Usage = chunk.Usage
+			}
+			if chunk.Err != nil {
+				h.logger.Error("project stream chunk error",
+					"project_id", pending.Project.ID, "kind", pending.Kind, "error", chunk.Err,
+					"chunks", pending.Chunks, "bytes", buf.Len())
+				h.svc.FailStream(r.Context(), pending)
+				sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
+				return
+			}
+			if chunk.Done {
+				break loop
+			}
+			if chunk.Token == "" {
+				continue
+			}
 			if int64(buf.Len()+len(chunk.Token)) > pending.MaxBytes+64*1024 {
 				// Bound streaming memory: the final validator enforces the
 				// exact limit; this guard only stops unbounded growth.
 				h.logger.Error("project stream exceeded buffer cap", "project_id", pending.Project.ID)
 				h.svc.FailStream(r.Context(), pending)
-				sse.writeEvent("error", map[string]string{"error": "The AI provider returned an error"})
+				sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
 				return
 			}
 			buf.WriteString(chunk.Token)
+			pending.TextBytes += len(chunk.Token)
 			sse.writeEvent("token", map[string]string{"token": chunk.Token})
 		}
 	}
@@ -435,7 +485,7 @@ func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending 
 		h.logger.Error("project stream finalize failed",
 			"project_id", pending.Project.ID, "kind", pending.Kind,
 			"duration_ms", time.Since(start).Milliseconds(), "error", err)
-		sse.writeEvent("error", map[string]string{"error": "The AI provider returned an error"})
+		sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
 		return
 	}
 	h.logger.Info("project stream done",

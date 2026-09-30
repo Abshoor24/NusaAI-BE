@@ -90,8 +90,20 @@ func TestRespondSuccessJSONEncodingError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if !strings.Contains(rec.Body.String(), "internal server error") {
-		t.Errorf("body = %q, want a safe error message", rec.Body.String())
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var out struct {
+		Success bool `json:"success"`
+		Error   struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("fallback body must be JSON: %v", err)
+	}
+	if out.Success || out.Error.Code != "INTERNAL_SERVER_ERROR" {
+		t.Errorf("body = %q, want JSON envelope with INTERNAL_SERVER_ERROR", rec.Body.String())
 	}
 }
 

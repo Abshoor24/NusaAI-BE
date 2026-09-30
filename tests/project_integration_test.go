@@ -36,8 +36,8 @@ import (
 )
 
 // requireProjectTestDB connects to the TEST_DATABASE_URL database, runs all
-// embedded migrations (0001-0010) on it, and returns the pool plus a project
-// repository. It never touches the app .env / DATABASE_URL: TEST_DATABASE_URL
+// embedded migrations (currently through 0011) on it, and returns the pool
+// plus a project repository. It never touches the app .env / DATABASE_URL: TEST_DATABASE_URL
 // is read directly so a production connection string in .env cannot leak in.
 func requireProjectTestDB(t *testing.T) (*pgxpool.Pool, projectrepo.Repository) {
 	t.Helper()
@@ -47,11 +47,15 @@ func requireProjectTestDB(t *testing.T) (*pgxpool.Pool, projectrepo.Repository) 
 	}
 
 	dbCfg := config.DBConfig{
-		URL:               dsn,
-		MaxConns:          20,
+		URL: dsn,
+		// Dibatasi 8 koneksi agar tidak melampaui batas Session pooler Supabase
+		// (free tier). Ini tidak mengurangi bukti perbaikan race penomoran:
+		// serialisasi datang dari SELECT ... FOR UPDATE di FinishSuccess,
+		// bukan dari jumlah koneksi — goroutine berlebih antre di pool.
+		MaxConns:          8,
 		MinConns:          0,
 		MaxConnLifetime:   time.Hour,
-		ConnectTimeout:    10 * time.Second,
+		ConnectTimeout:    15 * time.Second,
 		HealthCheckPeriod: time.Minute,
 	}
 
@@ -79,7 +83,7 @@ func createTestUser(t *testing.T, pool *pgxpool.Pool) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO users (id, email, password_hash, role) VALUES ($1, $2, 'test-hash-not-for-login', 'admin')`,
+		`INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'test-hash-not-for-login')`,
 		id, email); err != nil {
 		t.Fatalf("insert test user: %v", err)
 	}
@@ -122,6 +126,22 @@ func appCode(t *testing.T, err error) string {
 
 // a. Tepat satu goroutine yang boleh memenangkan transisi ke generating;
 // sisanya mendapat CONFLICT ("sudah generating", yang di HTTP menjadi 409).
+func TestProjectIntegration_UsersTableHasNoRoleColumn(t *testing.T) {
+	pool, _ := requireProjectTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'role'
+	)`).Scan(&exists); err != nil {
+		t.Fatalf("check role column: %v", err)
+	}
+	if exists {
+		t.Error("users.role column still exists; migration 0011 must have dropped it")
+	}
+}
+
 func TestProjectIntegration_AtomicTryStart(t *testing.T) {
 	pool, repo := requireProjectTestDB(t)
 	userID := createTestUser(t, pool)
@@ -131,11 +151,14 @@ func TestProjectIntegration_AtomicTryStart(t *testing.T) {
 	var wg sync.WaitGroup
 	wins := make(chan *projectmodel.Project, n)
 	errs := make(chan error, n)
+	// Timeout 2 menit untuk seluruh percobaan paralel (cloud latency).
+	opCtx, opCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer opCancel()
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, err := repo.TryStartGenerate(context.Background(), userID, p.ID)
+			got, err := repo.TryStartGenerate(opCtx, userID, p.ID)
 			if err != nil {
 				errs <- err
 				return
@@ -179,8 +202,10 @@ func TestProjectIntegration_AtomicTryStart(t *testing.T) {
 }
 
 // b. N FinishSuccess paralel harus menghasilkan nomor versi 1..1+N yang unik
-// dan berurutan tanpa celah/duplikat. Test ini MUNGKIN GAGAL pada kode saat
-// ini (dilaporkan ke pemilik repo) — kode produksi tidak diubah agar lulus.
+// dan berurutan tanpa celah/duplikat. Ini pembuktian perbaikan race
+// penomoran versi: FinishSuccess mengunci baris project (SELECT ... FOR
+// UPDATE) sebelum menghitung MAX+1, sehingga finish konkuren antre pada
+// lock dan tidak bertabrakan pada UNIQUE (project_id, version_number).
 func TestProjectIntegration_ConcurrentVersionNumbering(t *testing.T) {
 	pool, repo := requireProjectTestDB(t)
 	userID := createTestUser(t, pool)
@@ -204,11 +229,14 @@ func TestProjectIntegration_ConcurrentVersionNumbering(t *testing.T) {
 	const n = 15
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
+	// Timeout 2 menit untuk seluruh percobaan paralel (cloud latency).
+	opCtx, opCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer opCancel()
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := repo.FinishSuccess(context.Background(), p.ID,
+			_, err := repo.FinishSuccess(opCtx, p.ID,
 				projectmodel.KindRevise, fmt.Sprintf("revise %d", i), "<!DOCTYPE html><html></html>")
 			if err != nil {
 				errs <- err

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -48,6 +49,9 @@ func (d *dummyProjectService) Get(_ context.Context, _, _ string) (*projectmodel
 	return &projectmodel.Project{ID: "p", Title: "T", Status: projectmodel.StatusDraft}, nil, nil
 }
 func (d *dummyProjectService) Delete(_ context.Context, _, _ string) error { return nil }
+func (d *dummyProjectService) UpdateTitle(_ context.Context, _, _ string, title string) (*projectmodel.Project, error) {
+	return &projectmodel.Project{ID: "p", Title: title, Status: projectmodel.StatusDraft}, nil
+}
 func (d *dummyProjectService) ListVersions(_ context.Context, _, _ string) ([]*projectmodel.Version, error) {
 	return []*projectmodel.Version{}, nil
 }
@@ -94,10 +98,22 @@ func setupTestRouter() (http.Handler, *jwt.Manager) {
 	return setupTestRouterWithRate(config.RateLimitConfig{Enabled: false}, config.RateLimitConfig{Enabled: false})
 }
 
+func setupTestRouterWithCORS(origins []string) (http.Handler, *jwt.Manager) {
+	return setupTestRouterFull(
+		config.RateLimitConfig{Enabled: false},
+		config.RateLimitConfig{Enabled: false},
+		origins,
+	)
+}
+
 func setupTestRouterWithRate(general, generate config.RateLimitConfig) (http.Handler, *jwt.Manager) {
+	return setupTestRouterFull(general, generate, []string{"*"})
+}
+
+func setupTestRouterFull(general, generate config.RateLimitConfig, origins []string) (http.Handler, *jwt.Manager) {
 	cfg := &config.Config{
 		Server: config.ServerConfig{Port: "8080"},
-		CORS:   config.CORSConfig{AllowedOrigins: []string{"*"}},
+		CORS:   config.CORSConfig{AllowedOrigins: origins},
 		JWT: config.JWTConfig{
 			Secret:     "secret-must-be-long-enough-for-testing",
 			Expiration: time.Hour,
@@ -126,7 +142,7 @@ func setupTestRouterWithRate(general, generate config.RateLimitConfig) (http.Han
 
 func testToken(t *testing.T, tokens *jwt.Manager) string {
 	t.Helper()
-	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-1", Email: "test@example.com", Role: model.RoleAdmin})
+	tokenStr, _, err := tokens.Generate(&model.User{ID: "user-1", Email: "test@example.com"})
 	if err != nil {
 		t.Fatalf("token generate failed: %v", err)
 	}
@@ -195,6 +211,7 @@ func TestProjectEndpointsRequireAuth(t *testing.T) {
 		{http.MethodGet, "/api/v1/projects", ""},
 		{http.MethodGet, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01", ""},
 		{http.MethodDelete, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01", ""},
+		{http.MethodPatch, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01", `{"title":"x"}`},
 		{http.MethodGet, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01/versions", ""},
 		{http.MethodGet, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01/versions/1", ""},
 		{http.MethodGet, "/api/v1/projects/5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01/export", ""},
@@ -246,6 +263,9 @@ func TestProjectCRUDRoutesAuthorized(t *testing.T) {
 	}
 	if rec := do(http.MethodDelete, "/api/v1/projects/"+id, ""); rec.Code != http.StatusOK {
 		t.Errorf("DELETE /projects/{id}: got %d, want 200", rec.Code)
+	}
+	if rec := do(http.MethodPatch, "/api/v1/projects/"+id, `{"title":"Judul Baru"}`); rec.Code != http.StatusOK {
+		t.Errorf("PATCH /projects/{id}: got %d, want 200", rec.Code)
 	}
 	if rec := do(http.MethodGet, "/api/v1/projects/"+id+"/versions", ""); rec.Code != http.StatusOK {
 		t.Errorf("GET versions: got %d, want 200", rec.Code)
@@ -316,7 +336,6 @@ func TestGenerateRateLimitTier(t *testing.T) {
 		t.Error("429 must carry Retry-After")
 	}
 }
-
 func TestPublicHealthDoesNotRequireAuth(t *testing.T) {
 	router, _ := setupTestRouter()
 
@@ -328,4 +347,99 @@ func TestPublicHealthDoesNotRequireAuth(t *testing.T) {
 			t.Errorf("GET %s: got %d, want 200", path, rec.Code)
 		}
 	}
+}
+
+func assertJSONEnvelope(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int, wantCode string) {
+	t.Helper()
+	if rec.Code != wantStatus {
+		t.Errorf("status = %d, want %d", rec.Code, wantStatus)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body must be JSON: %v", err)
+	}
+	if body["success"] != false {
+		t.Errorf("envelope success = %v, want false", body["success"])
+	}
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope error = %v, want object", body["error"])
+	}
+	if errObj["code"] != wantCode {
+		t.Errorf("error code = %v, want %s", errObj["code"], wantCode)
+	}
+}
+
+func TestUnknownRouteReturnsJSONEnvelope(t *testing.T) {
+	router, _ := setupTestRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/nope", nil)
+	router.ServeHTTP(rec, req)
+	assertJSONEnvelope(t, rec, http.StatusNotFound, "NOT_FOUND")
+}
+
+func TestWrongMethodReturnsJSONEnvelope(t *testing.T) {
+	router, tokens := setupTestRouter()
+	tokenStr := testToken(t, tokens)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	router.ServeHTTP(rec, req)
+	assertJSONEnvelope(t, rec, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+}
+
+func TestUnauthorizedCarriesCORSHeaders(t *testing.T) {
+	router, _ := setupTestRouterWithCORS([]string{"http://localhost:3000"})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
+		t.Errorf("Allow-Origin = %q on 401, want echoed origin", got)
+	}
+	assertJSONEnvelope(t, rec, http.StatusUnauthorized, "UNAUTHORIZED")
+}
+
+func TestStreamCarriesCORSHeaders(t *testing.T) {
+	router, tokens := setupTestRouterWithCORS([]string{"http://localhost:3000"})
+	tokenStr := testToken(t, tokens)
+	id := "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01"
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects/"+id+"/generate", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.Header.Set("Origin", "http://localhost:3000")
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
+		t.Errorf("Allow-Origin = %q on stream, want echoed origin", got)
+	}
+	if got := rec.Header().Get("Vary"); got != "Origin" {
+		t.Errorf("Vary = %q on stream, want Origin", got)
+	}
+}
+
+func TestOversizedBodyReturnsJSONEnvelope(t *testing.T) {
+	router, tokens := setupTestRouter()
+	tokenStr := testToken(t, tokens)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects",
+		strings.NewReader(`{"title":"x","brief":{"description":"`+strings.Repeat("b", 2<<20)+`"}}`))
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	router.ServeHTTP(rec, req)
+	assertJSONEnvelope(t, rec, http.StatusBadRequest, "BAD_REQUEST")
 }

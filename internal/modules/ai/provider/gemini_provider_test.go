@@ -305,4 +305,211 @@ func TestGeminiProviderBuildsMultimodalRequest(t *testing.T) {
 	}
 }
 
+func TestGeminiProviderCompleteStreamFinishReason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "no flusher", http.StatusInternalServerError)
+			return
+		}
+		lines := []string{
+			`data: {"candidates":[{"content":{"parts":[{"text":"<html>"}]},"finishReason":"STOP"}]}`,
+			`data: [DONE]`,
+		}
+		for _, l := range lines {
+			fmt.Fprintf(w, "%s\n\n", l)
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
 
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+	var reason string
+	var done bool
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("unexpected stream error chunk: %v", chunk.Err)
+		}
+		if chunk.FinishReason != "" {
+			reason = chunk.FinishReason
+		}
+		if chunk.Done {
+			done = true
+			if chunk.FinishReason == "" {
+				t.Error("Done chunk should carry FinishReason")
+			}
+		}
+	}
+	if !done {
+		t.Error("expected stream to end with done=true")
+	}
+	if reason != "STOP" {
+		t.Errorf("finish reason = %q, want STOP", reason)
+	}
+}
+
+func TestGeminiProviderCompleteStreamLargeLine(t *testing.T) {
+	// One SSE data line larger than bufio.Scanner's 64 KiB default must be
+	// read whole, not fail the stream.
+	big := strings.Repeat("x", 100*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "no flusher", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]},\"finishReason\":\"STOP\"}]}\n\n", big)
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+	var sb strings.Builder
+	var done bool
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("large line must not error the stream: %v", chunk.Err)
+		}
+		sb.WriteString(chunk.Token)
+		if chunk.Done {
+			done = true
+		}
+	}
+	if !done {
+		t.Error("expected stream to end with done=true")
+	}
+	if sb.String() != big {
+		t.Errorf("token bytes = %d, want %d (line truncated?)", sb.Len(), len(big))
+	}
+}
+
+func TestGeminiProviderCompleteStreamErrorObject(t *testing.T) {
+	// A mid-stream {"error": ...} object must surface as an Err chunk,
+	// never as silent tokens followed by a clean Done.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "no flusher", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}`)
+		flusher.Flush()
+		fmt.Fprintln(w, `data: {"error":{"code":429,"message":"Resource exhausted","status":"RESOURCE_EXHAUSTED"}}`)
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+	var sawErr, sawDone bool
+	for chunk := range ch {
+		if chunk.Err != nil {
+			sawErr = true
+		}
+		if chunk.Done {
+			sawDone = true
+		}
+	}
+	if !sawErr {
+		t.Error("mid-stream error object must produce an Err chunk")
+	}
+	if sawDone {
+		t.Error("errored stream must not end with Done")
+	}
+}
+
+func TestGeminiProviderGenerationConfigOmittedByDefault(t *testing.T) {
+	var gotPayload map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotPayload)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"x"}]},"finishReason":"STOP"}]}`)
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+	for range ch {
+	}
+	if _, ok := gotPayload["generationConfig"]; ok {
+		t.Errorf("generationConfig must be omitted when unset, got %v", gotPayload["generationConfig"])
+	}
+}
+
+func TestGeminiProviderGenerationConfigWhenSet(t *testing.T) {
+	var gotPayload map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotPayload)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"x"}]},"finishReason":"STOP"}]}`)
+	}))
+	defer srv.Close()
+
+	thinking := 0
+	p := NewGeminiProvider(config.AIConfig{
+		APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second,
+		MaxOutputTokens: 8192, ThinkingBudget: &thinking,
+	}, testLogger())
+	ch, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream() failed: %v", err)
+	}
+	for range ch {
+	}
+	genCfg, ok := gotPayload["generationConfig"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("generationConfig missing, got payload keys: %v", keysOf(gotPayload))
+	}
+	if genCfg["maxOutputTokens"] != float64(8192) {
+		t.Errorf("maxOutputTokens = %v, want 8192", genCfg["maxOutputTokens"])
+	}
+	thinkingCfg, ok := genCfg["thinkingConfig"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("thinkingConfig missing in %v", genCfg)
+	}
+	if thinkingCfg["thinkingBudget"] != float64(0) {
+		t.Errorf("thinkingBudget = %v, want 0", thinkingCfg["thinkingBudget"])
+	}
+}
+
+func keysOf(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

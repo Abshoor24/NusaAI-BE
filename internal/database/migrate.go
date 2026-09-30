@@ -47,27 +47,53 @@ func migrationDSN(cfg config.DBConfig) (string, error) {
 	return u.String(), nil
 }
 
-// RunMigrations applies all pending embedded migrations at startup.
-func RunMigrations(cfg config.DBConfig) error {
+// openMigrate builds a golang-migrate instance over the embedded SQL files.
+func openMigrate(cfg config.DBConfig) (*migrate.Migrate, error) {
 	dsn, err := migrationDSN(cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	src, err := iofs.New(migrations.Files, ".")
 	if err != nil {
-		return fmt.Errorf("migrations: load source: %w", err)
+		return nil, fmt.Errorf("migrations: load source: %w", err)
 	}
 	defer src.Close()
 
 	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
 	if err != nil {
-		return fmt.Errorf("migrations: init: %w", err)
+		return nil, fmt.Errorf("migrations: init: %w", err)
+	}
+	return m, nil
+}
+
+// RunMigrations applies all pending embedded migrations at startup.
+func RunMigrations(cfg config.DBConfig) error {
+	m, err := openMigrate(cfg)
+	if err != nil {
+		return err
 	}
 	defer m.Close()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migrations: up: %w", err)
+	}
+	return nil
+}
+
+// MigrateTo moves the schema to exactly the given migration version,
+// running up or down files as needed (e.g. MigrateTo(9) rolls back 0010
+// by executing its down file). It exists for migration round-trip tests;
+// production startup keeps using RunMigrations.
+func MigrateTo(cfg config.DBConfig, version uint) error {
+	m, err := openMigrate(cfg)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Migrate(version); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrations: migrate to %d: %w", version, err)
 	}
 	return nil
 }

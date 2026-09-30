@@ -12,7 +12,7 @@ import (
 )
 
 // Manager signs and validates JWT access tokens. Tokens only carry the
-// minimal claims needed: subject (user id), email, role, issuer and expiry.
+// minimal claims needed: subject (user id), email, issuer and expiry.
 type Manager struct {
 	secret     []byte
 	expiration time.Duration
@@ -27,10 +27,17 @@ func NewManager(cfg config.JWTConfig) *Manager {
 	}
 }
 
+// ErrTokenExpired marks a token that was correctly signed but whose exp
+// claim is in the past. Use errors.Is to distinguish it from malformed or
+// forged tokens so callers (and the frontend) can tell "log in again" apart
+// from "something is wrong with this token".
+var ErrTokenExpired = errors.New("jwt: token expired")
+
 // Claims are the standard payload carried inside a signed token.
+// Unknown claims (e.g. "role" from tokens issued before roles were
+// removed) are ignored by the JSON decoder, so old tokens stay valid.
 type Claims struct {
-	Email string     `json:"email"`
-	Role  model.Role `json:"role"`
+	Email string `json:"email"`
 	jwtlib.RegisteredClaims
 }
 
@@ -42,7 +49,6 @@ func (m *Manager) Generate(user *model.User) (string, time.Time, error) {
 
 	claims := Claims{
 		Email: user.Email,
-		Role:  user.Role,
 		RegisteredClaims: jwtlib.RegisteredClaims{
 			Subject:   user.ID,
 			Issuer:    m.issuer,
@@ -76,6 +82,9 @@ func (m *Manager) Parse(tokenString string) (*Claims, error) {
 		jwtlib.WithExpirationRequired(),
 	)
 	if err != nil {
+		if errors.Is(err, jwtlib.ErrTokenExpired) {
+			return nil, fmt.Errorf("jwt: parse: %w", ErrTokenExpired)
+		}
 		return nil, fmt.Errorf("jwt: parse: %w", err)
 	}
 

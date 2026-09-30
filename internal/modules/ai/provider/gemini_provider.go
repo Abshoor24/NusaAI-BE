@@ -16,7 +16,6 @@ import (
 	"github.com/Abshoor24/backend-go/internal/config"
 )
 
-
 // GeminiProvider talks to the Google Gemini Generative Language API
 // (models/{model}:generateContent). The base URL must point at the API root,
 // e.g. https://generativelanguage.googleapis.com/v1beta. The API key is sent
@@ -26,7 +25,11 @@ type GeminiProvider struct {
 	apiKey       string
 	client       *http.Client // used for non-streaming (complete) requests
 	streamClient *http.Client // used for streaming — no hard timeout on body read
-	logger       *slog.Logger
+	// Optional generation knobs. Zero/nil means "omit generationConfig",
+	// preserving the model defaults.
+	maxOutputTokens int64
+	thinkingBudget  *int
+	logger          *slog.Logger
 }
 
 func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider {
@@ -43,8 +46,26 @@ func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider
 				ResponseHeaderTimeout: cfg.Timeout,
 			},
 		},
-		logger: logger,
+		maxOutputTokens: cfg.MaxOutputTokens,
+		thinkingBudget:  cfg.ThinkingBudget,
+		logger:          logger,
 	}
+}
+
+// generationConfig returns the Gemini generationConfig payload, or nil when
+// neither knob is set so the request is byte-identical to before.
+func (p *GeminiProvider) generationConfig() map[string]interface{} {
+	if p.maxOutputTokens <= 0 && p.thinkingBudget == nil {
+		return nil
+	}
+	genCfg := map[string]interface{}{}
+	if p.maxOutputTokens > 0 {
+		genCfg["maxOutputTokens"] = p.maxOutputTokens
+	}
+	if p.thinkingBudget != nil {
+		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingBudget": *p.thinkingBudget}
+	}
+	return genCfg
 }
 
 // Complete sends a generateContent request to the Gemini API.
@@ -86,6 +107,9 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 		payload["systemInstruction"] = map[string]interface{}{
 			"parts": []map[string]string{{"text": strings.Join(systemParts, "\n\n")}},
 		}
+	}
+	if genCfg := p.generationConfig(); genCfg != nil {
+		payload["generationConfig"] = genCfg
 	}
 
 	body, err := json.Marshal(payload)
@@ -196,6 +220,9 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			"parts": []map[string]string{{"text": strings.Join(systemParts, "\n\n")}},
 		}
 	}
+	if genCfg := p.generationConfig(); genCfg != nil {
+		payload["generationConfig"] = genCfg
+	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -238,6 +265,10 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 		defer close(ch)
 
 		// geminiStreamResponse mirrors the JSON shape of each SSE data line.
+		// FinishReason is read (not the text) so callers can tell a clean
+		// STOP apart from truncation (MAX_TOKENS) or other terminal states.
+		// promptFeedback and usageMetadata are captured for per-stream
+		// diagnostics; a top-level error object ends the stream as failure.
 		type geminiStreamResponse struct {
 			Candidates []struct {
 				Content struct {
@@ -245,12 +276,28 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 						Text string `json:"text"`
 					} `json:"parts"`
 				} `json:"content"`
+				FinishReason string `json:"finishReason"`
 			} `json:"candidates"`
+			PromptFeedback struct {
+				BlockReason string `json:"blockReason"`
+			} `json:"promptFeedback"`
+			UsageMetadata UsageMetadata `json:"usageMetadata"`
+			Error         *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
-		// Increase scanner buffer for large tokens.
-		scanner.Buffer(make([]byte, 64*1024), 64*1024)
+		// A single SSE data line can carry a large text part (a full HTML
+		// page approaches PROJECT_MAX_HTML_BYTES). Cap lines at 1 MiB so a
+		// huge chunk is still read whole instead of failing the stream.
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+		var finishReason, blockReason string
+		var usage UsageMetadata
+		var hasUsage bool
 
 		for scanner.Scan() {
 			if ctx.Err() != nil {
@@ -277,7 +324,32 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 				return
 			}
 
+			// A mid-stream error object is terminal: surface it instead of
+			// silently skipping the line and ending as a clean Done.
+			if sr.Error != nil {
+				p.logger.Error("ai provider stream returned error object",
+					"code", sr.Error.Code,
+					"status", sr.Error.Status,
+					"message", sr.Error.Message,
+				)
+				select {
+				case ch <- StreamChunk{Err: apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %s", sr.Error.Status))}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if sr.PromptFeedback.BlockReason != "" {
+				blockReason = sr.PromptFeedback.BlockReason
+			}
+			if sr.UsageMetadata != (UsageMetadata{}) {
+				usage = sr.UsageMetadata
+				hasUsage = true
+			}
+
 			for _, cand := range sr.Candidates {
+				if cand.FinishReason != "" {
+					finishReason = cand.FinishReason
+				}
 				for _, part := range cand.Content.Parts {
 					if part.Text == "" {
 						continue
@@ -304,8 +376,13 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 		}
 
 		// Stream ended cleanly.
+		done := StreamChunk{Done: true, FinishReason: finishReason, BlockReason: blockReason}
+		if hasUsage {
+			u := usage
+			done.Usage = &u
+		}
 		select {
-		case ch <- StreamChunk{Done: true}:
+		case ch <- done:
 		case <-ctx.Done():
 		}
 	}()

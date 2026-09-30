@@ -58,13 +58,12 @@ func (s *authService) Register(ctx context.Context, req model.AuthRegisterReques
 		ID:           uuid.NewString(),
 		Email:        email,
 		PasswordHash: string(hash),
-		Role:         model.RoleAdmin, // only role that exists today
 	}
 	if err := s.users.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
-	s.logger.Info("user registered", "user_id", user.ID, "role", user.Role)
+	s.logger.Info("user registered", "user_id", user.ID)
 	return s.issueToken(user)
 }
 

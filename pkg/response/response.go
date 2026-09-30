@@ -34,24 +34,24 @@ type errorResponse struct {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	slog.Default().Info("writeJSON: starting encoding")
 	data, err := json.Marshal(v)
 	if err != nil {
+		// Practically unreachable (envelopes only hold simple values), but
+		// the fallback must still honor the JSON-envelope contract — never
+		// plain text.
 		slog.Default().Error("writeJSON: failed to encode JSON response", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"success":false,"error":{"code":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurred"}}`))
 		return
 	}
-	slog.Default().Info("writeJSON: encoding successful", "bytes", len(data))
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(status)
 
-	n, err := w.Write(data)
-	if err != nil {
+	if _, err := w.Write(data); err != nil {
 		slog.Default().Error("writeJSON: failed to write HTTP response bytes", "error", err)
-	} else {
-		slog.Default().Info("writeJSON: successfully wrote response bytes", "bytes_written", n)
 	}
 }
 
@@ -66,6 +66,8 @@ func RespondSuccess(w http.ResponseWriter, status int, message string, data inte
 
 // RespondError writes a standard error response. Internal details (wrapped
 // errors) are logged server-side but never exposed to the client.
+// Routine client errors (4xx) log at WARN; server failures (5xx, including
+// provider outages) log at ERROR so alerting stays meaningful.
 func RespondError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var ae *apperror.Error
 	if !apperror.IsAppError(err) {
@@ -74,11 +76,12 @@ func RespondError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		ae = apperror.Internal("An unexpected error occurred", err)
 	} else {
 		ae = err.(*apperror.Error)
-		logger.Error("request failed",
-			"code", ae.Code(),
-			"message", ae.Message,
-			"cause", ae.Err,
-		)
+		fields := []any{"code", ae.Code(), "message", ae.Message, "cause", ae.Err}
+		if ae.Status() >= 500 {
+			logger.Error("request failed", fields...)
+		} else {
+			logger.Warn("request failed", fields...)
+		}
 	}
 
 	writeJSON(w, ae.Status(), errorResponse{

@@ -29,9 +29,9 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("AI.Provider = %q, want gemini", cfg.AI.Provider)
 	}
 	if len(cfg.CORS.AllowedOrigins) != 2 ||
-		cfg.CORS.AllowedOrigins[0] != "http://localhost:5173" ||
-		cfg.CORS.AllowedOrigins[1] != "http://127.0.0.1:5173" {
-		t.Errorf("CORS.AllowedOrigins = %v, want [http://localhost:5173 http://127.0.0.1:5173]", cfg.CORS.AllowedOrigins)
+		cfg.CORS.AllowedOrigins[0] != "http://localhost:3000" ||
+		cfg.CORS.AllowedOrigins[1] != "http://localhost:5173" {
+		t.Errorf("CORS.AllowedOrigins = %v, want [http://localhost:3000 http://localhost:5173]", cfg.CORS.AllowedOrigins)
 	}
 }
 
@@ -74,6 +74,19 @@ func TestLoadCORSMultipleOrigins(t *testing.T) {
 	}
 	if len(cfg.CORS.AllowedOrigins) != 2 {
 		t.Fatalf("CORS.AllowedOrigins = %v, want 2 entries", cfg.CORS.AllowedOrigins)
+	}
+}
+
+func TestLoadCORSDefaultsDependOnEnv(t *testing.T) {
+	t.Setenv("JWT_SECRET", "a-very-long-production-secret-0123456789")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	t.Setenv("APP_ENV", "production")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.CORS.AllowedOrigins) != 0 {
+		t.Errorf("production CORS default = %v, want empty (no cross-site origin)", cfg.CORS.AllowedOrigins)
 	}
 }
 
@@ -135,5 +148,110 @@ func TestLoadWithoutDeferredModuleConfig(t *testing.T) {
 	}
 	if cfg.AI.MaxGenerateBodyBytes != 32<<20 {
 		t.Errorf("AI.MaxGenerateBodyBytes = %d, want %d", cfg.AI.MaxGenerateBodyBytes, 32<<20)
+	}
+}
+
+func TestLoadRejectsWeakJWTProduction(t *testing.T) {
+	for _, secret := range []string{
+		"",
+		"short",
+		"your_jwt_secret_key",
+		"replace-with-a-long-random-string",
+	} {
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("JWT_SECRET", secret)
+		if _, err := Load(); err == nil {
+			t.Errorf("production JWT_SECRET=%q: want startup error, got nil", secret)
+		}
+	}
+}
+
+func TestLoadAcceptsStrongJWTProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("JWT_SECRET", "a-very-long-production-secret-0123456789")
+	if _, err := Load(); err != nil {
+		t.Errorf("production strong secret: Load() error = %v", err)
+	}
+}
+
+func TestLoadWarnsWeakJWTDevelopment(t *testing.T) {
+	// Development stays frictionless: weak secrets warn (see logs) but boot.
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("JWT_SECRET", "test-secret")
+	if _, err := Load(); err != nil {
+		t.Errorf("development weak secret: Load() error = %v", err)
+	}
+}
+
+func TestLoadGenerationKnobsUnsetByDefault(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_MAX_OUTPUT_TOKENS", "")
+	t.Setenv("AI_THINKING_BUDGET", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.MaxOutputTokens != 0 {
+		t.Errorf("MaxOutputTokens = %d, want 0 (unset)", cfg.AI.MaxOutputTokens)
+	}
+	if cfg.AI.ThinkingBudget != nil {
+		t.Errorf("ThinkingBudget = %v, want nil (unset)", *cfg.AI.ThinkingBudget)
+	}
+}
+
+func TestLoadGenerationKnobsWhenSet(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_MAX_OUTPUT_TOKENS", "8192")
+	t.Setenv("AI_THINKING_BUDGET", "0")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.MaxOutputTokens != 8192 {
+		t.Errorf("MaxOutputTokens = %d, want 8192", cfg.AI.MaxOutputTokens)
+	}
+	if cfg.AI.ThinkingBudget == nil || *cfg.AI.ThinkingBudget != 0 {
+		t.Errorf("ThinkingBudget = %v, want pointer to 0", cfg.AI.ThinkingBudget)
+	}
+}
+
+func TestLoadRejectsBadGenerationKnobs(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_MAX_OUTPUT_TOKENS", "-5")
+	t.Setenv("AI_THINKING_BUDGET", "")
+	if _, err := Load(); err == nil {
+		t.Error("negative AI_MAX_OUTPUT_TOKENS: want error, got nil")
+	}
+	t.Setenv("AI_MAX_OUTPUT_TOKENS", "")
+	t.Setenv("AI_THINKING_BUDGET", "-1")
+	if _, err := Load(); err == nil {
+		t.Error("negative AI_THINKING_BUDGET: want error, got nil")
+	}
+	t.Setenv("AI_THINKING_BUDGET", "not-a-number")
+	if _, err := Load(); err == nil {
+		t.Error("malformed AI_THINKING_BUDGET: want error, got nil")
+	}
+}
+
+func TestLoadDebugEdgesGatedToDevelopment(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_DEBUG_LOG_OUTPUT_EDGES", "true")
+	t.Setenv("APP_ENV", "development")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.AI.DebugLogOutputEdges {
+		t.Error("development: DebugLogOutputEdges should stay true")
+	}
+
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("JWT_SECRET", "a-very-long-production-secret-0123456789")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.DebugLogOutputEdges {
+		t.Error("production: DebugLogOutputEdges must be forced false")
 	}
 }

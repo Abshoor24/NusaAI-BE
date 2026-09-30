@@ -41,6 +41,11 @@ type fakeProvider struct {
 	lastReq  aiprovider.Request
 	calls    int
 	usedImgs int
+	// doneReason is attached to the terminal Done chunk ("STOP" for a
+	// normal stream). Tests set it to "" or other reasons explicitly.
+	doneReason string
+	doneBlock  string
+	doneUsage  *aiprovider.UsageMetadata
 }
 
 func (f *fakeProvider) Complete(_ context.Context, req aiprovider.Request) (aiprovider.Response, error) {
@@ -59,6 +64,9 @@ func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request)
 	if openErr != nil {
 		return nil, openErr
 	}
+	f.mu.Lock()
+	reason, block, usage := f.doneReason, f.doneBlock, f.doneUsage
+	f.mu.Unlock()
 	ch := make(chan aiprovider.StreamChunk, 32)
 	go func() {
 		defer close(ch)
@@ -73,7 +81,7 @@ func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request)
 			ch <- aiprovider.StreamChunk{Err: errors.New("upstream exploded")}
 			return
 		}
-		ch <- aiprovider.StreamChunk{Done: true}
+		ch <- aiprovider.StreamChunk{Done: true, FinishReason: reason, BlockReason: block, Usage: usage}
 	}()
 	return ch, nil
 }
@@ -82,10 +90,11 @@ func (f *fakeProvider) Embed(_ context.Context, _ string, _ string) ([]float32, 
 	return make([]float32, 8), nil
 }
 
-// newFakeProvider scripts a stream emitting tokens then Done.
-// errAt == -1 means no mid-stream error.
+// newFakeProvider scripts a stream emitting tokens then a normal Done
+// (FinishReason "STOP"). errAt == -1 means no mid-stream error. Tests that
+// need another terminal state set fp.doneReason (possibly "") directly.
 func newFakeProvider(tokens ...string) *fakeProvider {
-	return &fakeProvider{tokens: tokens, errAt: -1}
+	return &fakeProvider{tokens: tokens, errAt: -1, doneReason: "STOP"}
 }
 
 // --- fake repository ---
@@ -190,6 +199,23 @@ func (f *fakeRepo) Delete(_ context.Context, userID, id string) ([]string, bool,
 	}
 	delete(f.projects, id)
 	return paths, true, nil
+}
+
+func (f *fakeRepo) UpdateTitle(_ context.Context, userID, id, title string) (*model.Project, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fp, ok := f.projects[id]
+	if !ok || fp.project.UserID != userID {
+		return nil, apperror.NotFound("Project not found", nil)
+	}
+	if fp.project.Status == model.StatusGenerating {
+		return nil, apperror.Conflict("Cannot rename project while generation is in progress", nil)
+	}
+	fp.project.Title = title
+	fp.project.UpdatedAt = time.Now()
+	cp := fp.project
+	cp.VersionCount = len(fp.versions)
+	return &cp, nil
 }
 
 func (f *fakeRepo) tryStart(userID, id string, allowed []string, alreadyHasVersionMsg string) (*model.Project, error) {
@@ -409,10 +435,22 @@ func createDraft(t *testing.T, svc Service, userID string) *model.Project {
 }
 
 // drainAndFinish simulates the handler SSE loop: relay chunks, then finalize.
+// Like the handler, it records terminal metadata and stream counters on the
+// pending stream.
 func drainAndFinish(ctx context.Context, t *testing.T, svc Service, pending *PendingStream) (*model.Version, *apperror.Error) {
 	t.Helper()
 	var buf strings.Builder
 	for chunk := range pending.Stream {
+		pending.Chunks++
+		if chunk.FinishReason != "" {
+			pending.FinishReason = chunk.FinishReason
+		}
+		if chunk.BlockReason != "" {
+			pending.BlockReason = chunk.BlockReason
+		}
+		if chunk.Usage != nil {
+			pending.Usage = chunk.Usage
+		}
 		if chunk.Err != nil {
 			svc.FailStream(ctx, pending)
 			return nil, apperror.AIProvider("The AI provider returned an error", nil)
@@ -421,6 +459,7 @@ func drainAndFinish(ctx context.Context, t *testing.T, svc Service, pending *Pen
 			break
 		}
 		buf.WriteString(chunk.Token)
+		pending.TextBytes += len(chunk.Token)
 	}
 	v, err := svc.FinishStream(ctx, pending, buf.String())
 	if err != nil {
@@ -564,6 +603,62 @@ func TestReviseMidStreamErrorKeepsReady(t *testing.T) {
 	got, _, _ := svc.Get(ctx, "user-1", p.ID)
 	if got.Status != model.StatusReady || got.VersionCount != 1 {
 		t.Errorf("after failed revise: status=%q count=%d, want ready/1", got.Status, got.VersionCount)
+	}
+}
+
+func TestUpdateTitle(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	got, err := svc.UpdateTitle(ctx, "user-1", p.ID, "  Judul Baru  ")
+	if err != nil {
+		t.Fatalf("UpdateTitle: %v", err)
+	}
+	if got.Title != "Judul Baru" {
+		t.Errorf("title = %q, want trimmed Judul Baru", got.Title)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		title string
+	}{
+		{"empty", ""},
+		{"blank", "   "},
+		{"too long", strings.Repeat("a", 201)},
+	} {
+		if _, err := svc.UpdateTitle(ctx, "user-1", p.ID, tc.title); appErr(t, err).Code() != "VALIDATION_ERROR" {
+			t.Errorf("%s: err = %v, want VALIDATION_ERROR", tc.name, err)
+		}
+	}
+	if _, err := svc.UpdateTitle(ctx, "user-1", "not-a-uuid", "x"); appErr(t, err).Code() != "VALIDATION_ERROR" {
+		t.Errorf("bad id: err = %v, want VALIDATION_ERROR", err)
+	}
+
+	// Foreign project reads as NOT_FOUND, never FORBIDDEN.
+	if _, err := svc.UpdateTitle(ctx, "user-2", p.ID, "x"); appErr(t, err).Code() != "NOT_FOUND" {
+		t.Errorf("foreign project: err = %v, want NOT_FOUND", err)
+	}
+
+	// Rename during generation is CONFLICT.
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, err := svc.UpdateTitle(ctx, "user-1", p.ID, "x"); appErr(t, err).Code() != "CONFLICT" {
+		t.Errorf("generating project: err = %v, want CONFLICT", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+	// Rename works again once ready.
+	got, err = svc.UpdateTitle(ctx, "user-1", p.ID, "Sesudah Generate")
+	if err != nil {
+		t.Fatalf("UpdateTitle after ready: %v", err)
+	}
+	if got.Title != "Sesudah Generate" || got.VersionCount != 1 {
+		t.Errorf("after ready: title=%q count=%d, want Sesudah Generate/1", got.Title, got.VersionCount)
 	}
 }
 
@@ -821,5 +916,103 @@ func TestProviderRequestShape(t *testing.T) {
 	}
 	if fp.lastReq.Messages[0].Content != SystemPrompt {
 		t.Error("system message is not the locked SystemPrompt")
+	}
+}
+
+func TestFinishStreamTruncatedOutputRejected(t *testing.T) {
+	fp := newFakeProvider("<!DOCTYPE html><html><body>setengah")
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	// Simulate what the handler records from the Done chunk when Gemini
+	// stops for MAX_TOKENS instead of STOP.
+	pending.FinishReason = "MAX_TOKENS"
+	_, err = svc.FinishStream(ctx, pending, "<!DOCTYPE html><html><body>setengah")
+	ae := appErr(t, err)
+	if ae.Code() != "AI_PROVIDER_ERROR" {
+		t.Fatalf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+	}
+	if !strings.Contains(ae.Message, "truncated") {
+		t.Errorf("message = %q, want a clear truncation message", ae.Message)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after truncated generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestFinishStreamUnexpectedEndRejected(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.doneReason = "" // EOF without any finish reason.
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae == nil {
+		t.Fatal("expected unexpected-end error, got success")
+	} else {
+		if ae.Code() != "AI_PROVIDER_ERROR" {
+			t.Fatalf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+		}
+		if !strings.Contains(ae.Message, "unexpectedly") {
+			t.Errorf("message = %q, want an unexpected-end message", ae.Message)
+		}
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after unexpected end: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestFinishStreamBlockedRejected(t *testing.T) {
+	fp := newFakeProvider("<!DOCTYPE html><html><body>x</body></html>")
+	fp.doneReason = "SAFETY"
+	fp.doneBlock = "SAFETY"
+	fp.doneUsage = &aiprovider.UsageMetadata{PromptTokenCount: 10, CandidatesTokenCount: 5, TotalTokenCount: 15}
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae == nil {
+		t.Fatal("expected blocked error, got success")
+	} else {
+		if ae.Code() != "AI_PROVIDER_ERROR" {
+			t.Fatalf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+		}
+		if !strings.Contains(ae.Message, "blocked") {
+			t.Errorf("message = %q, want a blocked message", ae.Message)
+		}
+	}
+	if pending.BlockReason != "SAFETY" {
+		t.Errorf("pending BlockReason = %q, want SAFETY", pending.BlockReason)
+	}
+	if pending.Usage == nil || pending.Usage.TotalTokenCount != 15 {
+		t.Errorf("pending Usage = %+v, want total 15", pending.Usage)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after blocked generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
 	}
 }

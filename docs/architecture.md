@@ -156,10 +156,10 @@ Endpoint lama `/ai/chat*`, `/ai/conversations*`, `/ai/attachments/*`, `/ai/docum
 Tidak berubah dari versi sebelumnya.
 
 - **Password Hashing**: `bcrypt`. Plaintext password tidak pernah disimpan atau di-log.
-- **JWT**: HMAC-SHA256 (`HS256`) dengan secret `JWT_SECRET`. Claims: `sub`, `email`, `role`, `iss`, `iat`, `exp`.
+- **JWT**: HMAC-SHA256 (`HS256`) dengan secret `JWT_SECRET`. Claims: `sub`, `email`, `iss`, `iat`, `exp`.
   - `RequireAuth`: memvalidasi header `Authorization: Bearer <token>` dan menyisipkan `userID` ke `context.Context`.
   - `RequireAuthSSE`: memeriksa header `Authorization` dulu, lalu query `?token=`. Hanya dipakai pada `generate` dan `revise`.
-- **Role**: saat ini semua user berrole `admin` (baseline). Tidak ada endpoint yang membedakan role.
+- **Otorisasi**: tidak ada konsep role; satu-satunya pembeda akses adalah kepemilikan resource per user.
 
 ### 2. Project Subsystem (`internal/modules/project`)
 
@@ -321,7 +321,6 @@ erDiagram
         uuid id PK
         varchar email UK
         text password_hash
-        varchar role
         timestamptz created_at
     }
 

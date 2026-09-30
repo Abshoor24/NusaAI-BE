@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
 	"github.com/Abshoor24/backend-go/internal/handler"
 	"github.com/Abshoor24/backend-go/internal/jwt"
@@ -17,6 +18,7 @@ import (
 	projecthandler "github.com/Abshoor24/backend-go/internal/modules/project/handler"
 	projectservice "github.com/Abshoor24/backend-go/internal/modules/project/service"
 	"github.com/Abshoor24/backend-go/internal/service"
+	"github.com/Abshoor24/backend-go/pkg/response"
 	"github.com/Abshoor24/backend-go/storage"
 )
 
@@ -51,6 +53,15 @@ func New(deps Dependencies) http.Handler {
 	healthH := handler.NewHealthHandler(deps.DB, deps.Logger)
 	authH := handler.NewAuthHandler(deps.Auth, deps.Logger)
 
+	// Chi's default 404/405 bodies are plain text; the api.md contract
+	// requires every error to use the JSON envelope instead.
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		response.RespondError(w, deps.Logger, apperror.NotFound("Resource not found", nil))
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		response.RespondError(w, deps.Logger, apperror.MethodNotAllowed("Method not allowed"))
+	})
+
 	r.Get("/health", healthH.Health)
 	r.Get("/health/db", healthH.DBHealth)
 
@@ -78,6 +89,7 @@ func New(deps Dependencies) http.Handler {
 				r.Post("/projects", projectH.Create)
 				r.Get("/projects", projectH.List)
 				r.Get("/projects/{id}", projectH.Get)
+				r.Patch("/projects/{id}", projectH.UpdateTitle)
 				r.Delete("/projects/{id}", projectH.Delete)
 				r.Get("/projects/{id}/versions", projectH.ListVersions)
 				r.Get("/projects/{id}/versions/{number}", projectH.GetVersion)

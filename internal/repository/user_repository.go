@@ -35,10 +35,10 @@ func NewUserRepository(pool *pgxpool.Pool) UserRepository {
 
 func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) error {
 	const q = `
-		INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, NOW(), NOW())`
+		INSERT INTO users (id, email, password_hash, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())`
 
-	_, err := r.pool.Exec(ctx, q, user.ID, user.Email, user.PasswordHash, string(user.Role))
+	_, err := r.pool.Exec(ctx, q, user.ID, user.Email, user.PasswordHash)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
@@ -51,12 +51,12 @@ func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) e
 
 func (r *PostgresUserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	const q = `
-		SELECT id, email, password_hash, role, created_at, updated_at
+		SELECT id, email, password_hash, created_at, updated_at
 		FROM users WHERE email = $1`
 
 	var u model.User
 	err := r.pool.QueryRow(ctx, q, email).Scan(
-		&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt,
+		&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -69,12 +69,12 @@ func (r *PostgresUserRepository) FindByEmail(ctx context.Context, email string) 
 
 func (r *PostgresUserRepository) FindByID(ctx context.Context, id string) (*model.User, error) {
 	const q = `
-		SELECT id, email, password_hash, role, created_at, updated_at
+		SELECT id, email, password_hash, created_at, updated_at
 		FROM users WHERE id = $1`
 
 	var u model.User
 	err := r.pool.QueryRow(ctx, q, id).Scan(
-		&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt,
+		&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

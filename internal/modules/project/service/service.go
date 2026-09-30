@@ -25,6 +25,8 @@ type Service interface {
 	List(ctx context.Context, userID string, limit, offset int) ([]*model.Project, error)
 	Get(ctx context.Context, userID, id string) (*model.Project, *model.Version, error)
 	Delete(ctx context.Context, userID, id string) error
+	// UpdateTitle renames an owned project unless a generation is running.
+	UpdateTitle(ctx context.Context, userID, id, title string) (*model.Project, error)
 	ListVersions(ctx context.Context, userID, projectID string) ([]*model.Version, error)
 	GetVersion(ctx context.Context, userID, projectID string, number int) (*model.Version, error)
 	// ExportTarget resolves the project + HTML version for download.
@@ -57,6 +59,18 @@ type PendingStream struct {
 	Stream    <-chan aiprovider.StreamChunk
 	StartedAt time.Time
 	MaxBytes  int64
+	// FinishReason is the provider's terminal reason observed on the stream
+	// (e.g. "STOP", "MAX_TOKENS"); empty when unknown. The handler records
+	// it while relaying chunks.
+	FinishReason string
+	// BlockReason is the provider's safety block reason, if any.
+	BlockReason string
+	// Usage carries token accounting reported with the terminal chunk.
+	Usage *aiprovider.UsageMetadata
+	// Chunks and TextBytes count relayed provider chunks and text bytes for
+	// per-stream diagnostics (populated by the handler loop).
+	Chunks    int
+	TextBytes int
 }
 
 type service struct {
@@ -119,6 +133,20 @@ func (s *service) Delete(ctx context.Context, userID, id string) error {
 		}
 	}
 	return nil
+}
+
+func (s *service) UpdateTitle(ctx context.Context, userID, id, title string) (*model.Project, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, apperror.Validation("Invalid project ID")
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, apperror.ValidationFields(map[string]string{"title": "is required"})
+	}
+	if fields := model.Validate(model.UpdateTitleRequest{Title: title}); fields != nil {
+		return nil, apperror.ValidationFields(fields)
+	}
+	return s.repo.UpdateTitle(ctx, userID, id, title)
 }
 
 func (s *service) ListVersions(ctx context.Context, userID, projectID string) ([]*model.Version, error) {
@@ -315,8 +343,67 @@ func (s *service) BeginRevise(ctx context.Context, userID, projectID, instructio
 }
 
 func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawBuffer string) (*model.Version, error) {
+	if isTruncated(pending.FinishReason) {
+		s.logger.Error("project generation truncated by provider",
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"finish_reason", pending.FinishReason,
+			"chunks", pending.Chunks,
+			"bytes", len(rawBuffer),
+		)
+		s.failDetached(ctx, pending)
+		return nil, apperror.AIProvider("AI output was truncated before completing the HTML document", nil)
+	}
+	if isBlocked(pending.FinishReason) {
+		s.logger.Error("project generation blocked by provider",
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+			"chunks", pending.Chunks,
+			"bytes", len(rawBuffer),
+		)
+		s.failDetached(ctx, pending)
+		return nil, apperror.AIProvider("AI output was blocked by provider safety filters", nil)
+	}
+	if !isCleanStop(pending.FinishReason) {
+		s.logger.Error("project stream ended unexpectedly",
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+			"chunks", pending.Chunks,
+			"bytes", len(rawBuffer),
+		)
+		s.failDetached(ctx, pending)
+		return nil, apperror.AIProvider("AI stream ended unexpectedly without a finish reason", nil)
+	}
 	doc, err := CleanAndValidate(rawBuffer, pending.MaxBytes)
 	if err != nil {
+		lower := strings.ToLower(strings.TrimSpace(rawBuffer))
+		attrs := []any{
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+			"chunks", pending.Chunks,
+			"bytes", len(rawBuffer),
+			"has_fence_prefix", strings.HasPrefix(lower, "```"),
+			"has_closing_html", strings.Contains(lower, "</html>"),
+			"error", err,
+		}
+		if usage := pending.Usage; usage != nil {
+			attrs = append(attrs,
+				"prompt_tokens", usage.PromptTokenCount,
+				"candidates_tokens", usage.CandidatesTokenCount,
+				"thoughts_tokens", usage.ThoughtsTokenCount,
+				"total_tokens", usage.TotalTokenCount,
+			)
+		}
+		if s.aiCfg.DebugLogOutputEdges {
+			attrs = append(attrs, "output_head", headEdge(rawBuffer), "output_tail", tailEdge(rawBuffer))
+		}
+		s.logger.Error("project generation failed validation", attrs...)
 		s.failDetached(ctx, pending)
 		return nil, err
 	}
@@ -325,14 +412,70 @@ func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawB
 		s.failDetached(ctx, pending)
 		return nil, err
 	}
-	s.logger.Info("project generation finished",
+	attrs := []any{
 		"project_id", pending.Project.ID,
 		"version_number", v.VersionNumber,
 		"kind", pending.Kind,
 		"duration_ms", time.Since(pending.StartedAt).Milliseconds(),
+		"chunks", pending.Chunks,
 		"bytes", len(doc),
-	)
+		"finish_reason", pending.FinishReason,
+		"block_reason", pending.BlockReason,
+	}
+	if usage := pending.Usage; usage != nil {
+		attrs = append(attrs,
+			"prompt_tokens", usage.PromptTokenCount,
+			"candidates_tokens", usage.CandidatesTokenCount,
+			"thoughts_tokens", usage.ThoughtsTokenCount,
+			"total_tokens", usage.TotalTokenCount,
+		)
+	}
+	s.logger.Info("project generation finished", attrs...)
 	return v, nil
+}
+
+// isTruncated reports whether the provider stopped for running out of
+// output budget (Gemini MAX_TOKENS) rather than finishing cleanly.
+func isTruncated(finishReason string) bool {
+	return strings.EqualFold(strings.TrimSpace(finishReason), "MAX_TOKENS")
+}
+
+// blockedFinishReasons are terminal states where the provider refused
+// content (safety filters, recitation, blocklists). They are distinct from
+// truncation: retrying the same prompt will not help.
+var blockedFinishReasons = map[string]bool{
+	"SAFETY": true, "RECITATION": true, "BLOCKLIST": true,
+	"PROHIBITED_CONTENT": true, "SPII": true,
+}
+
+// isBlocked reports whether finishReason is a provider content refusal.
+func isBlocked(finishReason string) bool {
+	return blockedFinishReasons[strings.ToUpper(strings.TrimSpace(finishReason))]
+}
+
+// isCleanStop reports whether the stream finished normally. Anything else
+// (empty, OTHER, FINISH_REASON_UNSPECIFIED, unknown future values) is
+// treated as an unexpected end: no version is stored.
+func isCleanStop(finishReason string) bool {
+	return strings.EqualFold(strings.TrimSpace(finishReason), "STOP")
+}
+
+// edgeChars bounds debug output excerpts. Only used when
+// AI_DEBUG_LOG_OUTPUT_EDGES is enabled in development.
+const edgeChars = 200
+
+func headEdge(s string) string {
+	if len(s) <= edgeChars {
+		return s
+	}
+	return s[:edgeChars]
+}
+
+func tailEdge(s string) string {
+	if len(s) <= edgeChars {
+		return s
+	}
+	return s[len(s)-edgeChars:]
 }
 
 func (s *service) FailStream(ctx context.Context, pending *PendingStream) {

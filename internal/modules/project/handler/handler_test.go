@@ -38,6 +38,9 @@ type stubService struct {
 	createOut *model.Project
 	createErr error
 
+	updateOut *model.Project
+	updateErr error
+
 	listOut []*model.Project
 
 	getProj *model.Project
@@ -72,6 +75,12 @@ func (s *stubService) Get(_ context.Context, _, _ string) (*model.Project, *mode
 	return s.getProj, s.getVer, nil
 }
 func (s *stubService) Delete(_ context.Context, _, _ string) error { return nil }
+func (s *stubService) UpdateTitle(_ context.Context, _, _ string, _ string) (*model.Project, error) {
+	if s.updateErr != nil {
+		return nil, s.updateErr
+	}
+	return s.updateOut, nil
+}
 func (s *stubService) ListVersions(_ context.Context, _, _ string) ([]*model.Version, error) {
 	return []*model.Version{}, nil
 }
@@ -207,8 +216,7 @@ func pendingFor(projectID string, stream <-chan aiprovider.StreamChunk) *service
 	}
 }
 
-func TestGenerateSSESuccess(t *testing.T) {
-	stub := &stubService{
+func TestGenerateSSESuccess(t *testing.T) {	stub := &stubService{
 		finishVer: &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html><html></html>"},
 	}
 	stub.beginPending = pendingFor("p1", scriptedStream([]string{"<!DOCTYPE html>", "<html></html>"}, false))
@@ -345,6 +353,76 @@ func TestDetailNotFoundMapping(t *testing.T) {
 	}
 }
 
+func TestUpdateTitleSuccess(t *testing.T) {
+	stub := &stubService{updateOut: &model.Project{ID: "p1", Title: "Judul Baru", Status: "draft"}}
+	h := newTestHandler(stub)
+	req := authed(httptest.NewRequest(http.MethodPatch, "/api/v1/projects/p1",
+		strings.NewReader(`{"title":"Judul Baru"}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.UpdateTitle(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	data, ok := decodeData(t, rec).(map[string]any)
+	if !ok {
+		t.Fatalf("data = %v, want object", decodeData(t, rec))
+	}
+	if data["title"] != "Judul Baru" {
+		t.Errorf("title = %v, want Judul Baru", data["title"])
+	}
+	if _, present := data["latest_version"]; present {
+		t.Errorf("update response must not contain latest_version key, got %v", data)
+	}
+}
+
+func TestUpdateTitleValidation(t *testing.T) {
+	h := newTestHandler(&stubService{updateOut: &model.Project{ID: "p1"}})
+	for _, tc := range []struct {
+		name string
+		body string
+		code string
+	}{
+		{"empty title", `{"title":""}`, "VALIDATION_ERROR"},
+		// NOTE: whitespace-only titles pass struct validation here and are
+		// rejected after trim in the service (covered in service tests).
+		{"missing title", `{}`, "VALIDATION_ERROR"},
+		{"too long", `{"title":"` + strings.Repeat("a", 201) + `"}`, "VALIDATION_ERROR"},
+		{"unknown field", `{"title":"x","system":"override"}`, "BAD_REQUEST"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := authed(httptest.NewRequest(http.MethodPatch, "/api/v1/projects/p1",
+				strings.NewReader(tc.body)), map[string]string{"id": "p1"})
+			rec := httptest.NewRecorder()
+			h.UpdateTitle(rec, req)
+			if status, code := decodeErr(t, rec); status != http.StatusBadRequest || code != tc.code {
+				t.Errorf("status=%d code=%q, want 400 %s", status, code, tc.code)
+			}
+		})
+	}
+}
+
+func TestUpdateTitleNotFoundMapping(t *testing.T) {
+	h := newTestHandler(&stubService{updateErr: apperror.NotFound("Project not found", nil)})
+	req := authed(httptest.NewRequest(http.MethodPatch, "/api/v1/projects/p1",
+		strings.NewReader(`{"title":"x"}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.UpdateTitle(rec, req)
+	if status, code := decodeErr(t, rec); status != http.StatusNotFound || code != "NOT_FOUND" {
+		t.Errorf("status=%d code=%q, want 404 NOT_FOUND", status, code)
+	}
+}
+
+func TestUpdateTitleConflictMapping(t *testing.T) {
+	h := newTestHandler(&stubService{updateErr: apperror.Conflict("Cannot rename project while generation is in progress", nil)})
+	req := authed(httptest.NewRequest(http.MethodPatch, "/api/v1/projects/p1",
+		strings.NewReader(`{"title":"x"}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.UpdateTitle(rec, req)
+	if status, code := decodeErr(t, rec); status != http.StatusConflict || code != "CONFLICT" {
+		t.Errorf("status=%d code=%q, want 409 CONFLICT", status, code)
+	}
+}
+
 func TestGetAttachmentHeaders(t *testing.T) {
 	stub := &stubService{
 		attach:    &model.ProjectAttachment{ID: "a1", FileName: "logo.png", FileType: "png", FileSize: 4, MimeType: "image/png"},
@@ -366,6 +444,24 @@ func TestGetAttachmentHeaders(t *testing.T) {
 	}
 	if v := rec.Header().Get("X-Content-Type-Options"); v != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q", v)
+	}
+}
+
+func TestCreateOmitsLatestVersionKey(t *testing.T) {
+	stub := &stubService{createOut: &model.Project{ID: "p1", Title: "T", Status: "draft"}}
+	h := newTestHandler(stub)
+	req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(validCreateBody)), nil)
+	rec := httptest.NewRecorder()
+	h.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+	data, ok := decodeData(t, rec).(map[string]any)
+	if !ok {
+		t.Fatalf("data = %v, want object", decodeData(t, rec))
+	}
+	if _, present := data["latest_version"]; present {
+		t.Errorf("create response must not contain latest_version key, got %v", data)
 	}
 }
 
@@ -482,4 +578,160 @@ func TestGenerateBodyLimit(t *testing.T) {
 			t.Errorf("status=%d code=%q, want 400 BAD_REQUEST", status, code)
 		}
 	})
+}
+
+func TestSSEHeaders(t *testing.T) {
+	stub := &stubService{
+		finishVer: &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html><html></html>"},
+	}
+	stub.beginPending = pendingFor("p1", scriptedStream([]string{"<!DOCTYPE html>"}, false))
+	h := newTestHandler(stub)
+
+	req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects/p1/generate",
+		strings.NewReader(`{}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.Generate(rec, req)
+
+	want := map[string]string{
+		"Content-Type":      "text/event-stream",
+		"Cache-Control":     "no-cache",
+		"Connection":        "keep-alive",
+		"X-Accel-Buffering": "no",
+	}
+	for k, v := range want {
+		if got := rec.Header().Get(k); got != v {
+			t.Errorf("%s = %q, want %q", k, got, v)
+		}
+	}
+}
+
+func TestSSEHeartbeat(t *testing.T) {
+	oldInterval := sseHeartbeatInterval
+	sseHeartbeatInterval = 20 * time.Millisecond
+	defer func() { sseHeartbeatInterval = oldInterval }()
+
+	// Stream stays silent long enough for several heartbeats, then finishes.
+	ch := make(chan aiprovider.StreamChunk, 1)
+	go func() {
+		time.Sleep(120 * time.Millisecond)
+		ch <- aiprovider.StreamChunk{Done: true}
+		close(ch)
+	}()
+	stub := &stubService{
+		finishVer: &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html><html></html>"},
+	}
+	stub.beginPending = pendingFor("p1", ch)
+	h := newTestHandler(stub)
+
+	req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects/p1/generate",
+		strings.NewReader(`{}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.Generate(rec, req)
+
+	body := rec.Body.String()
+	if got := strings.Count(body, ": ping"); got < 2 {
+		t.Errorf("heartbeat comments = %d, want >= 2\n%s", got, body)
+	}
+	if !strings.Contains(body, "event: done") {
+		t.Errorf("stream must still end with done:\n%s", body)
+	}
+}
+
+func TestSSEMidStreamErrorEnvelope(t *testing.T) {
+	stub := &stubService{}
+	stub.beginPending = pendingFor("p1", scriptedStream([]string{"<partial"}, true))
+	h := newTestHandler(stub)
+
+	req := authed(httptest.NewRequest(http.MethodPost, "/api/v1/projects/p1/generate",
+		strings.NewReader(`{}`)), map[string]string{"id": "p1"})
+	rec := httptest.NewRecorder()
+	h.Generate(rec, req)
+
+	body := rec.Body.String()
+	lines := strings.Split(body, "\n")
+	var dataLine string
+	for i, line := range lines {
+		if line == "event: error" && i+1 < len(lines) && strings.HasPrefix(lines[i+1], "data: ") {
+			dataLine = strings.TrimPrefix(lines[i+1], "data: ")
+		}
+	}
+	if dataLine == "" {
+		t.Fatalf("no error event data found:\n%s", body)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(dataLine), &payload); err != nil {
+		t.Fatalf("error data is not JSON: %v", err)
+	}
+	if payload["success"] != false {
+		t.Errorf("envelope success = %v, want false", payload["success"])
+	}
+	errObj, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope error = %v, want object", payload["error"])
+	}
+	if errObj["code"] != "AI_PROVIDER_ERROR" {
+		t.Errorf("error code = %v, want AI_PROVIDER_ERROR", errObj["code"])
+	}
+	if _, ok := errObj["message"].(string); !ok {
+		t.Errorf("error message = %v, want string", errObj["message"])
+	}
+}
+
+// TestStreamSurvivesShortServerWriteTimeout proves the per-write deadline
+// refresh actually extends the stream past http.Server.WriteTimeout: a real
+// httptest server with a 200ms total write timeout serves a ~1s heartbeat
+// stream through the same production middleware chain (RequestID,
+// RequestLogger, Recovery, CORS, SecurityHeaders). If the wrapped writer
+// chain broke ResponseController/Unwrap, the stream would be cut at 200ms.
+func TestStreamSurvivesShortServerWriteTimeout(t *testing.T) {
+	stream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := newSSEWriter(w)
+		sw.heartbeat = 50 * time.Millisecond
+		sw.writeTimeout = 5 * time.Second
+		ticker := time.NewTicker(sw.heartbeat)
+		defer ticker.Stop()
+		end := time.After(time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				sw.writeHeartbeat()
+			case <-end:
+				sw.writeEvent("done", map[string]any{"ok": true})
+				return
+			}
+		}
+	})
+
+	var h http.Handler = stream
+	h = middleware.SecurityHeaders(h)
+	h = middleware.CORS([]string{"http://localhost:3000"})(h)
+	h = middleware.Recovery(testHandlerLogger())(h)
+	h = middleware.RequestLogger(testHandlerLogger())(h)
+	h = middleware.RequestID(h)
+
+	srv := httptest.NewUnstartedServer(h)
+	srv.Config.WriteTimeout = 200 * time.Millisecond
+	srv.Start()
+	defer srv.Close()
+
+	start := time.Now()
+	resp, err := http.Get(srv.URL) //nolint:noctx,gosec
+	if err != nil {
+		t.Fatalf("get stream: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read stream: %v", err)
+	}
+	elapsed := time.Since(start)
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("stream lasted %v, want ~1s (server WriteTimeout is 200ms)", elapsed)
+	}
+	if got := strings.Count(string(body), ": ping"); got < 10 {
+		t.Errorf("heartbeats = %d, want >= 10 (stream was cut early):\n%s", got, body)
+	}
+	if !strings.Contains(string(body), "event: done") {
+		t.Errorf("stream missing terminal done event:\n%s", body)
+	}
 }
