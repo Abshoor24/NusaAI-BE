@@ -79,15 +79,21 @@ func (s *sseWriter) flush() {
 }
 
 // sseErrorPayload builds the mid-stream error payload in the exact same
-// envelope shape as every other JSON error in api.md. The message stays
-// generic; technical details go to server logs only.
-func sseErrorPayload(message string) map[string]interface{} {
+// envelope shape as every other JSON error in api.md, including the
+// optional stable reason sub-code. An empty reason is omitted so non-AI
+// shapes stay byte-identical to before. Technical details go to server
+// logs only.
+func sseErrorPayload(message, reason string) map[string]interface{} {
+	errObj := map[string]interface{}{
+		"code":    "AI_PROVIDER_ERROR",
+		"message": message,
+	}
+	if reason != "" {
+		errObj["reason"] = reason
+	}
 	return map[string]interface{}{
 		"success": false,
-		"error": map[string]interface{}{
-			"code":    "AI_PROVIDER_ERROR",
-			"message": message,
-		},
+		"error":   errObj,
 	}
 }
 

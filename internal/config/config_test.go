@@ -233,6 +233,52 @@ func TestLoadRejectsBadGenerationKnobs(t *testing.T) {
 	}
 }
 
+func TestLoadStreamLimitDefaults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_STREAM_MAX_DURATION", "")
+	t.Setenv("AI_STREAM_IDLE_TIMEOUT", "")
+	t.Setenv("AI_RETRY_ON_UNAVAILABLE", "")
+	t.Setenv("AI_RETRY_BACKOFF", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.StreamMaxDuration != 180*time.Second {
+		t.Errorf("StreamMaxDuration = %v, want 180s", cfg.AI.StreamMaxDuration)
+	}
+	if cfg.AI.StreamIdleTimeout != 60*time.Second {
+		t.Errorf("StreamIdleTimeout = %v, want 60s", cfg.AI.StreamIdleTimeout)
+	}
+	if cfg.AI.RetryOnUnavailable != 0 {
+		t.Errorf("RetryOnUnavailable = %d, want 0 (disabled)", cfg.AI.RetryOnUnavailable)
+	}
+	if cfg.AI.RetryBackoff != 2*time.Second {
+		t.Errorf("RetryBackoff = %v, want 2s", cfg.AI.RetryBackoff)
+	}
+}
+
+func TestLoadRejectsBadStreamLimits(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_STREAM_MAX_DURATION", "0s")
+	if _, err := Load(); err == nil {
+		t.Error("AI_STREAM_MAX_DURATION=0s: want error, got nil")
+	}
+	t.Setenv("AI_STREAM_MAX_DURATION", "180s")
+	t.Setenv("AI_STREAM_IDLE_TIMEOUT", "-1s")
+	if _, err := Load(); err == nil {
+		t.Error("negative AI_STREAM_IDLE_TIMEOUT: want error, got nil")
+	}
+	t.Setenv("AI_STREAM_IDLE_TIMEOUT", "60s")
+	t.Setenv("AI_RETRY_ON_UNAVAILABLE", "3")
+	if _, err := Load(); err == nil {
+		t.Error("AI_RETRY_ON_UNAVAILABLE=3: want error, got nil")
+	}
+	t.Setenv("AI_RETRY_ON_UNAVAILABLE", "-1")
+	if _, err := Load(); err == nil {
+		t.Error("negative AI_RETRY_ON_UNAVAILABLE: want error, got nil")
+	}
+}
+
 func TestLoadDebugEdgesGatedToDevelopment(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret")
 	t.Setenv("AI_DEBUG_LOG_OUTPUT_EDGES", "true")

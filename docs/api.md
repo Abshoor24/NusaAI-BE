@@ -923,7 +923,7 @@ data: {"error":"The AI provider returned an error"}
 | --- | --- | --- |
 | `error` | `string` | Pesan error generic (detail teknis disembunyikan) |
 
-Penyebab `error` di tengah stream: provider Gemini error/timeout, koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pada semua kasus ini **tidak ada versi baru yang disimpan**.
+Penyebab `error` di tengah stream: provider Gemini error/timeout, stream melewati `AI_STREAM_MAX_DURATION` ("AI stream timed out") atau diam melewati `AI_STREAM_IDLE_TIMEOUT` ("AI stream stalled"), koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pesan `error` untuk provider sibuk (429/503) adalah `"The AI provider is temporarily overloaded, please try again"`. Pada semua kasus ini **tidak ada versi baru yang disimpan**.
 
 > [!IMPORTANT]
 > **Jangan render stream `token` langsung sebagai website.** Stream hanya untuk indikator progres (mis. menampilkan kode yang sedang ditulis). Model kadang membungkus output dengan pagar kode Markdown; server membersihkannya sebelum menyimpan. Sumber HTML final yang valid adalah `GET /projects/{id}/versions/{number}` setelah event `done`.
@@ -1424,7 +1424,7 @@ Header respons: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `C
 | --- | --- | --- |
 | `token` | `{"token":"<potongan HTML>"}` | Progres saja, **jangan** dirender sebagai website |
 | `done` | `{"project_id":"<uuid>","version_id":"<uuid>","version_number":2}` | Selesai; ambil HTML final via `GET /versions/{version_number}` |
-| `error` | `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"The AI provider returned an error"}}` | Gagal; tidak ada versi tersimpan; status project pulih otomatis |
+| `error` | `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"<pesan Inggris>","reason":"PROVIDER_OVERLOADED"}}` | Gagal; tidak ada versi tersimpan; status project pulih otomatis. `reason` adalah sub-kode stabil untuk switch di frontend (lihat tabel `reason` di §9.3); `message` tetap Inggris dan tidak untuk di-switch |
 
 Urutan: nol atau lebih `token`, lalu **tepat satu** event terminal (`done` **atau** `error`). Setelah terminal, koneksi ditutup server.
 
@@ -1438,6 +1438,10 @@ Urutan: nol atau lebih `token`, lalu **tepat satu** event terminal (`done` **ata
 Baris komentar tidak punya `event:`/`data:` — parser harus mengabaikannya (jangan dianggap error atau akhir stream).
 
 **Menutup dari klien.** Batalkan `fetch` (`AbortController.abort()`); server mendeteksi koneksi putus dan mengembalikan status project (`failed` untuk generate, `ready` untuk revise) tanpa menyimpan versi.
+
+**Dua bentuk kegagalan generate/revise (frontend wajib menangani keduanya sama).**
+Kegagalan bisa datang sebagai **HTTP 502 JSON** (mis. provider sibuk/timeout sebelum stream dibuka — Gemini kadang baru menjawab 503 setelah menunggu hingga puluhan detik) **atau** sebagai **event `error` di dalam stream HTTP 200** (provider sibuk/error di tengah jalan, timeout total, stall, validasi gagal). Keduanya memakai `code: "AI_PROVIDER_ERROR"`, tidak ada versi tersimpan, dan status project pulih otomatis (`failed` untuk generate, `ready` untuk revise; versi sebelumnya tetap utuh).
+Selama menunggu respons pertama (sebelum `token` pertama tiba) tampilkan pesan progres (mis. "Menyiapkan AI…"), bukan spinner tanpa teks — penantian puluhan detik adalah perilaku normal saat provider sibuk.
 
 **Contoh parser** (`EventSource` tidak bisa dipakai: endpoint ini `POST` dan butuh header `Authorization`):
 
@@ -1498,8 +1502,25 @@ async function streamGenerate(projectId, token, onToken) {
 | `CONFLICT` | 409 | Email sudah terdaftar (register) | Minta login |
 | `RATE_LIMITED` | 429 | Selalu dengan `Retry-After: 60` | Tunggu lalu retry otomatis |
 | `AI_PROVIDER_ERROR` | 502 | Gemini gagal/timeout; status project pulih otomatis | Tampilkan kegagalan generik + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 502 | `"The AI provider is temporarily overloaded, please try again"` (Gemini 429/503, pra-stream sebagai JSON atau tengah stream sebagai event `error`) | Tampilkan "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 502 | `"AI stream timed out"` / `"AI stream stalled"` (melewati `AI_STREAM_MAX_DURATION` / `AI_STREAM_IDLE_TIMEOUT`) | Tampilkan kegagalan generik + tombol "Coba lagi"; tidak perlu mengubah input |
 | `DATABASE_ERROR` / `INTERNAL_SERVER_ERROR` | 500 | Selalu envelope generik tanpa detail internal | Tampilkan kegagalan generik |
 | `SERVICE_UNAVAILABLE` | 503 | Database tidak terjangkau (`/health/db`) | Tampilkan status layanan |
+
+### 9.3.1. Tabel `reason` untuk `AI_PROVIDER_ERROR` (frontend switch)
+
+`reason` muncul di JSON 502 pra-stream maupun event `error` tengah stream (contoh: `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"...","reason":"STREAM_TIMEOUT"}}`). Error non-AI tidak memiliki field ini. Pesan (`message`) selalu Inggris — terjemahkan di frontend berdasarkan `reason`, jangan berdasarkan teks pesan.
+
+| `reason` | Arti | Saran UI (Bahasa Indonesia) |
+| --- | --- | --- |
+| `PROVIDER_OVERLOADED` | Gemini sibuk (429/503) | "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
+| `STREAM_TIMEOUT` | Stream melewati `AI_STREAM_MAX_DURATION` | "Proses AI kehabisan waktu, coba lagi" + tombol "Coba lagi"; tidak perlu mengubah input |
+| `STREAM_STALLED` | Provider diam melewati `AI_STREAM_IDLE_TIMEOUT` | "Koneksi AI terputus, coba lagi" + tombol "Coba lagi" |
+| `OUTPUT_TRUNCATED` | Output terpotong (`MAX_TOKENS`) sebelum HTML selesai | "Hasil AI terpotong, coba lagi" + tombol "Coba lagi" |
+| `OUTPUT_BLOCKED` | Output ditolak filter keamanan provider | "Permintaan ditolak filter keamanan, ubah deskripsi/instruksi" (jangan sekadar retry buta) |
+| `STREAM_INTERRUPTED` | Stream berakhir tanpa `finishReason` (koneksi terputus prematur) | "Koneksi AI terputus, coba lagi" + tombol "Coba lagi" |
+| `INVALID_OUTPUT` | Output bukan dokumen HTML valid / melebihi batas ukuran | "Hasil AI tidak valid, coba lagi" + tombol "Coba lagi" |
+| `PROVIDER_ERROR` | Kegagalan provider lainnya | Tampilkan kegagalan generik + tombol "Coba lagi" |
 
 ### 9.4. CORS
 

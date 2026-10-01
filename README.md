@@ -116,6 +116,9 @@ Variabel penting lainnya:
 - `AI_MAX_REQUEST_BYTES` (default 1 MB, batas body JSON global), `AI_MAX_GENERATE_BODY_BYTES` (default 32 MB, khusus JSON generate/revise — pakai `multipart/form-data` untuk gambar. Catatan: 4 gambar × 10 MB menjadi ±53 MB setelah base64 sehingga tidak muat di body JSON 32 MB; batas gambar tidak diubah)
 - `AI_MAX_OUTPUT_TOKENS` (opsional, > 0; kosong = default model), `AI_THINKING_BUDGET` (opsional, ≥ 0, 0 mematikan thinking bila didukung model; kosong = default model). Berguna bila output sering terpotong atau untuk membatasi biaya. Dikosongkan = `generationConfig` tidak dikirim.
 - `AI_DEBUG_LOG_OUTPUT_EDGES` (default false; hanya development) — mencatat 200 karakter awal/akhir output gagal ke log. Output bisa berisi data pengguna, jangan aktifkan di luar development.
+- `AI_STREAM_MAX_DURATION` (default 180s, wajib > 0) — batas total satu stream generate/revise; lewat batas → request ke Gemini dibatalkan, rollback, klien menerima `AI_PROVIDER_ERROR` "AI stream timed out".
+- `AI_STREAM_IDLE_TIMEOUT` (default 60s, wajib > 0) — batas diam antar chunk provider; lewat batas → `AI_PROVIDER_ERROR` "AI stream stalled", rollback sama.
+- `AI_RETRY_ON_UNAVAILABLE` (default 0, maks 2) + `AI_RETRY_BACKOFF` (default 2s) — ulangi pembukaan stream HANYA untuk 429/503 sebelum chunk pertama; default 0 = perilaku lama persis. Tiap retry bisa menambah puluhan detik karena Gemini kadang baru menjawab 503 setelah menunggu lama; total tetap dibatasi `AI_STREAM_MAX_DURATION`.
 - `UPLOAD_DIR`, `UPLOAD_MAX_BYTES`
 - `CORS_ALLOWED_ORIGINS` (CSV; default development `http://localhost:3000,http://localhost:5173`, di luar development default kosong), `RATE_LIMIT_*`
 - `GENERATE_RATE_LIMIT_PER_MINUTE` (default 5), `PROJECT_MAX_IMAGES` (default 4), `PROJECT_MAX_HTML_BYTES` (default 524288 = 512 KiB)

@@ -38,9 +38,13 @@ type fakeProvider struct {
 	tokens   []string
 	errAt    int // emit Err instead of token at this index (-1 = no error)
 	openErr  error
-	lastReq  aiprovider.Request
-	calls    int
-	usedImgs int
+	// openErrSeq scripts consecutive open failures (e.g. 503 then success):
+	// one entry is consumed per CompleteStream call, a nil entry succeeds.
+	// When empty, openErr applies to every call.
+	openErrSeq []error
+	lastReq    aiprovider.Request
+	calls      int
+	usedImgs   int
 	// doneReason is attached to the terminal Done chunk ("STOP" for a
 	// normal stream). Tests set it to "" or other reasons explicitly.
 	doneReason string
@@ -59,7 +63,14 @@ func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request)
 	if len(req.Messages) > 1 {
 		f.usedImgs = len(req.Messages[1].Images)
 	}
-	tokens, errAt, openErr := f.tokens, f.errAt, f.openErr
+	tokens, errAt := f.tokens, f.errAt
+	var openErr error
+	if len(f.openErrSeq) > 0 {
+		openErr = f.openErrSeq[0]
+		f.openErrSeq = f.openErrSeq[1:]
+	} else {
+		openErr = f.openErr
+	}
 	f.mu.Unlock()
 	if openErr != nil {
 		return nil, openErr
@@ -1014,5 +1025,255 @@ func TestFinishStreamBlockedRejected(t *testing.T) {
 	}
 	if got.Status != model.StatusFailed || got.VersionCount != 0 {
 		t.Errorf("after blocked generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestFinishStreamBlockedViaBlockReasonOnly(t *testing.T) {
+	// A promptFeedback block with no candidates (empty finishReason) must
+	// still classify as blocked, not as a generic unexpected end.
+	fp := newFakeProvider(testHTML)
+	fp.doneReason = ""
+	fp.doneBlock = "BLOCKLIST"
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae == nil {
+		t.Fatal("expected blocked error, got success")
+	} else {
+		if ae.Code() != "AI_PROVIDER_ERROR" {
+			t.Fatalf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+		}
+		if !strings.Contains(ae.Message, "blocked") {
+			t.Errorf("message = %q, want a blocked message", ae.Message)
+		}
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after blockReason-only generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestFinishStreamOtherReasonIsUnexpected(t *testing.T) {
+	// OTHER is neither STOP, MAX_TOKENS nor a block: it must surface as an
+	// unexpected end with no version stored.
+	fp := newFakeProvider(testHTML)
+	fp.doneReason = "OTHER"
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae == nil {
+		t.Fatal("expected unexpected-end error, got success")
+	} else {
+		if ae.Code() != "AI_PROVIDER_ERROR" {
+			t.Fatalf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+		}
+		if !strings.Contains(ae.Message, "unexpectedly") {
+			t.Errorf("message = %q, want an unexpected-end message", ae.Message)
+		}
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after OTHER generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestFinishStreamReasons(t *testing.T) {
+	// Each FinishStream failure class must carry its stable reason for the
+	// client envelope; the code stays AI_PROVIDER_ERROR in all cases.
+	for _, tc := range []struct {
+		name       string
+		tokens     []string
+		doneReason string
+		doneBlock  string
+		wantReason string
+	}{
+		{"truncated", []string{"<!DOCTYPE html><html><body>setengah"}, "MAX_TOKENS", "", apperror.ReasonOutputTruncated},
+		{"blocked", []string{"<!DOCTYPE html><html><body>x</body></html>"}, "SAFETY", "SAFETY", apperror.ReasonOutputBlocked},
+		{"interrupted", []string{testHTML}, "", "", apperror.ReasonStreamInterrupted},
+		{"invalid", []string{"Maaf, saya tidak bisa membuat website."}, "STOP", "", apperror.ReasonInvalidOutput},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fp := newFakeProvider(tc.tokens...)
+			fp.doneReason = tc.doneReason
+			fp.doneBlock = tc.doneBlock
+			svc, _ := newServiceWithFake(t, fp)
+			ctx := context.Background()
+
+			p := createDraft(t, svc, "user-1")
+			pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+			if err != nil {
+				t.Fatalf("BeginGenerate: %v", err)
+			}
+			_, ae := drainAndFinish(ctx, t, svc, pending)
+			if ae == nil {
+				t.Fatal("expected failure, got success")
+			}
+			if ae.Code() != "AI_PROVIDER_ERROR" {
+				t.Errorf("code = %q, want AI_PROVIDER_ERROR", ae.Code())
+			}
+			if ae.Reason != tc.wantReason {
+				t.Errorf("reason = %q, want %q", ae.Reason, tc.wantReason)
+			}
+		})
+	}
+}
+
+// --- limited pre-stream retry (AI_RETRY_ON_UNAVAILABLE) ---
+
+func overloadedOpenErr() error {
+	return apperror.AIProvider("The AI provider returned an error", errors.New("status 503"))
+}
+
+func newRetryService(t *testing.T, fp *fakeProvider, retries int) (Service, *fakeRepo) {
+	t.Helper()
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.RetryOnUnavailable = retries
+	aiCfg.RetryBackoff = time.Millisecond
+	uploadCfg.Dir = t.TempDir()
+	repo := newFakeRepo()
+	return New(repo, fp, aiCfg, uploadCfg, projectCfg, testLogger()), repo
+}
+
+func TestOpenRetrySucceedsOnSecondAttempt(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{overloadedOpenErr(), nil}
+	svc, _ := newRetryService(t, fp, 2)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (one retry)", fp.calls)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusReady || got.VersionCount != 1 {
+		t.Errorf("after retried generate: status=%q count=%d, want ready/1", got.Status, got.VersionCount)
+	}
+}
+
+func TestOpenRetryDisabledByDefault(t *testing.T) {
+	// Default 0 must behave exactly as before: one call, no retry.
+	fp := newFakeProvider(testHTML)
+	fp.openErr = overloadedOpenErr()
+	svc, _ := newServiceWithFake(t, fp)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	if _, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil); err == nil {
+		t.Fatal("expected provider error, got success")
+	}
+	if fp.calls != 1 {
+		t.Errorf("provider calls = %d, want exactly 1 (no retry when disabled)", fp.calls)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after failed generate: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestOpenRetryExhaustedStaysBounded(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErr = overloadedOpenErr()
+	svc, _ := newRetryService(t, fp, 1)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	_, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err == nil {
+		t.Fatal("expected provider error, got success")
+	}
+	if !aiprovider.IsOverloadedError(err) {
+		t.Errorf("error = %v, want an overloaded error", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (initial + 1 retry), never more", fp.calls)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after exhausted retries: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestNoRetryForMidStreamError(t *testing.T) {
+	// Retry applies to the open call only: a mid-stream failure must not
+	// trigger another provider call even when retries are enabled.
+	fp := newFakeProvider("<html>", "<body>")
+	fp.errAt = 1
+	svc, _ := newRetryService(t, fp, 2)
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae == nil {
+		t.Fatal("expected mid-stream error, got success")
+	}
+	if fp.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (no retry for mid-stream errors)", fp.calls)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("after mid-stream error: status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestRetryStopsOnCancelledContext(t *testing.T) {
+	// A cancelled client context must prevent any provider call, even with
+	// retries enabled.
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{overloadedOpenErr(), nil}
+	svc, _ := newRetryService(t, fp, 2)
+
+	p := createDraft(t, svc, "user-1")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil); err == nil {
+		t.Fatal("expected cancellation error, got success")
+	}
+	if fp.calls != 0 {
+		t.Errorf("provider calls = %d, want 0 (cancelled before first attempt)", fp.calls)
+	}
+	got, _, err := svc.Get(context.Background(), "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.VersionCount != 0 {
+		t.Errorf("version count = %d, want 0 (nothing stored)", got.VersionCount)
 	}
 }

@@ -32,13 +32,13 @@ func CleanHTML(raw string) string {
 // generic SSE error event without storing a version.
 func ValidateHTML(doc string, maxBytes int64) error {
 	if int64(len(doc)) > maxBytes {
-		return apperror.AIProvider("Generated website exceeds size limit", nil)
+		return apperror.AIProviderReason(apperror.ReasonInvalidOutput, "Generated website exceeds size limit", nil)
 	}
 	lower := strings.ToLower(doc)
 	hasOpen := strings.Contains(lower, "<!doctype html") || strings.Contains(lower, "<html")
 	hasClose := strings.Contains(lower, "</html>")
 	if !hasOpen || !hasClose {
-		return apperror.AIProvider("Generated output is not a valid HTML document", nil)
+		return apperror.AIProviderReason(apperror.ReasonInvalidOutput, "Generated output is not a valid HTML document", nil)
 	}
 	return nil
 }

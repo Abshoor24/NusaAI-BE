@@ -83,6 +83,18 @@ type AIConfig struct {
 	// output. Only honored in development (see Load); output may contain
 	// user data, so it must never be enabled elsewhere.
 	DebugLogOutputEdges bool
+	// StreamMaxDuration bounds the whole generate/revise stream lifetime
+	// (provider wait + token relay). A stuck provider stream is cancelled
+	// past this point so the project does not stay in "generating" forever.
+	StreamMaxDuration time.Duration
+	// StreamIdleTimeout bounds silence between provider chunks: no new
+	// chunk within this window ends the stream as stalled.
+	StreamIdleTimeout time.Duration
+	// RetryOnUnavailable repeats the provider open call (pre-stream only)
+	// on 503/429, up to this many extra attempts. 0 disables retries.
+	RetryOnUnavailable int
+	// RetryBackoff is the pause between provider open attempts.
+	RetryBackoff time.Duration
 }
 
 type CORSConfig struct {
@@ -197,6 +209,17 @@ func Load() (*Config, error) {
 			MaxOutputTokens:     getInt64("AI_MAX_OUTPUT_TOKENS", 0),
 			ThinkingBudget:      thinkingBudget,
 			DebugLogOutputEdges: getBool("AI_DEBUG_LOG_OUTPUT_EDGES", false),
+			// Total stream lifetime bound (provider wait + relay). Without
+			// it a stalled provider holds the project in "generating".
+			StreamMaxDuration: getDuration("AI_STREAM_MAX_DURATION", 180*time.Second),
+			// Silence bound between provider chunks.
+			StreamIdleTimeout: getDuration("AI_STREAM_IDLE_TIMEOUT", 60*time.Second),
+			// Limited pre-stream retry on 503/429 only; 0 = disabled.
+			// Each retry can add tens of seconds because Gemini sometimes
+			// answers 503 only after a long wait; the total is still
+			// bounded by AI_STREAM_MAX_DURATION.
+			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 0),
+			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
 		},
 		Execution: ExecutionConfig{
 			Provider:         getEnv("EXEC_PROVIDER", "judge0"),
@@ -275,6 +298,18 @@ func (c *Config) validate() error {
 	}
 	if c.AI.ThinkingBudget != nil && *c.AI.ThinkingBudget < 0 {
 		return fmt.Errorf("config: AI_THINKING_BUDGET must be at least 0 (or unset)")
+	}
+	if c.AI.StreamMaxDuration <= 0 {
+		return fmt.Errorf("config: AI_STREAM_MAX_DURATION must be greater than 0")
+	}
+	if c.AI.StreamIdleTimeout <= 0 {
+		return fmt.Errorf("config: AI_STREAM_IDLE_TIMEOUT must be greater than 0")
+	}
+	if c.AI.RetryOnUnavailable < 0 || c.AI.RetryOnUnavailable > 2 {
+		return fmt.Errorf("config: AI_RETRY_ON_UNAVAILABLE must be between 0 and 2")
+	}
+	if c.AI.RetryBackoff < 0 {
+		return fmt.Errorf("config: AI_RETRY_BACKOFF must not be negative")
 	}
 	if c.Project.MaxImages <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_IMAGES must be greater than 0")

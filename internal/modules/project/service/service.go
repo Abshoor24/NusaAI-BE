@@ -241,7 +241,7 @@ func (s *service) decodeImages(imgs []model.ImagePayload) ([]decodedImage, error
 
 func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, error) {
 	if s.provider == nil {
-		return nil, apperror.AIProvider("AI provider is not configured", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
 	}
 	converted := make([]aiprovider.ImageAttachment, 0, len(imgs))
 	for _, im := range imgs {
@@ -254,7 +254,62 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 			{Role: "user", Content: userPrompt, Images: converted},
 		},
 	}
-	return s.provider.CompleteStream(ctx, req)
+	// Limited pre-stream retry on provider overload (HTTP 429/503 before
+	// any chunk exists). Default 0 keeps this a single call, byte-identical
+	// in behavior to before. Never retries mid-stream errors (those arrive
+	// as StreamChunk.Err after open succeeds), truncation, blocks, or
+	// validation failures. The caller's context carries the overall
+	// AI_STREAM_MAX_DURATION deadline and client cancellation, so retries
+	// plus backoff never outlive either.
+	maxRetries := s.aiCfg.RetryOnUnavailable
+	if maxRetries <= 0 {
+		return s.provider.CompleteStream(ctx, req)
+	}
+	if maxRetries > 2 {
+		maxRetries = 2
+	}
+	var err error
+	var stream <-chan aiprovider.StreamChunk
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			// Client gone or total deadline hit: stop retrying, surface
+			// the last provider error so rollback still runs.
+			if err != nil {
+				return nil, err
+			}
+			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+		}
+		stream, err = s.provider.CompleteStream(ctx, req)
+		if err == nil {
+			if attempt > 0 {
+				s.logger.Info("ai stream open retry succeeded",
+					"attempt", attempt+1, "max_attempts", maxRetries+1)
+			}
+			return stream, nil
+		}
+		if !aiprovider.IsOverloadedError(err) {
+			return nil, err
+		}
+		if attempt == maxRetries {
+			s.logger.Warn("ai stream open retries exhausted",
+				"attempts", attempt+1, "max_attempts", maxRetries+1, "error", err)
+			return nil, err
+		}
+		s.logger.Warn("ai stream open overloaded, retrying",
+			"attempt", attempt+1, "max_attempts", maxRetries+1, "error", err)
+		if backoff := s.aiCfg.RetryBackoff; backoff > 0 {
+			timer := time.NewTimer(backoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, err
+			case <-timer.C:
+			}
+		} else if ctx.Err() != nil {
+			return nil, err
+		}
+	}
+	return nil, err
 }
 
 func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
@@ -343,40 +398,60 @@ func (s *service) BeginRevise(ctx context.Context, userID, projectID, instructio
 }
 
 func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawBuffer string) (*model.Version, error) {
+	// Per-stream diagnostics (Task 2, project half): every terminal path
+	// logs chunks, text bytes, raw finish_reason, stream end type, block
+	// reason, usageMetadata, duration and project_id. Never the HTML body.
+	durationMs := time.Since(pending.StartedAt).Milliseconds()
 	if isTruncated(pending.FinishReason) {
-		s.logger.Error("project generation truncated by provider",
+		attrs := []any{
 			"project_id", pending.Project.ID,
 			"kind", pending.Kind,
-			"finish_reason", pending.FinishReason,
+			"stream_end", "eof",
+			"duration_ms", durationMs,
 			"chunks", pending.Chunks,
 			"bytes", len(rawBuffer),
-		)
-		s.failDetached(ctx, pending)
-		return nil, apperror.AIProvider("AI output was truncated before completing the HTML document", nil)
-	}
-	if isBlocked(pending.FinishReason) {
-		s.logger.Error("project generation blocked by provider",
-			"project_id", pending.Project.ID,
-			"kind", pending.Kind,
 			"finish_reason", pending.FinishReason,
 			"block_reason", pending.BlockReason,
+		}
+		attrs = appendUsage(attrs, pending.Usage)
+		s.logger.Error("project generation truncated by provider", attrs...)
+		s.failDetached(ctx, pending)
+		return nil, apperror.AIProviderReason(apperror.ReasonOutputTruncated, "AI output was truncated before completing the HTML document", nil)
+	}
+	// A safety refusal can arrive as candidates[].finishReason (SAFETY, ...)
+	// or as promptFeedback.blockReason with no candidates at all. Either
+	// one means "blocked", distinct from truncation or a clean STOP.
+	if isBlocked(pending.FinishReason) || isBlocked(pending.BlockReason) {
+		attrs := []any{
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"stream_end", "eof",
+			"duration_ms", durationMs,
 			"chunks", pending.Chunks,
 			"bytes", len(rawBuffer),
-		)
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+		}
+		attrs = appendUsage(attrs, pending.Usage)
+		s.logger.Error("project generation blocked by provider", attrs...)
 		s.failDetached(ctx, pending)
-		return nil, apperror.AIProvider("AI output was blocked by provider safety filters", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonOutputBlocked, "AI output was blocked by provider safety filters", nil)
 	}
 	if !isCleanStop(pending.FinishReason) {
-		s.logger.Error("project stream ended unexpectedly",
+		attrs := []any{
 			"project_id", pending.Project.ID,
 			"kind", pending.Kind,
-			"finish_reason", pending.FinishReason,
-			"block_reason", pending.BlockReason,
+			"stream_end", "eof",
+			"duration_ms", durationMs,
 			"chunks", pending.Chunks,
 			"bytes", len(rawBuffer),
-		)
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+		}
+		attrs = appendUsage(attrs, pending.Usage)
+		s.logger.Error("project stream ended unexpectedly", attrs...)
 		s.failDetached(ctx, pending)
-		return nil, apperror.AIProvider("AI stream ended unexpectedly without a finish reason", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonStreamInterrupted, "AI stream ended unexpectedly without a finish reason", nil)
 	}
 	doc, err := CleanAndValidate(rawBuffer, pending.MaxBytes)
 	if err != nil {
@@ -384,6 +459,8 @@ func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawB
 		attrs := []any{
 			"project_id", pending.Project.ID,
 			"kind", pending.Kind,
+			"stream_end", "eof",
+			"duration_ms", durationMs,
 			"finish_reason", pending.FinishReason,
 			"block_reason", pending.BlockReason,
 			"chunks", pending.Chunks,
@@ -392,14 +469,7 @@ func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawB
 			"has_closing_html", strings.Contains(lower, "</html>"),
 			"error", err,
 		}
-		if usage := pending.Usage; usage != nil {
-			attrs = append(attrs,
-				"prompt_tokens", usage.PromptTokenCount,
-				"candidates_tokens", usage.CandidatesTokenCount,
-				"thoughts_tokens", usage.ThoughtsTokenCount,
-				"total_tokens", usage.TotalTokenCount,
-			)
-		}
+		attrs = appendUsage(attrs, pending.Usage)
 		if s.aiCfg.DebugLogOutputEdges {
 			attrs = append(attrs, "output_head", headEdge(rawBuffer), "output_tail", tailEdge(rawBuffer))
 		}
@@ -416,20 +486,14 @@ func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawB
 		"project_id", pending.Project.ID,
 		"version_number", v.VersionNumber,
 		"kind", pending.Kind,
+		"stream_end", "eof",
 		"duration_ms", time.Since(pending.StartedAt).Milliseconds(),
 		"chunks", pending.Chunks,
 		"bytes", len(doc),
 		"finish_reason", pending.FinishReason,
 		"block_reason", pending.BlockReason,
 	}
-	if usage := pending.Usage; usage != nil {
-		attrs = append(attrs,
-			"prompt_tokens", usage.PromptTokenCount,
-			"candidates_tokens", usage.CandidatesTokenCount,
-			"thoughts_tokens", usage.ThoughtsTokenCount,
-			"total_tokens", usage.TotalTokenCount,
-		)
-	}
+	attrs = appendUsage(attrs, pending.Usage)
 	s.logger.Info("project generation finished", attrs...)
 	return v, nil
 }
@@ -448,9 +512,27 @@ var blockedFinishReasons = map[string]bool{
 	"PROHIBITED_CONTENT": true, "SPII": true,
 }
 
-// isBlocked reports whether finishReason is a provider content refusal.
-func isBlocked(finishReason string) bool {
-	return blockedFinishReasons[strings.ToUpper(strings.TrimSpace(finishReason))]
+// isBlocked reports whether a finish or block reason is a provider content
+// refusal. Both candidates[].finishReason and promptFeedback.blockReason
+// share the same vocabulary (SAFETY, BLOCKLIST, ...); FinishStream checks
+// both so a block with no candidates is still classified as blocked.
+func isBlocked(reason string) bool {
+	return blockedFinishReasons[strings.ToUpper(strings.TrimSpace(reason))]
+}
+
+// appendUsage appends token accounting to a log attribute slice when the
+// provider reported usageMetadata. Field names match the provider's
+// usageMetadata keys.
+func appendUsage(attrs []any, usage *aiprovider.UsageMetadata) []any {
+	if usage == nil {
+		return attrs
+	}
+	return append(attrs,
+		"prompt_tokens", usage.PromptTokenCount,
+		"candidates_tokens", usage.CandidatesTokenCount,
+		"thoughts_tokens", usage.ThoughtsTokenCount,
+		"total_tokens", usage.TotalTokenCount,
+	)
 }
 
 // isCleanStop reports whether the stream finished normally. Anything else

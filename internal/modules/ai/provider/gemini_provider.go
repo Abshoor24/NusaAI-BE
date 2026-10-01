@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
@@ -52,6 +54,81 @@ func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider
 	}
 }
 
+// OverloadedMessage is the client-safe message used when Gemini reports
+// load shedding (HTTP 429/503, or a mid-stream error object with status
+// RESOURCE_EXHAUSTED/UNAVAILABLE). The error code stays AI_PROVIDER_ERROR
+// and the HTTP mapping stays 502 pre-stream / SSE error event mid-stream;
+// only the message changes so the frontend can suggest retrying.
+const OverloadedMessage = "The AI provider is temporarily overloaded, please try again"
+
+// GenericProviderMessage is the client-safe message for all other provider
+// failures (bad key, bad request, decode errors, ...).
+const GenericProviderMessage = "The AI provider returned an error"
+
+// IsOverloadedError reports whether err is a provider-overload failure and
+// therefore eligible for the limited pre-stream retry. It recognizes both
+// the overloaded message and the wrapped provider status ("status 429",
+// "status 503", "status RESOURCE_EXHAUSTED", "status UNAVAILABLE") so
+// callers using hand-built fakes stay classifiable.
+func IsOverloadedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ae *apperror.Error
+	if !isAIProviderError(err, &ae) {
+		return false
+	}
+	if ae.Message == OverloadedMessage {
+		return true
+	}
+	s := ""
+	if ae.Err != nil {
+		s = ae.Err.Error()
+	}
+	return strings.Contains(s, "429") || strings.Contains(s, "503") ||
+		strings.Contains(s, "RESOURCE_EXHAUSTED") || strings.Contains(s, "UNAVAILABLE")
+}
+
+func isAIProviderError(err error, ae **apperror.Error) bool {
+	var e *apperror.Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	if e.Code() != "AI_PROVIDER_ERROR" {
+		return false
+	}
+	*ae = e
+	return true
+}
+
+// overloadedStatus reports whether an HTTP status code means "try again
+// later" rather than a client/payload problem.
+func overloadedStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code == http.StatusServiceUnavailable
+}
+
+// overloadedObjectStatus reports whether a mid-stream error object status
+// means overload. Gemini uses RESOURCE_EXHAUSTED (429 class) and
+// UNAVAILABLE (503 class) for load shedding.
+func overloadedObjectStatus(status string, code int) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "RESOURCE_EXHAUSTED", "UNAVAILABLE":
+		return true
+	}
+	return code == 429 || code == 503
+}
+
+// providerStatusError builds the pre-stream provider error for a non-200
+// response: overloaded message + reason for 429/503, generic message with
+// PROVIDER_ERROR otherwise. The raw provider body is never included: it
+// stays in server logs only.
+func providerStatusError(code int) error {
+	if overloadedStatus(code) {
+		return apperror.AIProviderReason(apperror.ReasonProviderOverloaded, OverloadedMessage, fmt.Errorf("status %d", code))
+	}
+	return apperror.AIProviderReason(apperror.ReasonProviderError, GenericProviderMessage, fmt.Errorf("status %d", code))
+}
+
 // generationConfig returns the Gemini generationConfig payload, or nil when
 // neither knob is set so the request is byte-identical to before.
 func (p *GeminiProvider) generationConfig() map[string]interface{} {
@@ -71,10 +148,10 @@ func (p *GeminiProvider) generationConfig() map[string]interface{} {
 // Complete sends a generateContent request to the Gemini API.
 func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, error) {
 	if req.Model == "" {
-		return Response{}, apperror.AIProvider("AI model is not configured", nil)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "AI model is not configured", nil)
 	}
 	if p.apiKey == "" {
-		return Response{}, apperror.AIProvider("AI API key is not configured", nil)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "AI API key is not configured", nil)
 	}
 
 	var systemParts []string
@@ -114,13 +191,13 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return Response{}, apperror.AIProvider("Failed to build AI request", err)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI request", err)
 	}
 
 	url := fmt.Sprintf("%s/models/%s:generateContent", p.baseURL, req.Model)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return Response{}, apperror.AIProvider("Failed to build AI request", err)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", p.apiKey)
@@ -129,10 +206,10 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 	if err != nil {
 		// Context cancellation/timeout is common and not a provider bug.
 		if ctx.Err() != nil {
-			return Response{}, apperror.AIProvider("AI request was cancelled", ctx.Err())
+			return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "AI request was cancelled", ctx.Err())
 		}
 		p.logger.Error("ai provider request failed", "error", err)
-		return Response{}, apperror.AIProvider("The AI provider could not be reached", err)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider could not be reached", err)
 	}
 	defer resp.Body.Close()
 
@@ -144,7 +221,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 			"status", resp.StatusCode,
 			"provider_body", string(body),
 		)
-		return Response{}, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+		return Response{}, providerStatusError(resp.StatusCode)
 	}
 
 	var out struct {
@@ -159,7 +236,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		p.logger.Error("ai provider decode failed", "error", err)
-		return Response{}, apperror.AIProvider("Failed to read AI provider response", err)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to read AI provider response", err)
 	}
 
 	var sb strings.Builder
@@ -169,7 +246,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 		}
 	}
 	if sb.Len() == 0 {
-		return Response{}, apperror.AIProvider("The AI provider returned no response", nil)
+		return Response{}, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned no response", nil)
 	}
 
 	return Response{
@@ -185,10 +262,10 @@ func (p *GeminiProvider) Complete(ctx context.Context, req Request) (Response, e
 // chunk with Err set on failure. No further chunks are sent after either.
 func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-chan StreamChunk, error) {
 	if req.Model == "" {
-		return nil, apperror.AIProvider("AI model is not configured", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI model is not configured", nil)
 	}
 	if p.apiKey == "" {
-		return nil, apperror.AIProvider("AI API key is not configured", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI API key is not configured", nil)
 	}
 
 	var systemParts []string
@@ -226,13 +303,13 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, apperror.AIProvider("Failed to build AI stream request", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI stream request", err)
 	}
 
 	url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse", p.baseURL, req.Model)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, apperror.AIProvider("Failed to build AI stream request", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI stream request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", p.apiKey)
@@ -243,10 +320,10 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, apperror.AIProvider("AI stream request was cancelled", ctx.Err())
+			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 		}
 		p.logger.Error("ai provider stream request failed", "error", err)
-		return nil, apperror.AIProvider("The AI provider could not be reached", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider could not be reached", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -256,7 +333,7 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			"status", resp.StatusCode,
 			"provider_body", string(errBody),
 		)
-		return nil, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+		return nil, providerStatusError(resp.StatusCode)
 	}
 
 	ch := make(chan StreamChunk, 32)
@@ -264,16 +341,51 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 		defer resp.Body.Close()
 		defer close(ch)
 
+		start := time.Now()
+		// Per-stream diagnostics (Task 2, provider half): counts only, never
+		// content. chunks = SSE data objects decoded, textBytes = emitted
+		// text bytes. The project layer adds project_id + duration.
+		var chunks, textBytes int
+		logSummary := func(ended, errKind string, err error, finishReason, blockReason string, usage *UsageMetadata) {
+			attrs := []any{
+				"ended", ended,
+				"chunks", chunks,
+				"text_bytes", textBytes,
+				"finish_reason", finishReason,
+				"block_reason", blockReason,
+				"duration_ms", time.Since(start).Milliseconds(),
+			}
+			if usage != nil {
+				attrs = append(attrs,
+					"prompt_tokens", usage.PromptTokenCount,
+					"candidates_tokens", usage.CandidatesTokenCount,
+					"thoughts_tokens", usage.ThoughtsTokenCount,
+					"total_tokens", usage.TotalTokenCount,
+				)
+			}
+			if errKind != "" {
+				attrs = append(attrs, "error_kind", errKind)
+			}
+			if err != nil {
+				p.logger.Error("ai stream ended", append(attrs, "error", err)...)
+				return
+			}
+			p.logger.Info("ai stream ended", attrs...)
+		}
+
 		// geminiStreamResponse mirrors the JSON shape of each SSE data line.
 		// FinishReason is read (not the text) so callers can tell a clean
 		// STOP apart from truncation (MAX_TOKENS) or other terminal states.
 		// promptFeedback and usageMetadata are captured for per-stream
 		// diagnostics; a top-level error object ends the stream as failure.
+		// Parts carry an optional thought flag: thought text is reasoning,
+		// not output, and must never be concatenated into the document.
 		type geminiStreamResponse struct {
 			Candidates []struct {
 				Content struct {
 					Parts []struct {
-						Text string `json:"text"`
+						Text    string `json:"text"`
+						Thought bool   `json:"thought"`
 					} `json:"parts"`
 				} `json:"content"`
 				FinishReason string `json:"finishReason"`
@@ -289,55 +401,90 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			} `json:"error"`
 		}
 
-		scanner := bufio.NewScanner(resp.Body)
-		// A single SSE data line can carry a large text part (a full HTML
-		// page approaches PROJECT_MAX_HTML_BYTES). Cap lines at 1 MiB so a
-		// huge chunk is still read whole instead of failing the stream.
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		// bufio.Reader has no line-length cap, unlike bufio.Scanner (64 KiB
+		// default, 1 MiB after tuning). A single SSE data line can carry a
+		// large text part, so ReadString is used to read it whole.
+		reader := bufio.NewReader(resp.Body)
 
 		var finishReason, blockReason string
 		var usage UsageMetadata
 		var hasUsage bool
 
-		for scanner.Scan() {
+		for {
 			if ctx.Err() != nil {
+				logSummary("cancelled", "context", ctx.Err(), finishReason, blockReason, usageOrNil(usage, hasUsage))
 				return
 			}
-			line := scanner.Text()
-			// SSE data lines are prefixed with "data: "
+			rawLine, readErr := reader.ReadString('\n')
+			line := strings.TrimRight(rawLine, "\r\n")
+			if readErr != nil && len(line) == 0 {
+				if readErr == io.EOF {
+					break // Normal EOF: fall through to Done below.
+				}
+				if ctx.Err() != nil {
+					logSummary("cancelled", "context", ctx.Err(), finishReason, blockReason, usageOrNil(usage, hasUsage))
+					return // Normal cancellation
+				}
+				p.logger.Error("ai provider stream read error", "error", readErr)
+				logSummary("error", "read", readErr, finishReason, blockReason, usageOrNil(usage, hasUsage))
+				select {
+				case ch <- StreamChunk{Err: apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream read error", readErr)}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			// SSE data lines are prefixed with "data: ". Anything else
+			// (comments, heartbeats, blank separators) is ignored.
 			if !strings.HasPrefix(line, "data: ") {
+				if readErr == io.EOF {
+					break
+				}
 				continue
 			}
-			data := strings.TrimPrefix(line, "data: ")
-			data = strings.TrimSpace(data)
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
 			if data == "" || data == "[DONE]" {
+				if readErr == io.EOF {
+					break
+				}
 				continue
 			}
 
 			var sr geminiStreamResponse
 			if err := json.Unmarshal([]byte(data), &sr); err != nil {
-				p.logger.Error("ai provider stream decode failed", "error", err, "data", data)
+				p.logger.Error("ai provider stream decode failed", "error", err)
+				logSummary("error", "decode", err, finishReason, blockReason, usageOrNil(usage, hasUsage))
 				select {
-				case ch <- StreamChunk{Err: apperror.AIProvider("Failed to decode AI stream response", err)}:
+				case ch <- StreamChunk{Err: apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to decode AI stream response", err)}:
 				case <-ctx.Done():
 				}
 				return
 			}
 
-			// A mid-stream error object is terminal: surface it instead of
-			// silently skipping the line and ending as a clean Done.
-			if sr.Error != nil {
-				p.logger.Error("ai provider stream returned error object",
-					"code", sr.Error.Code,
-					"status", sr.Error.Status,
-					"message", sr.Error.Message,
-				)
-				select {
-				case ch <- StreamChunk{Err: apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %s", sr.Error.Status))}:
-				case <-ctx.Done():
-				}
-				return
+		// A mid-stream error object is terminal: surface it instead of
+		// silently skipping the line and ending as a clean Done.
+		// Overload objects (UNAVAILABLE / RESOURCE_EXHAUSTED) carry the
+		// retry-suggesting message; everything else stays generic.
+		if sr.Error != nil {
+			p.logger.Error("ai provider stream returned error object",
+				"code", sr.Error.Code,
+				"status", sr.Error.Status,
+				"message", sr.Error.Message,
+			)
+			msg := GenericProviderMessage
+			reason := apperror.ReasonProviderError
+			if overloadedObjectStatus(sr.Error.Status, sr.Error.Code) {
+				msg = OverloadedMessage
+				reason = apperror.ReasonProviderOverloaded
 			}
+			providerErr := apperror.AIProviderReason(reason, msg, fmt.Errorf("status %s", sr.Error.Status))
+			logSummary("error", "provider_error_object", providerErr, finishReason, blockReason, usageOrNil(usage, hasUsage))
+			select {
+			case ch <- StreamChunk{Err: providerErr}:
+			case <-ctx.Done():
+			}
+			return
+		}
+			chunks++
 			if sr.PromptFeedback.BlockReason != "" {
 				blockReason = sr.PromptFeedback.BlockReason
 			}
@@ -346,36 +493,36 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 				hasUsage = true
 			}
 
+			// All candidates are scanned (normally exactly one). Only
+			// non-thought text parts are emitted; non-text parts decode with
+			// empty Text and are skipped, thought parts are skipped
+			// explicitly so reasoning never pollutes the document.
 			for _, cand := range sr.Candidates {
 				if cand.FinishReason != "" {
 					finishReason = cand.FinishReason
 				}
 				for _, part := range cand.Content.Parts {
-					if part.Text == "" {
+					if part.Thought || part.Text == "" {
 						continue
 					}
+					textBytes += len(part.Text)
 					select {
 					case ch <- StreamChunk{Token: part.Text}:
 					case <-ctx.Done():
+						logSummary("cancelled", "context", ctx.Err(), finishReason, blockReason, usageOrNil(usage, hasUsage))
 						return
 					}
 				}
 			}
+			if readErr == io.EOF {
+				break
+			}
 		}
 
-		if err := scanner.Err(); err != nil {
-			if ctx.Err() != nil {
-				return // Normal cancellation
-			}
-			p.logger.Error("ai provider stream scan error", "error", err)
-			select {
-			case ch <- StreamChunk{Err: apperror.AIProvider("AI stream read error", err)}:
-			case <-ctx.Done():
-			}
-			return
-		}
-
-		// Stream ended cleanly.
+		// EOF without transport error. An empty finishReason here means the
+		// model never terminated cleanly (premature close); the Done chunk
+		// still carries what was observed and FinishStream classifies it.
+		logSummary("eof", "", nil, finishReason, blockReason, usageOrNil(usage, hasUsage))
 		done := StreamChunk{Done: true, FinishReason: finishReason, BlockReason: blockReason}
 		if hasUsage {
 			u := usage
@@ -388,6 +535,16 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 	}()
 
 	return ch, nil
+}
+
+// usageOrNil returns nil when the provider reported no usageMetadata, so
+// diagnostic logs omit token fields instead of logging zeros.
+func usageOrNil(u UsageMetadata, ok bool) *UsageMetadata {
+	if !ok {
+		return nil
+	}
+	out := u
+	return &out
 }
 
 func buildGeminiParts(text string, images []ImageAttachment) []map[string]interface{} {
@@ -440,7 +597,7 @@ func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) (
 		model = "text-embedding-004"
 	}
 	if p.apiKey == "" {
-		return nil, apperror.AIProvider("AI API key is not configured", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI API key is not configured", nil)
 	}
 
 	modelName := strings.TrimPrefix(model, "models/")
@@ -455,13 +612,13 @@ func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) (
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, apperror.AIProvider("Failed to build AI embed request", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI embed request", err)
 	}
 
 	url := fmt.Sprintf("%s/models/%s:embedContent", p.baseURL, modelName)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, apperror.AIProvider("Failed to build AI embed request", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to build AI embed request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", p.apiKey)
@@ -469,10 +626,10 @@ func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) (
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, apperror.AIProvider("AI embed request was cancelled", ctx.Err())
+			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI embed request was cancelled", ctx.Err())
 		}
 		p.logger.Error("ai provider embed request failed", "error", err)
-		return nil, apperror.AIProvider("The AI provider could not be reached", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider could not be reached", err)
 	}
 	defer resp.Body.Close()
 
@@ -482,7 +639,7 @@ func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) (
 			"status", resp.StatusCode,
 			"provider_body", string(respBody),
 		)
-		return nil, apperror.AIProvider("The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned an error", fmt.Errorf("status %d", resp.StatusCode))
 	}
 
 	var out struct {
@@ -492,11 +649,11 @@ func (p *GeminiProvider) Embed(ctx context.Context, model string, text string) (
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		p.logger.Error("ai provider embed decode failed", "error", err)
-		return nil, apperror.AIProvider("Failed to read AI embed response", err)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "Failed to read AI embed response", err)
 	}
 
 	if len(out.Embedding.Values) == 0 {
-		return nil, apperror.AIProvider("The AI provider returned no embeddings", nil)
+		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned no embeddings", nil)
 	}
 
 	return out.Embedding.Values, nil

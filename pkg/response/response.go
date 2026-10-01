@@ -20,9 +20,12 @@ type successResponse struct {
 }
 
 // errorBody is the standard error body returned inside the error envelope.
+// Reason is a stable AI-failure sub-code (e.g. PROVIDER_OVERLOADED); it is
+// only set on AI provider errors and omitted everywhere else.
 type errorBody struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
+	Reason  string            `json:"reason,omitempty"`
 	Fields  map[string]string `json:"fields,omitempty"`
 }
 
@@ -89,6 +92,7 @@ func RespondError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		Error: errorBody{
 			Code:    ae.Code(),
 			Message: ae.Message,
+			Reason:  ae.Reason,
 			Fields:  ae.Fields,
 		},
 	})

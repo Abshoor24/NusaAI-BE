@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +20,66 @@ import (
 	"github.com/Abshoor24/backend-go/internal/middleware"
 	"github.com/Abshoor24/backend-go/internal/modules/project/model"
 	"github.com/Abshoor24/backend-go/internal/modules/project/service"
+	aiprovider "github.com/Abshoor24/backend-go/internal/modules/ai/provider"
 	"github.com/Abshoor24/backend-go/pkg/response"
 )
+
+// Client-safe terminal messages for stream lifetime limits. The error code
+// stays AI_PROVIDER_ERROR in every case; only the message varies so the
+// frontend can tell "ran out of time" apart from other provider failures.
+const (
+	streamTimeoutMessage = "AI stream timed out"
+	streamStalledMessage = "AI stream stalled"
+	genericStreamError  = "The AI provider returned an error"
+)
+
+// providerChunkMessage extracts the client-safe message and stable reason
+// from a mid-stream provider error (e.g. the overload message for 503/429
+// objects). Unknown error shapes fall back to the generic message with
+// PROVIDER_ERROR; provider_body and other internals never reach the client
+// because they live in the wrapped cause.
+func providerChunkMessage(err error) (string, string) {
+	var ae *apperror.Error
+	if errors.As(err, &ae) {
+		msg := ae.Message
+		if msg == "" {
+			msg = genericStreamError
+		}
+		return msg, reasonOf(err)
+	}
+	return genericStreamError, apperror.ReasonProviderError
+}
+
+// reasonOf maps a terminal stream error to its stable reason sub-code: the
+// pre-classified Reason when present, PROVIDER_ERROR for other AI provider
+// failures, and "" (omitted from JSON) for non-AI errors.
+func reasonOf(err error) string {
+	var ae *apperror.Error
+	if !errors.As(err, &ae) {
+		return apperror.ReasonProviderError
+	}
+	if ae.Reason != "" {
+		return ae.Reason
+	}
+	if ae.Code() == "AI_PROVIDER_ERROR" {
+		return apperror.ReasonProviderError
+	}
+	return ""
+}
+
+// appendStreamUsage appends provider token accounting to SSE diagnostic logs.
+// Field names match usageMetadata keys; nothing is logged when usage is nil.
+func appendStreamUsage(attrs []any, usage *aiprovider.UsageMetadata) []any {
+	if usage == nil {
+		return attrs
+	}
+	return append(attrs,
+		"prompt_tokens", usage.PromptTokenCount,
+		"candidates_tokens", usage.CandidatesTokenCount,
+		"thoughts_tokens", usage.ThoughtsTokenCount,
+		"total_tokens", usage.TotalTokenCount,
+	)
+}
 
 // Handler exposes the AI Website Generator endpoints.
 type Handler struct {
@@ -39,7 +98,32 @@ func New(svc service.Service, logger *slog.Logger, aiCfg config.AIConfig, upload
 	if aiCfg.MaxGenerateBodyBytes <= 0 {
 		aiCfg.MaxGenerateBodyBytes = 32 << 20
 	}
+	if aiCfg.StreamMaxDuration <= 0 {
+		aiCfg.StreamMaxDuration = 180 * time.Second
+	}
+	if aiCfg.StreamIdleTimeout <= 0 {
+		aiCfg.StreamIdleTimeout = 60 * time.Second
+	}
 	return &Handler{svc: svc, logger: logger, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg}
+}
+
+// streamContext bounds one generate/revise attempt: the provider wait plus
+// the whole SSE relay share AI_STREAM_MAX_DURATION. Cancelling it aborts
+// the Gemini request (the provider watches ctx) so a stuck stream cannot
+// hold the project in "generating" past the deadline.
+func (h *Handler) streamContext(r *http.Request) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(r.Context(), h.aiCfg.StreamMaxDuration)
+}
+
+// beginError maps a Begin failure to the client response. A total-deadline
+// hit before SSE headers are committed becomes a JSON 502 "AI stream timed
+// out" with reason STREAM_TIMEOUT; every other provider message (including
+// the overload message) passes through unchanged with code AI_PROVIDER_ERROR.
+func beginError(streamCtx context.Context, err error) error {
+	if streamCtx.Err() == context.DeadlineExceeded {
+		return apperror.AIProviderReason(apperror.ReasonStreamTimeout, streamTimeoutMessage, err)
+	}
+	return err
 }
 
 func userID(w http.ResponseWriter, r *http.Request, h *Handler) (string, bool) {
@@ -344,13 +428,16 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Open the provider stream BEFORE committing to SSE headers so an early
-	// provider failure is still a JSON 502, not a broken stream.
-	pending, err := h.svc.BeginGenerate(r.Context(), uid, projectID, images)
+	// provider failure is still a JSON 502, not a broken stream. The whole
+	// attempt (open + relay) shares the total stream deadline.
+	streamCtx, cancel := h.streamContext(r)
+	defer cancel()
+	pending, err := h.svc.BeginGenerate(streamCtx, uid, projectID, images)
 	if err != nil {
-		response.RespondError(w, h.logger, err)
+		response.RespondError(w, h.logger, beginError(streamCtx, err))
 		return
 	}
-	h.streamPending(w, r, pending)
+	h.streamPending(w, r, pending, streamCtx, cancel)
 }
 
 // Revise handles POST /api/v1/projects/{id}/revise (SSE).
@@ -402,19 +489,24 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 		images = req.Images
 	}
 
-	pending, err := h.svc.BeginRevise(r.Context(), uid, projectID, instruction, baseVersion, images)
+	streamCtx, cancel := h.streamContext(r)
+	defer cancel()
+	pending, err := h.svc.BeginRevise(streamCtx, uid, projectID, instruction, baseVersion, images)
 	if err != nil {
-		response.RespondError(w, h.logger, err)
+		response.RespondError(w, h.logger, beginError(streamCtx, err))
 		return
 	}
-	h.streamPending(w, r, pending)
+	h.streamPending(w, r, pending, streamCtx, cancel)
 }
 
 // streamPending relays the provider stream as SSE token events, then stores
 // the version and emits done — or emits error with no version stored.
 // A heartbeat comment is emitted while waiting so idle streams survive
 // proxies; every write refreshes the write deadline.
-func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending *service.PendingStream) {
+// streamCtx carries the total AI_STREAM_MAX_DURATION deadline shared with
+// the provider open call; cancel aborts the Gemini request. An idle timer
+// (AI_STREAM_IDLE_TIMEOUT) ends silent-but-open streams as stalled.
+func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending *service.PendingStream, streamCtx context.Context, cancel context.CancelFunc) {
 	sse := newSSEWriter(w)
 	var buf strings.Builder
 	start := time.Now()
@@ -426,12 +518,57 @@ func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending 
 		tickCh = ticker.C
 	}
 
+	idleTimer := time.NewTimer(h.aiCfg.StreamIdleTimeout)
+	defer idleTimer.Stop()
+
 loop:
 	for {
 		select {
-		case <-r.Context().Done():
-			// Client gone: roll back on a detached context and stop silently.
-			h.svc.FailStream(r.Context(), pending)
+		case <-streamCtx.Done():
+			if streamCtx.Err() == context.DeadlineExceeded {
+				// Total budget spent (provider wait + relay): abort the
+				// Gemini request, roll back, tell the client to retry.
+				attrs := []any{
+					"project_id", pending.Project.ID, "kind", pending.Kind,
+					"stream_end", "timeout",
+					"duration_ms", time.Since(start).Milliseconds(),
+					"chunks", pending.Chunks, "bytes", buf.Len(),
+					"finish_reason", pending.FinishReason,
+					"block_reason", pending.BlockReason,
+				}
+				attrs = appendStreamUsage(attrs, pending.Usage)
+				h.logger.Error("project stream timed out", attrs...)
+				h.svc.FailStream(streamCtx, pending)
+				sse.writeEvent("error", sseErrorPayload(streamTimeoutMessage, apperror.ReasonStreamTimeout))
+				return
+			}
+			// Client gone: roll back on a detached context and stop silently
+			// for the client, but still log the per-stream diagnosis.
+			h.logger.Warn("project stream cancelled",
+				"project_id", pending.Project.ID, "kind", pending.Kind,
+				"stream_end", "cancelled",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"chunks", pending.Chunks, "bytes", buf.Len(),
+				"finish_reason", pending.FinishReason,
+				"block_reason", pending.BlockReason)
+			h.svc.FailStream(streamCtx, pending)
+			return
+		case <-idleTimer.C:
+			// No provider chunk within the idle window: the stream is
+			// open but silent. Abort Gemini, roll back, report stalled.
+			cancel()
+			attrs := []any{
+				"project_id", pending.Project.ID, "kind", pending.Kind,
+				"stream_end", "stalled",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"chunks", pending.Chunks, "bytes", buf.Len(),
+				"finish_reason", pending.FinishReason,
+				"block_reason", pending.BlockReason,
+			}
+			attrs = appendStreamUsage(attrs, pending.Usage)
+			h.logger.Error("project stream stalled", attrs...)
+			h.svc.FailStream(streamCtx, pending)
+			sse.writeEvent("error", sseErrorPayload(streamStalledMessage, apperror.ReasonStreamStalled))
 			return
 		case <-tickCh:
 			sse.writeHeartbeat()
@@ -440,6 +577,14 @@ loop:
 			if !ok {
 				break loop
 			}
+			// Any provider message counts as activity.
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(h.aiCfg.StreamIdleTimeout)
 			pending.Chunks++
 			// Record terminal metadata for FinishStream diagnostics and
 			// end-of-stream classification; harmless when empty or repeated.
@@ -453,11 +598,20 @@ loop:
 				pending.Usage = chunk.Usage
 			}
 			if chunk.Err != nil {
-				h.logger.Error("project stream chunk error",
-					"project_id", pending.Project.ID, "kind", pending.Kind, "error", chunk.Err,
-					"chunks", pending.Chunks, "bytes", buf.Len())
-				h.svc.FailStream(r.Context(), pending)
-				sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
+				attrs := []any{
+					"project_id", pending.Project.ID, "kind", pending.Kind,
+					"stream_end", "error",
+					"duration_ms", time.Since(start).Milliseconds(),
+					"chunks", pending.Chunks, "bytes", buf.Len(),
+					"finish_reason", pending.FinishReason,
+					"block_reason", pending.BlockReason,
+					"error", chunk.Err,
+				}
+				attrs = appendStreamUsage(attrs, pending.Usage)
+				h.logger.Error("project stream chunk error", attrs...)
+				h.svc.FailStream(streamCtx, pending)
+				chunkMsg, chunkReason := providerChunkMessage(chunk.Err)
+				sse.writeEvent("error", sseErrorPayload(chunkMsg, chunkReason))
 				return
 			}
 			if chunk.Done {
@@ -469,9 +623,18 @@ loop:
 			if int64(buf.Len()+len(chunk.Token)) > pending.MaxBytes+64*1024 {
 				// Bound streaming memory: the final validator enforces the
 				// exact limit; this guard only stops unbounded growth.
-				h.logger.Error("project stream exceeded buffer cap", "project_id", pending.Project.ID)
-				h.svc.FailStream(r.Context(), pending)
-				sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
+				attrs := []any{
+					"project_id", pending.Project.ID, "kind", pending.Kind,
+					"stream_end", "error", "error_kind", "buffer_cap",
+					"duration_ms", time.Since(start).Milliseconds(),
+					"chunks", pending.Chunks, "bytes", buf.Len(),
+					"finish_reason", pending.FinishReason,
+					"block_reason", pending.BlockReason,
+				}
+				attrs = appendStreamUsage(attrs, pending.Usage)
+				h.logger.Error("project stream exceeded buffer cap", attrs...)
+				h.svc.FailStream(streamCtx, pending)
+				sse.writeEvent("error", sseErrorPayload(genericStreamError, apperror.ReasonProviderError))
 				return
 			}
 			buf.WriteString(chunk.Token)
@@ -480,17 +643,32 @@ loop:
 		}
 	}
 
-	ver, err := h.svc.FinishStream(r.Context(), pending, buf.String())
+	ver, err := h.svc.FinishStream(streamCtx, pending, buf.String())
 	if err != nil {
-		h.logger.Error("project stream finalize failed",
+		attrs := []any{
 			"project_id", pending.Project.ID, "kind", pending.Kind,
-			"duration_ms", time.Since(start).Milliseconds(), "error", err)
-		sse.writeEvent("error", sseErrorPayload("The AI provider returned an error"))
+			"stream_end", "eof",
+			"duration_ms", time.Since(start).Milliseconds(),
+			"chunks", pending.Chunks, "bytes", buf.Len(),
+			"finish_reason", pending.FinishReason,
+			"block_reason", pending.BlockReason,
+			"error", err,
+		}
+		attrs = appendStreamUsage(attrs, pending.Usage)
+		h.logger.Error("project stream finalize failed", attrs...)
+		sse.writeEvent("error", sseErrorPayload(genericStreamError, reasonOf(err)))
 		return
 	}
-	h.logger.Info("project stream done",
+	attrs := []any{
 		"project_id", pending.Project.ID, "version_number", ver.VersionNumber,
-		"duration_ms", time.Since(start).Milliseconds(), "bytes", len(ver.HTML))
+		"kind", pending.Kind, "stream_end", "eof",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"chunks", pending.Chunks, "bytes", len(ver.HTML),
+		"finish_reason", pending.FinishReason,
+		"block_reason", pending.BlockReason,
+	}
+	attrs = appendStreamUsage(attrs, pending.Usage)
+	h.logger.Info("project stream done", attrs...)
 	sse.writeEvent("done", map[string]interface{}{
 		"project_id":     pending.Project.ID,
 		"version_id":     ver.ID,

@@ -26,6 +26,20 @@ const (
 	KindInternal          Kind = "INTERNAL_SERVER_ERROR"
 )
 
+// AI failure reasons. Stable machine-readable sub-codes for AI_PROVIDER_ERROR
+// only (other kinds leave Reason empty and the field is omitted from JSON).
+// The frontend translates them; the backend messages stay in English.
+const (
+	ReasonProviderOverloaded = "PROVIDER_OVERLOADED"
+	ReasonStreamTimeout      = "STREAM_TIMEOUT"
+	ReasonStreamStalled      = "STREAM_STALLED"
+	ReasonOutputTruncated    = "OUTPUT_TRUNCATED"
+	ReasonOutputBlocked      = "OUTPUT_BLOCKED"
+	ReasonStreamInterrupted  = "STREAM_INTERRUPTED"
+	ReasonInvalidOutput      = "INVALID_OUTPUT"
+	ReasonProviderError      = "PROVIDER_ERROR"
+)
+
 // Error is the canonical application error used across all layers.
 // It wraps the underlying cause so details can be logged server-side while
 // only safe information is exposed to the client.
@@ -34,6 +48,9 @@ type Error struct {
 	Message string // safe, human-readable message exposed to the client
 	Fields  map[string]string
 	Err     error // underlying cause, never exposed to the client
+	// Reason is an optional stable sub-code, currently only set on AI
+	// provider errors. Empty means "no reason" and it is omitted from JSON.
+	Reason string
 }
 
 func (e *Error) Error() string {
@@ -103,7 +120,24 @@ func NotFound(message string, err error) *Error     { return new(KindNotFound, m
 func MethodNotAllowed(message string) *Error        { return new(KindMethodNotAllowed, message, nil) }
 func Conflict(message string, err error) *Error     { return new(KindConflict, message, err) }
 func Database(message string, err error) *Error     { return new(KindDatabase, message, err) }
-func AIProvider(message string, err error) *Error   { return new(KindAIProvider, message, err) }
+func AIProvider(message string, err error) *Error { return new(KindAIProvider, message, err) }
+
+// AIProviderReason builds an AI provider error with a stable machine-readable
+// sub-code for the frontend. Kind, HTTP status and message semantics are
+// unchanged; only the additive Reason field is set.
+func AIProviderReason(reason, message string, err error) *Error {
+	e := new(KindAIProvider, message, err)
+	e.Reason = reason
+	return e
+}
+
+// WithReason attaches a stable sub-code to an existing error and returns it.
+// Used when the classification is known at the handling site, not at the
+// creation site.
+func (e *Error) WithReason(reason string) *Error {
+	e.Reason = reason
+	return e
+}
 func ExecutionProvider(message string, err error) *Error {
 	return new(KindExecutionProvider, message, err)
 }
