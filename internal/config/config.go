@@ -74,6 +74,27 @@ type AIConfig struct {
 	Timeout              time.Duration
 	MaxBytes             int64
 	MaxGenerateBodyBytes int64
+	// MaxOutputTokens caps model output tokens (0 = omit, model default).
+	MaxOutputTokens int64
+	// ThinkingBudget caps thinking tokens, nil = omit (model default);
+	// 0 disables thinking where the model supports it.
+	ThinkingBudget *int
+	// DebugLogOutputEdges logs the first/last 200 chars of failed model
+	// output. Only honored in development (see Load); output may contain
+	// user data, so it must never be enabled elsewhere.
+	DebugLogOutputEdges bool
+	// StreamMaxDuration bounds the whole generate/revise stream lifetime
+	// (provider wait + token relay). A stuck provider stream is cancelled
+	// past this point so the project does not stay in "generating" forever.
+	StreamMaxDuration time.Duration
+	// StreamIdleTimeout bounds silence between provider chunks: no new
+	// chunk within this window ends the stream as stalled.
+	StreamIdleTimeout time.Duration
+	// RetryOnUnavailable repeats the provider open call (pre-stream only)
+	// on 503/429, up to this many extra attempts. 0 disables retries.
+	RetryOnUnavailable int
+	// RetryBackoff is the pause between provider open attempts.
+	RetryBackoff time.Duration
 }
 
 type CORSConfig struct {
@@ -137,6 +158,11 @@ func loadEnvFile() {
 func Load() (*Config, error) {
 	loadEnvFile()
 
+	thinkingBudget, err := getOptionalInt("AI_THINKING_BUDGET")
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		App: AppConfig{
 			Env:  getEnv("APP_ENV", "development"),
@@ -179,6 +205,21 @@ func Load() (*Config, error) {
 			// ~33%, so these endpoints allow up to the 32 MB multipart buffer.
 			// Other endpoints keep the global AI_MAX_REQUEST_BYTES limit.
 			MaxGenerateBodyBytes: getInt64("AI_MAX_GENERATE_BODY_BYTES", 32<<20), // 32 MB default
+			// Optional generation knobs, omitted from the API payload when unset.
+			MaxOutputTokens:     getInt64("AI_MAX_OUTPUT_TOKENS", 0),
+			ThinkingBudget:      thinkingBudget,
+			DebugLogOutputEdges: getBool("AI_DEBUG_LOG_OUTPUT_EDGES", false),
+			// Total stream lifetime bound (provider wait + relay). Without
+			// it a stalled provider holds the project in "generating".
+			StreamMaxDuration: getDuration("AI_STREAM_MAX_DURATION", 180*time.Second),
+			// Silence bound between provider chunks.
+			StreamIdleTimeout: getDuration("AI_STREAM_IDLE_TIMEOUT", 60*time.Second),
+			// Limited pre-stream retry on 503/429 only; 0 = disabled.
+			// Each retry can add tens of seconds because Gemini sometimes
+			// answers 503 only after a long wait; the total is still
+			// bounded by AI_STREAM_MAX_DURATION.
+			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 0),
+			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
 		},
 		Execution: ExecutionConfig{
 			Provider:         getEnv("EXEC_PROVIDER", "judge0"),
@@ -192,7 +233,7 @@ func Load() (*Config, error) {
 			MaxPollDuration:  getDuration("EXEC_MAX_POLL_DURATION", 15*time.Second),
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", defaultCORSOrigins())),
 		},
 		Rate: RateLimitConfig{
 			Enabled:   getBool("RATE_LIMIT_ENABLED", true),
@@ -216,6 +257,12 @@ func Load() (*Config, error) {
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
+	}
+	// Edge output may contain user data: honor the flag in development
+	// only, and say so loudly at startup otherwise.
+	if cfg.AI.DebugLogOutputEdges && cfg.App.Env != "development" {
+		log.Printf("config: warning: AI_DEBUG_LOG_OUTPUT_EDGES is ignored outside development (APP_ENV=%q)", cfg.App.Env)
+		cfg.AI.DebugLogOutputEdges = false
 	}
 	return cfg, nil
 }
@@ -246,15 +293,71 @@ func (c *Config) validate() error {
 	if c.AI.MaxGenerateBodyBytes <= 0 {
 		return fmt.Errorf("config: AI_MAX_GENERATE_BODY_BYTES must be greater than 0")
 	}
+	if c.AI.MaxOutputTokens < 0 {
+		return fmt.Errorf("config: AI_MAX_OUTPUT_TOKENS must be greater than 0 (or unset)")
+	}
+	if c.AI.ThinkingBudget != nil && *c.AI.ThinkingBudget < 0 {
+		return fmt.Errorf("config: AI_THINKING_BUDGET must be at least 0 (or unset)")
+	}
+	if c.AI.StreamMaxDuration <= 0 {
+		return fmt.Errorf("config: AI_STREAM_MAX_DURATION must be greater than 0")
+	}
+	if c.AI.StreamIdleTimeout <= 0 {
+		return fmt.Errorf("config: AI_STREAM_IDLE_TIMEOUT must be greater than 0")
+	}
+	if c.AI.RetryOnUnavailable < 0 || c.AI.RetryOnUnavailable > 2 {
+		return fmt.Errorf("config: AI_RETRY_ON_UNAVAILABLE must be between 0 and 2")
+	}
+	if c.AI.RetryBackoff < 0 {
+		return fmt.Errorf("config: AI_RETRY_BACKOFF must not be negative")
+	}
 	if c.Project.MaxImages <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_IMAGES must be greater than 0")
 	}
 	if c.Project.MaxHTMLBytes <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_HTML_BYTES must be greater than 0")
 	}
+	if c.JWT.Secret != "" {
+		if err := checkJWTSecret(c.App.Env, c.JWT.Secret); err != nil {
+			return err
+		}
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("config: missing required environment variable(s): %s", strings.Join(missing, ", "))
 	}
+	return nil
+}
+
+// knownJWTPlaceholders are example values from .env.example and other common
+// defaults that must never sign real production tokens.
+var knownJWTPlaceholders = []string{
+	"your_jwt_secret_key",
+	"replace-with-a-long-random-string",
+	"changeme",
+	"change-me",
+	"secret",
+	"password",
+}
+
+// checkJWTSecret enforces secret strength in production and warns elsewhere.
+// Production refuses to boot on an empty (handled by the missing check
+// above), short (< 32 chars), or placeholder secret; development/test only
+// log a warning so local iteration stays frictionless.
+func checkJWTSecret(env, secret string) error {
+	weak := len(secret) < 32
+	for _, p := range knownJWTPlaceholders {
+		if strings.EqualFold(secret, p) {
+			weak = true
+			break
+		}
+	}
+	if !weak {
+		return nil
+	}
+	if env == "production" {
+		return fmt.Errorf("config: JWT_SECRET must be at least 32 characters and must not be a placeholder value")
+	}
+	log.Printf("config: warning: JWT_SECRET looks weak (short or placeholder); use a long random value outside development")
 	return nil
 }
 
@@ -305,6 +408,16 @@ func isLoopbackHost(host string) bool {
 	return false
 }
 
+// defaultCORSOrigins returns the CORS allowlist used when CORS_ALLOWED_ORIGINS
+// is unset: the common local frontend ports in development, and nothing
+// (no cross-site origin allowed) in every other environment.
+func defaultCORSOrigins() string {
+	if getEnv("APP_ENV", "development") == "development" {
+		return "http://localhost:3000,http://localhost:5173"
+	}
+	return ""
+}
+
 func getEnv(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok {
 		return v
@@ -328,6 +441,21 @@ func getInt64(key string, fallback int64) int64 {
 		}
 	}
 	return fallback
+}
+
+// getOptionalInt reads an optional integer env var: nil when unset or
+// empty, otherwise the parsed value. A malformed value fails startup
+// loudly instead of being silently ignored.
+func getOptionalInt(key string) (*int, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return nil, fmt.Errorf("config: %s must be an integer, got %q", key, v)
+	}
+	return &n, nil
 }
 
 func getFloat64(key string, fallback float64) float64 {

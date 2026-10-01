@@ -81,6 +81,43 @@ func TestRespondErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestRespondErrorReason(t *testing.T) {
+	// AI errors carry the stable reason sub-code; non-AI errors (and AI
+	// errors without one) omit the field entirely.
+	for _, tc := range []struct {
+		name       string
+		err        error
+		wantReason string
+	}{
+		{"overloaded", apperror.AIProviderReason(apperror.ReasonProviderOverloaded, "busy", nil), "PROVIDER_OVERLOADED"},
+		{"timeout", apperror.AIProviderReason(apperror.ReasonStreamTimeout, "timed out", nil), "STREAM_TIMEOUT"},
+		{"ai without reason", apperror.AIProvider("generic", nil), ""},
+		{"non-ai", apperror.NotFound("Project not found", nil), ""},
+		{"validation", apperror.Validation("bad"), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			RespondError(rec, testLogger(), tc.err)
+
+			var out map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			errObj, _ := out["error"].(map[string]any)
+			got, present := errObj["reason"]
+			if tc.wantReason == "" {
+				if present {
+					t.Errorf("reason = %v, want field omitted", got)
+				}
+				return
+			}
+			if got != tc.wantReason {
+				t.Errorf("reason = %v, want %q", got, tc.wantReason)
+			}
+		})
+	}
+}
+
 func TestRespondSuccessJSONEncodingError(t *testing.T) {
 	// A channel cannot be marshaled by encoding/json; writeJSON must fall back
 	// to a safe 500 and must not panic.
@@ -90,8 +127,20 @@ func TestRespondSuccessJSONEncodingError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if !strings.Contains(rec.Body.String(), "internal server error") {
-		t.Errorf("body = %q, want a safe error message", rec.Body.String())
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var out struct {
+		Success bool `json:"success"`
+		Error   struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("fallback body must be JSON: %v", err)
+	}
+	if out.Success || out.Error.Code != "INTERNAL_SERVER_ERROR" {
+		t.Errorf("body = %q, want JSON envelope with INTERNAL_SERVER_ERROR", rec.Body.String())
 	}
 }
 

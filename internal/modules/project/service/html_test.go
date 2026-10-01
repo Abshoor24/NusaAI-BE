@@ -39,6 +39,10 @@ func TestCleanAndValidate(t *testing.T) {
 		{"missing close", "<!DOCTYPE html><html><body>x", true},
 		{"empty", "", true},
 		{"too big", tooBig, true},
+		{"preamble before fence", "Berikut hasilnya:\n```html\n" + testHTML + "\n```", false},
+		{"preamble before bare doctype", "Ini websitenya:\n" + testHTML, false},
+		{"trailing text after close", testHTML + "\nSemoga membantu!", false},
+		{"fence without doctype", "```html\n<p>saja</p>\n```", true},
 	}
 	for _, tc := range cases {
 		_, err := CleanAndValidate(tc.raw, maxBytes)
@@ -48,5 +52,44 @@ func TestCleanAndValidate(t *testing.T) {
 		if !tc.wantErr && err != nil {
 			t.Errorf("%s: unexpected error: %v", tc.name, err)
 		}
+	}
+}
+
+func TestExtractHTML(t *testing.T) {
+	doc := "<!DOCTYPE html><html><body>x</body></html>"
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"plain", "  " + doc + "\n", doc},
+		{"strips preamble", "Tentu, ini hasilnya:\n" + doc, doc},
+		{"strips fence and preamble", "Lihat:\n```html\n" + doc + "\n```", doc},
+		{"strips trailing text", doc + "\nSelesai!", doc},
+		{"uppercase markers", "<!DOCTYPE HTML><HTML><BODY>x</BODY></HTML>", "<!DOCTYPE HTML><HTML><BODY>x</BODY></HTML>"},
+		{"truncated has no close", "<!DOCTYPE html><html><body>x", ""},
+		{"no markers at all", "halo dunia", ""},
+		{"empty", "", ""},
+	}
+	for _, tc := range cases {
+		if got := ExtractHTML(tc.raw); got != tc.want {
+			t.Errorf("%s: ExtractHTML = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestOutputEdges(t *testing.T) {
+	if got := headEdge("abc"); got != "abc" {
+		t.Errorf("headEdge short = %q", got)
+	}
+	if got := tailEdge("abc"); got != "abc" {
+		t.Errorf("tailEdge short = %q", got)
+	}
+	long := strings.Repeat("x", 500)
+	if got := headEdge(long); len(got) != 200 {
+		t.Errorf("headEdge len = %d, want 200", len(got))
+	}
+	if got := tailEdge(long); len(got) != 200 {
+		t.Errorf("tailEdge len = %d, want 200", len(got))
 	}
 }

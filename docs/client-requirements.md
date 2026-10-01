@@ -35,7 +35,7 @@ Login
 
 | Area | Status | Fitur |
 | --- | --- | --- |
-| **Authentication & Access** | **Ready** | Registrasi, login, JWT HS256, profil (`/auth/me`), baseline role `admin` |
+| **Authentication & Access** | **Ready** | Registrasi, login, JWT HS256, profil (`/auth/me`); otorisasi berbasis kepemilikan resource, tanpa konsep role |
 | **Project & Brief** | **Ready** | Membuat, melihat daftar, melihat detail, dan menghapus project; brief terstruktur dengan validasi |
 | **AI Generate** | **Ready** | Membuat versi 1 website dari brief, dialirkan real-time via SSE (token-by-token) |
 | **AI Revise** | **Ready** | Merevisi dari versi tertentu lewat instruksi teks; AI selalu mengembalikan dokumen lengkap |
@@ -128,10 +128,7 @@ Pertanyaan terbuka:
   - [ ] Registrasi melalui undangan (invite-only)
   - [ ] Persetujuan admin (admin approval)
   - [ ] SSO / OAuth (Google, GitHub, Microsoft)
-- **Struktur Role Pengguna**:
-  - [x] Admin (semua user saat ini berrole `admin`)
-  - [ ] Member / Regular User
-  - [ ] Guest / Read-Only
+- **Otorisasi & Peran Pengguna**: tidak ada konsep role. Setiap user terautentikasi punya hak yang sama; pembeda akses hanyalah kepemilikan resource (project milik user lain terbaca sebagai `404`). Jika klien butuh peran (mis. admin/member), rancang sebagai fitur baru.
 - **Berbagi project antar user / kolaborasi tim**: `[Default: tidak. Setiap project privat milik satu user]`
 
 ### 3.7. Fitur Lanjutan (Backlog)

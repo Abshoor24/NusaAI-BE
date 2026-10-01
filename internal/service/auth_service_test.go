@@ -89,9 +89,6 @@ func TestRegisterSuccess(t *testing.T) {
 	if resp.User.Email != "user@test.com" {
 		t.Errorf("email = %q, want normalized lowercase", resp.User.Email)
 	}
-	if resp.User.Role != model.RoleAdmin {
-		t.Errorf("role = %q, want admin", resp.User.Role)
-	}
 	if resp.User.ID == "" {
 		t.Error("user id is empty")
 	}

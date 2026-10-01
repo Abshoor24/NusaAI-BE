@@ -38,6 +38,7 @@ Endpoint yang ditandai "dihapus dari router" atau "ditunda" akan mengembalikan `
   - [POST /api/v1/projects](#post-apiv1projects)
   - [GET /api/v1/projects](#get-apiv1projects)
   - [GET /api/v1/projects/{id}](#get-apiv1projectsid)
+  - [PATCH /api/v1/projects/{id}](#patch-apiv1projectsid)
   - [DELETE /api/v1/projects/{id}](#delete-apiv1projectsid)
 - [4. Generate & Revise (SSE)](#4-generate--revise-sse)
   - [POST /api/v1/projects/{id}/generate](#post-apiv1projectsidgenerate-sse)
@@ -51,6 +52,7 @@ Endpoint yang ditandai "dihapus dari router" atau "ditunda" akan mengembalikan `
   - [GET /api/v1/projects/{id}/attachments](#get-apiv1projectsidattachments)
   - [GET /api/v1/projects/{id}/attachments/{attachmentId}](#get-apiv1projectsidattachmentsattachmentid)
 - [8. Menampilkan Preview di Frontend](#8-menampilkan-preview-di-frontend)
+- [9. Panduan Integrasi Frontend](#9-panduan-integrasi-frontend)
 
 ---
 
@@ -89,14 +91,15 @@ Authorization: Bearer <token>
 Token berisi claims berikut:
 - `sub` — User ID (UUID)
 - `email` — Email user
-- `role` — Role user (`"admin"` adalah satu-satunya role yang ada saat ini)
 - `iss` — Issuer (dikonfigurasi via `JWT_ISSUER`, default `"backend"`)
 - `iat` — Issued At (Unix timestamp)
 - `exp` — Expiry (Unix timestamp; default expiry 24 jam, dikonfigurasi via `JWT_EXPIRATION`)
 
 ### Token Expired / Invalid
 
-Jika token tidak ada, kedaluwarsa, atau tanda tangan tidak valid, server akan mengembalikan:
+Token kedaluwarsa dan token tidak valid sama-sama mengembalikan HTTP 401
+dengan code `UNAUTHORIZED`, tetapi pesannya dibedakan agar frontend bisa
+memutuskan logout otomatis saat sesi berakhir:
 
 ```json
 HTTP 401 Unauthorized
@@ -105,7 +108,19 @@ HTTP 401 Unauthorized
   "success": false,
   "error": {
     "code": "UNAUTHORIZED",
-    "message": "Invalid or expired authentication token"
+    "message": "Authentication token has expired"
+  }
+}
+```
+
+```json
+HTTP 401 Unauthorized
+
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid authentication token"
   }
 }
 ```
@@ -188,8 +203,9 @@ Ketika error code adalah `VALIDATION_ERROR` dan error berasal dari struct valida
 | `VALIDATION_ERROR` | 400 | Field request tidak valid, wajib tapi kosong, format salah, atau melebihi batasan panjang. Response menyertakan `fields` map jika berasal dari struct validator. |
 | `BAD_REQUEST` | 400 | Body request bukan JSON valid, payload melebihi ukuran maksimum, atau JSON mengandung field yang tidak dikenali. |
 | `UNAUTHORIZED` | 401 | Token JWT hilang, tidak valid, kedaluwarsa, atau kredensial login (email/password) salah. |
-| `FORBIDDEN` | 403 | Role user tidak mencukupi untuk mengakses resource (saat ini belum digunakan di route manapun selain middleware internal). |
+| `FORBIDDEN` | 403 | Akses ditolak oleh kebijakan server (saat ini tidak dipakai di route manapun; dipertahankan untuk kebutuhan otorisasi masa depan). |
 | `NOT_FOUND` | 404 | Project, versi, atau attachment tidak ditemukan, atau bukan milik user yang sedang login. |
+| `METHOD_NOT_ALLOWED` | 405 | Method HTTP salah untuk path yang ada (mis. `DELETE /projects` tanpa ID). |
 | `CONFLICT` | 409 | Email sudah terdaftar saat register; **atau** state project tidak mengizinkan operasi (lihat bagian 4: generate/revise). |
 | `RATE_LIMITED` | 429 | Terlalu banyak request dari IP yang sama dalam satu menit. Selalu disertai header `Retry-After: 60`. |
 | `AI_PROVIDER_ERROR` | 502 | Upstream LLM provider (Gemini) error, tidak dapat dijangkau, atau timeout. Detail teknis tidak diekspos ke client. |
@@ -374,7 +390,6 @@ Mendaftarkan akun baru dan langsung mengembalikan JWT aktif.
     "user": {
       "id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
       "email": "developer@example.com",
-      "role": "admin",
       "created_at": "2026-09-26T10:00:00Z"
     }
   }
@@ -390,7 +405,6 @@ Mendaftarkan akun baru dan langsung mengembalikan JWT aktif.
 | `expires_in` | `integer` | Sisa masa berlaku token dalam detik (default 86400 = 24 jam) |
 | `user.id` | `string` (UUID) | ID unik user |
 | `user.email` | `string` | Email user (sudah dinormalisasi ke lowercase) |
-| `user.role` | `string` | Role user — saat ini selalu `"admin"` |
 | `user.created_at` | `string` (RFC3339) | Waktu pembuatan akun |
 
 #### Error Responses
@@ -469,7 +483,6 @@ Autentikasi dengan email dan password untuk mendapatkan JWT.
     "user": {
       "id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
       "email": "developer@example.com",
-      "role": "admin",
       "created_at": "2026-09-26T10:00:00Z"
     }
   }
@@ -518,7 +531,6 @@ Mengambil data profil pengguna yang sedang login berdasarkan token JWT.
   "data": {
     "id": "c1f76d49-4eb5-4a5f-9e77-5f725cf9a9f2",
     "email": "developer@example.com",
-    "role": "admin",
     "created_at": "2026-09-26T10:00:00Z"
   }
 }
@@ -530,7 +542,6 @@ Mengambil data profil pengguna yang sedang login berdasarkan token JWT.
 | --- | --- | --- |
 | `id` | `string` (UUID) | ID unik user |
 | `email` | `string` | Email user |
-| `role` | `string` | Role user (`"admin"`) |
 | `created_at` | `string` (RFC3339) | Waktu pembuatan akun |
 
 #### Error Responses
@@ -794,6 +805,66 @@ Menghapus project beserta seluruh versi dan attachment-nya (record database **da
 
 ---
 
+### PATCH /api/v1/projects/{id}
+
+Mengubah judul project milik user yang sedang login. Versi dan attachment tidak tersentuh.
+
+- **Auth:** Wajib
+- **Rate Limit:** General API (120 req/menit)
+- **Security:** Hanya project milik user yang sedang login
+
+#### Request
+
+| Header | Nilai |
+| --- | --- |
+| `Content-Type` | `application/json` |
+| `Authorization` | `Bearer <token>` |
+
+**Body:**
+
+| Field | Tipe | Wajib | Constraint |
+| --- | --- | --- | --- |
+| `title` | `string` | Ya | Non-kosong setelah trim, maks 200 karakter |
+
+```json
+{
+  "title": "Website Kopi Senja Baru"
+}
+```
+
+#### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Project renamed",
+  "data": {
+    "id": "5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01",
+    "title": "Website Kopi Senja Baru",
+    "status": "draft",
+    "brief": { "description": "Landing page untuk kedai kopi lokal ...", "website_type": "landing_page", "language": "id" },
+    "version_count": 0,
+    "created_at": "2026-09-30T08:00:00Z",
+    "updated_at": "2026-09-30T08:20:00Z"
+  }
+}
+```
+
+> Respons memakai schema ringkas tanpa key `latest_version`, sama seperti item `GET /projects`.
+
+#### Error Responses
+
+| Status | Code | Kapan |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `id` bukan UUID valid, atau `title` kosong / hanya spasi / lebih dari 200 karakter |
+| 400 | `BAD_REQUEST` | Body bukan JSON valid atau mengandung field tidak dikenal |
+| 401 | `UNAUTHORIZED` | Token tidak ada atau tidak valid |
+| 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
+| 409 | `CONFLICT` | Project sedang `generating` |
+| 429 | `RATE_LIMITED` | Limit General API terlampaui |
+
+---
+
 ## 4. Generate & Revise (SSE)
 
 Kedua endpoint ini mengalirkan hasil AI secara real-time menggunakan **Server-Sent Events (SSE)**. Isi stream adalah **potongan teks HTML** yang sedang ditulis AI.
@@ -801,7 +872,7 @@ Kedua endpoint ini mengalirkan hasil AI secara real-time menggunakan **Server-Se
 - **Auth:** Wajib. `Authorization: Bearer <token>` (direkomendasikan) atau `?token=<jwt>`
 - **Rate Limit:** Generate (default 5 req/menit per IP) **+ General API (120 req/menit)**
 - **Content-Type yang Didukung:** `application/json` dan `multipart/form-data`
-- **Ukuran body:** klien sebaiknya memakai `multipart/form-data` saat mengirim gambar, sedangkan body JSON dibatasi sesuai konfigurasi (`AI_MAX_GENERATE_BODY_BYTES`, default 32 MB).
+- **Ukuran body:** body JSON dibatasi `AI_MAX_GENERATE_BODY_BYTES` (default 32 MB), sedangkan base64 sekitar 33% lebih besar dari file asli, jadi untuk beberapa gambar atau gambar besar klien harus memakai `multipart/form-data`.
 
 ### Format Event SSE (berlaku untuk generate dan revise)
 
@@ -852,7 +923,7 @@ data: {"error":"The AI provider returned an error"}
 | --- | --- | --- |
 | `error` | `string` | Pesan error generic (detail teknis disembunyikan) |
 
-Penyebab `error` di tengah stream: provider Gemini error/timeout, koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pada semua kasus ini **tidak ada versi baru yang disimpan**.
+Penyebab `error` di tengah stream: provider Gemini error/timeout, stream melewati `AI_STREAM_MAX_DURATION` ("AI stream timed out") atau diam melewati `AI_STREAM_IDLE_TIMEOUT` ("AI stream stalled"), koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pesan `error` untuk provider sibuk (429/503) adalah `"The AI provider is temporarily overloaded, please try again"`. Pada semua kasus ini **tidak ada versi baru yang disimpan**.
 
 > [!IMPORTANT]
 > **Jangan render stream `token` langsung sebagai website.** Stream hanya untuk indikator progres (mis. menampilkan kode yang sedang ditulis). Model kadang membungkus output dengan pagar kode Markdown; server membersihkannya sebelum menyimpan. Sumber HTML final yang valid adalah `GET /projects/{id}/versions/{number}` setelah event `done`.
@@ -1313,3 +1384,166 @@ HTML hasil AI adalah **konten tidak tepercaya** (*untrusted*). Aturan wajib untu
 ```
 
 Untuk preview responsif, ubah lebar `<iframe>` (mis. 375px untuk mobile, 768px untuk tablet, 100% untuk desktop).
+
+---
+
+## 9. Panduan Integrasi Frontend
+
+Bagian ini merangkum perilaku backend yang sebenarnya untuk penulis klien web. Tidak ada kontrak baru di sini — hanya cara memakai kontrak di bagian 1–8.
+
+### 9.1. Autentikasi
+
+- Format header di semua endpoint protected: `Authorization: Bearer <token>`.
+- Dua endpoint SSE (`POST /projects/{id}/generate`, `POST /projects/{id}/revise`) juga menerima `?token=<jwt>`; header tetap direkomendasikan.
+- Masa berlaku token default 24 jam (`JWT_EXPIRATION`). **Tidak ada** endpoint refresh atau logout — frontend menghapus token sendiri saat sesi berakhir.
+- Tidak ada konsep peran/role; tidak ada pembeda otorisasi antar user selain kepemilikan resource (`404` untuk milik orang lain).
+
+**Membedakan 401.** Ketiganya memakai HTTP 401 + `code: "UNAUTHORIZED"`, dibedakan lewat `message`:
+
+| `message` | Arti | Saran UI |
+| --- | --- | --- |
+| `"Missing authentication token"` | Header/query token tidak ada | Arahkan ke login |
+| `"Authentication token has expired"` | Tanda tangan valid, `exp` lewat | Logout otomatis lalu login ulang |
+| `"Invalid authentication token"` | Tanda tangan salah / token rusak | Logout otomatis, anggap sesi tidak valid |
+
+```javascript
+if (err?.error?.code === 'UNAUTHORIZED') {
+  if (err.error.message === 'Authentication token has expired') {
+    await autoLogout('Sesi berakhir, silakan login kembali');
+  } else {
+    await autoLogout();
+  }
+}
+```
+
+### 9.2. Katalog event SSE (generate & revise)
+
+Header respons: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-Accel-Buffering: no`.
+
+| Event | Payload `data` (JSON) | Arti |
+| --- | --- | --- |
+| `token` | `{"token":"<potongan HTML>"}` | Progres saja, **jangan** dirender sebagai website |
+| `done` | `{"project_id":"<uuid>","version_id":"<uuid>","version_number":2}` | Selesai; ambil HTML final via `GET /versions/{version_number}` |
+| `error` | `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"<pesan Inggris>","reason":"PROVIDER_OVERLOADED"}}` | Gagal; tidak ada versi tersimpan; status project pulih otomatis. `reason` adalah sub-kode stabil untuk switch di frontend (lihat tabel `reason` di §9.3); `message` tetap Inggris dan tidak untuk di-switch |
+
+Urutan: nol atau lebih `token`, lalu **tepat satu** event terminal (`done` **atau** `error`). Setelah terminal, koneksi ditutup server.
+
+**Heartbeat.** Saat menunggu model (~tiap 15 detik) server mengirim baris komentar SSE:
+
+```
+: ping
+
+```
+
+Baris komentar tidak punya `event:`/`data:` — parser harus mengabaikannya (jangan dianggap error atau akhir stream).
+
+**Menutup dari klien.** Batalkan `fetch` (`AbortController.abort()`); server mendeteksi koneksi putus dan mengembalikan status project (`failed` untuk generate, `ready` untuk revise) tanpa menyimpan versi.
+
+**Dua bentuk kegagalan generate/revise (frontend wajib menangani keduanya sama).**
+Kegagalan bisa datang sebagai **HTTP 502 JSON** (mis. provider sibuk/timeout sebelum stream dibuka — Gemini kadang baru menjawab 503 setelah menunggu hingga puluhan detik) **atau** sebagai **event `error` di dalam stream HTTP 200** (provider sibuk/error di tengah jalan, timeout total, stall, validasi gagal). Keduanya memakai `code: "AI_PROVIDER_ERROR"`, tidak ada versi tersimpan, dan status project pulih otomatis (`failed` untuk generate, `ready` untuk revise; versi sebelumnya tetap utuh).
+Selama menunggu respons pertama (sebelum `token` pertama tiba) tampilkan pesan progres (mis. "Menyiapkan AI…"), bukan spinner tanpa teks — penantian puluhan detik adalah perilaku normal saat provider sibuk.
+
+**Contoh parser** (`EventSource` tidak bisa dipakai: endpoint ini `POST` dan butuh header `Authorization`):
+
+```javascript
+async function streamGenerate(projectId, token, onToken) {
+  const ctrl = new AbortController();
+  const res = await fetch(`/api/v1/projects/${projectId}/generate`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+    signal: ctrl.signal,
+  });
+
+  // Error SEBELUM stream (401/404/409/429/502): JSON envelope biasa.
+  if (!res.ok) {
+    const err = await res.json();
+    throw Object.assign(new Error(err.error?.message), { code: err.error?.code, status: res.status });
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // Event dipisah "\n\n"; sisa potongan di batas chunk disimpan.
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const part of parts) {
+      if (part.startsWith(':')) continue; // heartbeat -> abaikan
+      let type = '', raw = '';
+      for (const line of part.split('\n')) {
+        if (line.startsWith('event: ')) type = line.slice(7).trim();
+        else if (line.startsWith('data: ')) raw = line.slice(6);
+      }
+      if (type === 'token') onToken(JSON.parse(raw).token);
+      else if (type === 'done') return JSON.parse(raw).version_number;
+      else if (type === 'error') throw new Error(JSON.parse(raw).error?.message);
+    }
+  }
+  throw new Error('Stream terputus sebelum event terminal');
+}
+```
+
+### 9.3. Tabel error dan saran UI
+
+| Kode | HTTP | Kapan | Saran UI |
+| --- | --- | --- | --- |
+| `VALIDATION_ERROR` | 400 | Field tidak valid; baca `error.fields` | Tampilkan pesan per field di form |
+| `BAD_REQUEST` | 400 | JSON rusak / kebesaran / field tak dikenal | Bug klien — perbaiki payload |
+| `UNAUTHORIZED` | 401 | Lihat §9.1 | Logout / login ulang |
+| `FORBIDDEN` | 403 | Hanya dari middleware internal | Anggap bug klien |
+| `NOT_FOUND` | 404 | Project/versi/attachment tidak ada atau milik user lain; juga untuk route yang tidak terdaftar | Tampilkan "tidak ditemukan"; untuk milik orang lain jangan bocorkan keberadaannya |
+| `METHOD_NOT_ALLOWED` | 405 | Method salah untuk path yang ada | Bug klien |
+| `CONFLICT` | 409 | `"A generation is already in progress..."` | Nonaktifkan tombol generate/revise, tampilkan status `generating`, tawarkan cek ulang via `GET /projects/{id}` |
+| `CONFLICT` | 409 | `"Project already has a version, use revise instead"` | Alihkan ke revise |
+| `CONFLICT` | 409 | Email sudah terdaftar (register) | Minta login |
+| `RATE_LIMITED` | 429 | Selalu dengan `Retry-After: 60` | Tunggu lalu retry otomatis |
+| `AI_PROVIDER_ERROR` | 502 | Gemini gagal/timeout; status project pulih otomatis | Tampilkan kegagalan generik + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 502 | `"The AI provider is temporarily overloaded, please try again"` (Gemini 429/503, pra-stream sebagai JSON atau tengah stream sebagai event `error`) | Tampilkan "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 502 | `"AI stream timed out"` / `"AI stream stalled"` (melewati `AI_STREAM_MAX_DURATION` / `AI_STREAM_IDLE_TIMEOUT`) | Tampilkan kegagalan generik + tombol "Coba lagi"; tidak perlu mengubah input |
+| `DATABASE_ERROR` / `INTERNAL_SERVER_ERROR` | 500 | Selalu envelope generik tanpa detail internal | Tampilkan kegagalan generik |
+| `SERVICE_UNAVAILABLE` | 503 | Database tidak terjangkau (`/health/db`) | Tampilkan status layanan |
+
+### 9.3.1. Tabel `reason` untuk `AI_PROVIDER_ERROR` (frontend switch)
+
+`reason` muncul di JSON 502 pra-stream maupun event `error` tengah stream (contoh: `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"...","reason":"STREAM_TIMEOUT"}}`). Error non-AI tidak memiliki field ini. Pesan (`message`) selalu Inggris — terjemahkan di frontend berdasarkan `reason`, jangan berdasarkan teks pesan.
+
+| `reason` | Arti | Saran UI (Bahasa Indonesia) |
+| --- | --- | --- |
+| `PROVIDER_OVERLOADED` | Gemini sibuk (429/503) | "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
+| `STREAM_TIMEOUT` | Stream melewati `AI_STREAM_MAX_DURATION` | "Proses AI kehabisan waktu, coba lagi" + tombol "Coba lagi"; tidak perlu mengubah input |
+| `STREAM_STALLED` | Provider diam melewati `AI_STREAM_IDLE_TIMEOUT` | "Koneksi AI terputus, coba lagi" + tombol "Coba lagi" |
+| `OUTPUT_TRUNCATED` | Output terpotong (`MAX_TOKENS`) sebelum HTML selesai | "Hasil AI terpotong, coba lagi" + tombol "Coba lagi" |
+| `OUTPUT_BLOCKED` | Output ditolak filter keamanan provider | "Permintaan ditolak filter keamanan, ubah deskripsi/instruksi" (jangan sekadar retry buta) |
+| `STREAM_INTERRUPTED` | Stream berakhir tanpa `finishReason` (koneksi terputus prematur) | "Koneksi AI terputus, coba lagi" + tombol "Coba lagi" |
+| `INVALID_OUTPUT` | Output bukan dokumen HTML valid / melebihi batas ukuran | "Hasil AI tidak valid, coba lagi" + tombol "Coba lagi" |
+| `PROVIDER_ERROR` | Kegagalan provider lainnya | Tampilkan kegagalan generik + tombol "Coba lagi" |
+
+### 9.4. CORS
+
+- Dikonfigurasi via `CORS_ALLOWED_ORIGINS` (daftar dipisah koma).
+- Development default: `http://localhost:3000,http://localhost:5173`. Di luar development defaultnya **kosong** — tidak ada origin lintas-situs yang diizinkan kecuali dikonfigurasi eksplisit.
+- Origin dicocokkan persis lalu di-echo (`Access-Control-Allow-Origin: <origin>`, tidak pernah `*`) + `Vary: Origin`. Method: `GET, POST, PUT, PATCH, DELETE, OPTIONS`; header request: `Authorization, Content-Type, Accept`; expose: `Content-Disposition` (untuk nama file export), `X-Request-ID`; preflight `OPTIONS` dijawab `204` dengan `Access-Control-Max-Age: 600`.
+
+### 9.5. Unggah gambar
+
+- **Kecil/sedikit → JSON**: field `images[]` berisi `{mime_type, data (base64), file_name?}`. Batas body JSON generate/revise 32 MB (`AI_MAX_GENERATE_BODY_BYTES`); ingat base64 ±33% lebih besar dari file.
+- **Besar/banyak → `multipart/form-data`**: field `image`/`images`/`file`/`files` (boleh campur, multi-file). Buffer 32 MB, per file maks `UPLOAD_MAX_BYTES` (default 10 MB).
+- Format yang diterima di kedua jalur: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`. Selain itu → `VALIDATION_ERROR`. Maks `PROJECT_MAX_IMAGES` (default 4) gambar per request.
+- Gambar hanya referensi untuk model dan daftar attachment; **tidak** otomatis ditempel ke HTML hasil.
+
+### 9.6. Rekap alur layar
+
+1. **Login** → simpan JWT (mis. `localStorage`), sertakan di tiap request.
+2. **Daftar project** (`GET /projects`, pagination `limit`/`offset`) — item tanpa `latest_version`.
+3. **Buat project** (`POST /projects` dengan `brief`) → status `draft`.
+4. **Ganti judul** (`PATCH /projects/{id}` dengan `{"title": ...}`) — kapan saja kecuali saat `generating` (`409`).
+5. **Generate** (`POST .../generate`, SSE) → tampilkan `token` sebagai progres kode → saat `done`, ambil HTML final via `GET .../versions/{n}`.
+6. **Preview** di `<iframe sandbox="allow-scripts allow-popups" srcDoc={html}>` — tanpa `allow-same-origin`, jangan `innerHTML`.
+7. **Revise** (`POST .../revise` + `instruction`, opsional `base_version`) → versi `n+1`; versi lama utuh.
+8. **Riwayat** (`GET .../versions` tanpa HTML, `GET .../versions/{n}` dengan HTML).
+9. **Export** (`GET .../export?version=n` → unduh `.html` via Blob; nama file dari header `Content-Disposition`).
+10. **Hapus** (`DELETE ...`) — mengembalikan `data: null`; ditolak `409` saat `generating`.

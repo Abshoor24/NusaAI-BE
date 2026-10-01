@@ -117,9 +117,10 @@ type ProjectResponse struct {
 	UpdatedAt     time.Time        `json:"updated_at"`
 }
 
-// ProjectListItemResponse is the api.md shape for items of GET /projects.
-// Unlike the detail response it carries no latest_version key at all.
-type ProjectListItemResponse struct {
+// ProjectSummaryResponse is the api.md shape shared by POST /projects
+// (create) and the items of GET /projects (list). Unlike the detail
+// response it carries no latest_version key at all.
+type ProjectSummaryResponse struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
 	Status       string    `json:"status"`
@@ -129,9 +130,9 @@ type ProjectListItemResponse struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// ToProjectListItemResponse converts a Project to its list-item shape.
-func ToProjectListItemResponse(p *Project) ProjectListItemResponse {
-	return ProjectListItemResponse{
+// ToProjectSummaryResponse converts a Project to its summary shape.
+func ToProjectSummaryResponse(p *Project) ProjectSummaryResponse {
+	return ProjectSummaryResponse{
 		ID:           p.ID,
 		Title:        p.Title,
 		Status:       p.Status,
@@ -151,6 +152,11 @@ type VersionResponse struct {
 	Prompt        string    `json:"prompt"`
 	HTML          string    `json:"html,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+// UpdateTitleRequest is PATCH /projects/{id} body.
+type UpdateTitleRequest struct {
+	Title string `json:"title" validate:"required,max=200"`
 }
 
 // CreateProjectRequest is POST /projects body.

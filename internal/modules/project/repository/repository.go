@@ -22,6 +22,8 @@ type Repository interface {
 	FindByID(ctx context.Context, userID, id string) (*model.Project, error)
 	FindWithLatest(ctx context.Context, userID, id string) (*model.Project, *model.Version, error)
 	Delete(ctx context.Context, userID, id string) (attPaths []string, deleted bool, err error)
+	// UpdateTitle renames an owned project unless a generation is running.
+	UpdateTitle(ctx context.Context, userID, id, title string) (*model.Project, error)
 	// TryStartGenerate atomically transitions draft/failed -> generating.
 	TryStartGenerate(ctx context.Context, userID, id string) (*model.Project, error)
 	// TryStartRevise atomically transitions ready -> generating.
@@ -188,6 +190,43 @@ func (r *postgresRepository) Delete(ctx context.Context, userID, id string) ([]s
 	return paths, true, nil
 }
 
+// UpdateTitle renames a project owned by userID. The update and the
+// generating guard happen atomically: concurrent generations win the row
+// and renames during generation get CONFLICT, never a lost update.
+func (r *postgresRepository) UpdateTitle(ctx context.Context, userID, id, title string) (*model.Project, error) {
+	const q = `UPDATE projects SET title = $3, updated_at = NOW()
+		WHERE id = $1 AND user_id = $2 AND status <> 'generating'
+		RETURNING id, user_id, title, status, brief, created_at, updated_at`
+	row := r.pool.QueryRow(ctx, q, id, userID, title)
+	var p model.Project
+	var briefBytes []byte
+	err := row.Scan(&p.ID, &p.UserID, &p.Title, &p.Status, &briefBytes, &p.CreatedAt, &p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Distinguish NOT_FOUND (not owned) from CONFLICT (generating).
+		// The atomic UPDATE above only misses owned rows that are
+		// generating, so any owned miss maps to CONFLICT.
+		_, found, lerr := r.LookupStatus(ctx, userID, id)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if !found {
+			return nil, apperror.NotFound("Project not found", nil)
+		}
+		return nil, apperror.Conflict("Cannot rename project while generation is in progress", nil)
+	}
+	if err != nil {
+		return nil, apperror.Database("Failed to rename project", err)
+	}
+	if len(briefBytes) > 0 {
+		if err := briefJSONUnmarshal(briefBytes, &p.Brief); err != nil {
+			return nil, apperror.Internal("Failed to decode brief", err)
+		}
+	}
+	// Fill version count for completeness.
+	p.VersionCount = countVersions(ctx, r.pool, p.ID)
+	return &p, nil
+}
+
 // tryStart is the shared atomic transition helper.
 func (r *postgresRepository) tryStart(ctx context.Context, userID, id string, allowed []string) (*model.Project, error) {
 	const q = `UPDATE projects SET status = 'generating', updated_at = NOW()
@@ -273,6 +312,16 @@ func (r *postgresRepository) FinishSuccess(ctx context.Context, projectID, kind,
 		return nil, apperror.Database("Failed to save version", err)
 	}
 	defer tx.Rollback(ctx)
+	// Serialize version numbering per project: lock the project row before
+	// computing MAX+1 so concurrent finishes queue on the lock instead of
+	// colliding on UNIQUE (project_id, version_number), which stays as the
+	// last-resort guard. The lock is always taken on exactly one project
+	// row before any version-row write, so no lock-ordering deadlock with
+	// tryStart (single UPDATE of the same row) or other paths is possible.
+	var one int
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM projects WHERE id = $1 FOR UPDATE`, projectID).Scan(&one); err != nil {
+		return nil, apperror.Database("Failed to save version", err)
+	}
 	var nextNum int
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(version_number), 0) + 1 FROM project_versions WHERE project_id = $1`, projectID).Scan(&nextNum); err != nil {
 		return nil, apperror.Database("Failed to save version", err)

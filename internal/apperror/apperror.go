@@ -11,18 +11,33 @@ import (
 type Kind string
 
 const (
-	KindValidation   Kind = "VALIDATION_ERROR"
-	KindUnauthorized Kind = "UNAUTHORIZED"
-	KindForbidden    Kind = "FORBIDDEN"
-	KindNotFound     Kind = "NOT_FOUND"
-	KindConflict     Kind = "CONFLICT"
-	KindBadRequest   Kind = "BAD_REQUEST"
-	KindDatabase     Kind = "DATABASE_ERROR"
+	KindValidation        Kind = "VALIDATION_ERROR"
+	KindUnauthorized      Kind = "UNAUTHORIZED"
+	KindForbidden         Kind = "FORBIDDEN"
+	KindNotFound          Kind = "NOT_FOUND"
+	KindMethodNotAllowed  Kind = "METHOD_NOT_ALLOWED"
+	KindConflict          Kind = "CONFLICT"
+	KindBadRequest        Kind = "BAD_REQUEST"
+	KindDatabase          Kind = "DATABASE_ERROR"
 	KindAIProvider        Kind = "AI_PROVIDER_ERROR"
 	KindExecutionProvider Kind = "EXECUTION_PROVIDER_ERROR"
 	KindUnavailable       Kind = "SERVICE_UNAVAILABLE"
 	KindRateLimited       Kind = "RATE_LIMITED"
-	KindInternal     Kind = "INTERNAL_SERVER_ERROR"
+	KindInternal          Kind = "INTERNAL_SERVER_ERROR"
+)
+
+// AI failure reasons. Stable machine-readable sub-codes for AI_PROVIDER_ERROR
+// only (other kinds leave Reason empty and the field is omitted from JSON).
+// The frontend translates them; the backend messages stay in English.
+const (
+	ReasonProviderOverloaded = "PROVIDER_OVERLOADED"
+	ReasonStreamTimeout      = "STREAM_TIMEOUT"
+	ReasonStreamStalled      = "STREAM_STALLED"
+	ReasonOutputTruncated    = "OUTPUT_TRUNCATED"
+	ReasonOutputBlocked      = "OUTPUT_BLOCKED"
+	ReasonStreamInterrupted  = "STREAM_INTERRUPTED"
+	ReasonInvalidOutput      = "INVALID_OUTPUT"
+	ReasonProviderError      = "PROVIDER_ERROR"
 )
 
 // Error is the canonical application error used across all layers.
@@ -33,6 +48,9 @@ type Error struct {
 	Message string // safe, human-readable message exposed to the client
 	Fields  map[string]string
 	Err     error // underlying cause, never exposed to the client
+	// Reason is an optional stable sub-code, currently only set on AI
+	// provider errors. Empty means "no reason" and it is omitted from JSON.
+	Reason string
 }
 
 func (e *Error) Error() string {
@@ -54,6 +72,8 @@ func (k Kind) httpStatus() int {
 		return http.StatusForbidden
 	case KindNotFound:
 		return http.StatusNotFound
+	case KindMethodNotAllowed:
+		return http.StatusMethodNotAllowed
 	case KindConflict:
 		return http.StatusConflict
 	case KindRateLimited:
@@ -97,10 +117,30 @@ func BadRequest(message string, err error) *Error   { return new(KindBadRequest,
 func Unauthorized(message string, err error) *Error { return new(KindUnauthorized, message, err) }
 func Forbidden(message string, err error) *Error    { return new(KindForbidden, message, err) }
 func NotFound(message string, err error) *Error     { return new(KindNotFound, message, err) }
+func MethodNotAllowed(message string) *Error        { return new(KindMethodNotAllowed, message, nil) }
 func Conflict(message string, err error) *Error     { return new(KindConflict, message, err) }
 func Database(message string, err error) *Error     { return new(KindDatabase, message, err) }
-func AIProvider(message string, err error) *Error        { return new(KindAIProvider, message, err) }
-func ExecutionProvider(message string, err error) *Error { return new(KindExecutionProvider, message, err) }
-func Unavailable(message string, err error) *Error       { return new(KindUnavailable, message, err) }
-func Internal(message string, err error) *Error     { return new(KindInternal, message, err) }
-func RateLimited(message string) *Error             { return new(KindRateLimited, message, nil) }
+func AIProvider(message string, err error) *Error { return new(KindAIProvider, message, err) }
+
+// AIProviderReason builds an AI provider error with a stable machine-readable
+// sub-code for the frontend. Kind, HTTP status and message semantics are
+// unchanged; only the additive Reason field is set.
+func AIProviderReason(reason, message string, err error) *Error {
+	e := new(KindAIProvider, message, err)
+	e.Reason = reason
+	return e
+}
+
+// WithReason attaches a stable sub-code to an existing error and returns it.
+// Used when the classification is known at the handling site, not at the
+// creation site.
+func (e *Error) WithReason(reason string) *Error {
+	e.Reason = reason
+	return e
+}
+func ExecutionProvider(message string, err error) *Error {
+	return new(KindExecutionProvider, message, err)
+}
+func Unavailable(message string, err error) *Error { return new(KindUnavailable, message, err) }
+func Internal(message string, err error) *Error    { return new(KindInternal, message, err) }
+func RateLimited(message string) *Error            { return new(KindRateLimited, message, nil) }

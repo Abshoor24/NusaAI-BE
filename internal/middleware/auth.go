@@ -2,14 +2,26 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Abshoor24/backend-go/internal/jwt"
-	"github.com/Abshoor24/backend-go/internal/model"
 )
 
 const claimsKey ctxKey = "claims"
+
+// writeAuthError maps a token parse failure to a stable 401 response. An
+// expired token and a forged/malformed token share HTTP 401 + code
+// UNAUTHORIZED (the api.md contract) but carry distinct messages so the
+// frontend can auto-logout on expiry while treating other failures as bugs.
+func writeAuthError(w http.ResponseWriter, err error) {
+	if errors.Is(err, jwt.ErrTokenExpired) {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Authentication token has expired")
+		return
+	}
+	writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid authentication token")
+}
 
 // RequireAuth validates the Bearer token and stores its claims in the
 // request context. It answers "who is this user?" (authentication).
@@ -24,31 +36,12 @@ func RequireAuth(tokens *jwt.Manager) func(http.Handler) http.Handler {
 
 			claims, err := tokens.Parse(token)
 			if err != nil {
-				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired authentication token")
+				writeAuthError(w, err)
 				return
 			}
 
 			ctx := context.WithValue(r.Context(), claimsKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-}
-
-// RequireRole restricts a route to users with the given role. It answers
-// "what is this user allowed to do?" (authorization).
-func RequireRole(role model.Role) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := ClaimsFrom(r.Context())
-			if !ok {
-				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authentication token")
-				return
-			}
-			if claims.Role != role {
-				writeError(w, http.StatusForbidden, "FORBIDDEN", "You do not have permission to access this resource")
-				return
-			}
-			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -72,7 +65,7 @@ func RequireAuthSSE(tokens *jwt.Manager) func(http.Handler) http.Handler {
 
 			claims, err := tokens.Parse(token)
 			if err != nil {
-				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired authentication token")
+				writeAuthError(w, err)
 				return
 			}
 

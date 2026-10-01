@@ -2,15 +2,6 @@ package model
 
 import "time"
 
-// Role is a user role used for authorization. Only "admin" exists today.
-// TODO: CLIENT REQUIREMENT - expand the role system only when a real client
-// need exists (e.g. editor, contributor). Do not pre-build a complex RBAC.
-type Role string
-
-const (
-	RoleAdmin Role = "admin"
-)
-
 // User is the database model for an authenticated user. It intentionally has
 // no business-specific fields (no profile, address, phone, etc.).
 // TODO: CLIENT REQUIREMENT - add business user fields only after the client's
@@ -19,7 +10,6 @@ type User struct {
 	ID           string    `json:"id"`
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
-	Role         Role      `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -48,7 +38,6 @@ type AuthResponse struct {
 type UserResponse struct {
 	ID        string `json:"id"`
 	Email     string `json:"email"`
-	Role      Role   `json:"role"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -57,7 +46,6 @@ func ToUserResponse(u *User) UserResponse {
 	return UserResponse{
 		ID:        u.ID,
 		Email:     u.Email,
-		Role:      u.Role,
 		CreatedAt: u.CreatedAt.Format(time.RFC3339),
 	}
 }

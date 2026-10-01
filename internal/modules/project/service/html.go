@@ -32,21 +32,44 @@ func CleanHTML(raw string) string {
 // generic SSE error event without storing a version.
 func ValidateHTML(doc string, maxBytes int64) error {
 	if int64(len(doc)) > maxBytes {
-		return apperror.AIProvider("Generated website exceeds size limit", nil)
+		return apperror.AIProviderReason(apperror.ReasonInvalidOutput, "Generated website exceeds size limit", nil)
 	}
 	lower := strings.ToLower(doc)
 	hasOpen := strings.Contains(lower, "<!doctype html") || strings.Contains(lower, "<html")
 	hasClose := strings.Contains(lower, "</html>")
 	if !hasOpen || !hasClose {
-		return apperror.AIProvider("Generated output is not a valid HTML document", nil)
+		return apperror.AIProviderReason(apperror.ReasonInvalidOutput, "Generated output is not a valid HTML document", nil)
 	}
 	return nil
+}
+
+// ExtractHTML tolerantly pulls the HTML document out of raw model output:
+// any Markdown fences and any prose outside the document are dropped, and
+// the slice from <!DOCTYPE html (or <html) through the last </html> is
+// returned. Matching is case-insensitive. It returns "" when no document
+// markers are found; validation of the result stays strict.
+func ExtractHTML(raw string) string {
+	s := CleanHTML(raw)
+	lower := strings.ToLower(s)
+	start := strings.Index(lower, "<!doctype html")
+	if start < 0 {
+		start = strings.Index(lower, "<html")
+	}
+	if start < 0 {
+		return ""
+	}
+	const closeTag = "</html>"
+	endRel := strings.LastIndex(lower[start:], closeTag)
+	if endRel < 0 {
+		return ""
+	}
+	return strings.TrimSpace(s[start : start+endRel+len(closeTag)])
 }
 
 // CleanAndValidate is the pipeline finalization step applied to the full
 // streamed buffer before any version is stored.
 func CleanAndValidate(raw string, maxBytes int64) (string, error) {
-	doc := CleanHTML(raw)
+	doc := ExtractHTML(raw)
 	if err := ValidateHTML(doc, maxBytes); err != nil {
 		return "", err
 	}
