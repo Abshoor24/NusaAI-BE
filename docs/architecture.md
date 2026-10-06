@@ -25,13 +25,13 @@ Sistem tetap menerapkan **Clean Architecture**, **Dependency Injection**, dan **
    - `Service` mengelola state machine project, penyusunan prompt, validasi HTML hasil AI, dan pembuatan versi.
    - `Repository` mengelola akses PostgreSQL murni dengan parameterized query.
    - `Provider` mengisolasi komunikasi dengan Google Gemini API.
-2. **Dependency Injection**: Semua komponen diinisialisasi eksplisit di [cmd/server/main.go](file:///C:/project/pakhir/be/cmd/server/main.go) dan diinjeksikan ke router lewat struct `Dependencies` tanpa global mutable state.
+2. **Dependency Injection**: Semua komponen diinisialisasi eksplisit di [`cmd/server/main.go`](../cmd/server/main.go) dan diinjeksikan ke router lewat struct `Dependencies` tanpa global mutable state.
 3. **Abstraction Over Implementation**: Project service hanya bergantung pada interface `provider.Provider`, sehingga model AI bisa diganti tanpa mengubah logika bisnis.
-4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([internal/config/config.go](file:///C:/project/pakhir/be/internal/config/config.go)), database di-ping dengan timeout, dan migrasi SQL berjalan otomatis saat boot. Konfigurasi modul yang **ditunda** (Judge0, RAG) tidak boleh menggagalkan startup.
+4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([`internal/config/config.go`](../internal/config/config.go)), database di-ping dengan timeout, dan migrasi SQL berjalan otomatis saat boot. Konfigurasi modul yang **ditunda** (Judge0, RAG) tidak boleh menggagalkan startup.
 5. **System Prompt Dikunci di Server**: Client tidak bisa mengirim atau menimpa system prompt. Input user (brief dan instruksi revisi) selalu diperlakukan sebagai **data**, bukan sebagai instruksi sistem.
 6. **Output AI adalah Konten Tidak Tepercaya**: HTML hasil model divalidasi dan disimpan apa adanya sebagai teks, tidak pernah dieksekusi atau disisipkan di sisi server, dan wajib dirender frontend di `<iframe sandbox>` tanpa `allow-same-origin`.
 7. **Safe by Default & Defense in Depth**:
-   - Error internal dan detail SQL tidak pernah bocor ke client ([internal/apperror](file:///C:/project/pakhir/be/internal/apperror)).
+    - Error internal dan detail SQL tidak pernah bocor ke client ([`internal/apperror`](../internal/apperror)).
    - Input divalidasi ketat (`DisallowUnknownFields`, whitelist `website_type`/`language`, MIME sniffing gambar).
    - Isolasi kepemilikan resource per user (`user_id = $2`) pada seluruh query project.
    - Rate limiting dua tingkat (General API dan Generate).
@@ -128,17 +128,18 @@ Request Masuk
  │   ├─ POST /auth/login
  │   └─ GET  /ai/health
  │
- ├─ [Protected Group: RequireAuth (JWT Bearer)]
- │   ├─ GET    /auth/me
- │   ├─ POST   /projects
- │   ├─ GET    /projects
- │   ├─ GET    /projects/{id}
- │   ├─ DELETE /projects/{id}
- │   ├─ GET    /projects/{id}/versions
- │   ├─ GET    /projects/{id}/versions/{number}
- │   ├─ GET    /projects/{id}/export
- │   ├─ GET    /projects/{id}/attachments
- │   └─ GET    /projects/{id}/attachments/{attachmentId}
+  ├─ [Protected Group: RequireAuth (JWT Bearer)]
+  │   ├─ GET    /auth/me
+  │   ├─ POST   /projects
+  │   ├─ GET    /projects
+  │   ├─ GET    /projects/{id}
+  │   ├─ PATCH  /projects/{id} (ubah judul)
+  │   ├─ DELETE /projects/{id}
+  │   ├─ GET    /projects/{id}/versions
+  │   ├─ GET    /projects/{id}/versions/{number}
+  │   ├─ GET    /projects/{id}/export
+  │   ├─ GET    /projects/{id}/attachments
+  │   └─ GET    /projects/{id}/attachments/{attachmentId}
  │
  └─ [Generate Group: Generate RateLimit (5 req/min) + RequireAuthSSE (?token= atau Bearer)]
      ├─ POST /projects/{id}/generate   (SSE)
@@ -179,8 +180,8 @@ stateDiagram-v2
 ```
 
 - Transisi ke `generating` dilakukan **atomik** di database, contoh: `UPDATE projects SET status='generating' WHERE id=$1 AND user_id=$2 AND status IN ('draft','failed')`. Jika tidak ada baris terpengaruh, service membedakan `404` (bukan milik user) dan `409` (state tidak cocok). Ini mencegah dua proses generate berjalan bersamaan pada project yang sama.
-- `DELETE` ditolak dengan `409` saat status `generating`.
-- **Pemulihan status macet** (*rekomendasi implementasi*): jika server mati di tengah proses, project bisa tertahan di `generating`. Saat startup, reset semua project `generating` menjadi `ready` (jika `version_count > 0`) atau `failed` (jika belum ada versi).
+- `DELETE` dan `PATCH /projects/{id}` (ubah judul) ditolak dengan `409` saat status `generating`.
+- **Pemulihan status macet** (sudah diimplementasikan di `cmd/server/main.go` via `ResetStuckGenerating`): jika server mati di tengah proses, project bisa tertahan di `generating`. Saat startup, reset semua project `generating` menjadi `ready` (jika `version_count > 0`) atau `failed` (jika belum ada versi).
 
 #### 2.2. Pipeline Generate & Revise
 
@@ -228,12 +229,12 @@ Aturan yang dikunci di system prompt (ditulis dalam satu berkas, mis. `service/p
 
 #### 2.4. Validasi & Pembersihan HTML Hasil AI
 
-Dijalankan pada buffer lengkap sebelum versi disimpan:
+Dijalankan pada buffer lengkap sebelum versi disimpan (`CleanAndValidate` di `service/html.go`):
 
-1. Buang pagar kode Markdown (```` ```html ... ``` ````) dan whitespace di tepi.
-2. Pastikan hasil adalah dokumen HTML (diawali `<!DOCTYPE html` atau `<html`, tanpa memperhatikan huruf besar/kecil, dan mengandung `</html>`).
-3. Pastikan ukuran ≤ `PROJECT_MAX_HTML_BYTES`.
-4. Jika gagal, batalkan tanpa menyimpan versi (`event: error`).
+1. Buang pagar kode Markdown (```` ```html ... ``` ````) dan whitespace di tepi (`CleanHTML`).
+2. Ekstrak dokumen secara toleran (`ExtractHTML`): buang prosa di luar dokumen, ambil irisan dari `<!DOCTYPE html` (atau `<html`, case-insensitive) sampai `</html>` terakhir. Kembalikan string kosong bila penanda tidak ditemukan.
+3. Pastikan hasil adalah dokumen HTML (mengandung pembuka `<!DOCTYPE html`/`<html` dan penutup `</html>`, case-insensitive) dan ukuran ≤ `PROJECT_MAX_HTML_BYTES` (`ValidateHTML`).
+4. Jika gagal, batalkan tanpa menyimpan versi (`event: error` dengan `reason: INVALID_OUTPUT`).
 
 Ini validasi **bentuk**, bukan sanitasi keamanan. Keamanan bergantung pada isolasi iframe di frontend (lihat 2.7).
 
@@ -277,7 +278,7 @@ Yang **tetap aktif** dari modul `ai` hanya `GET /api/v1/ai/health` dan `GeminiPr
 
 ## Database Architecture & Migrations
 
-PostgreSQL dengan connection pool `pgxpool` ([storage/supabase.go](file:///C:/project/pakhir/be/storage/supabase.go)). Migrasi dikelola di [migrations/](file:///C:/project/pakhir/be/migrations/), di-embed ke binary (`embed.FS` + `golang-migrate`), dan berjalan otomatis saat boot.
+PostgreSQL dengan connection pool `pgxpool` ([`storage/supabase.go`](../storage/supabase.go)). Migrasi dikelola di [`migrations/`](../migrations/), di-embed ke binary (`embed.FS` + `golang-migrate`), dan berjalan otomatis saat boot.
 
 ### Urutan Skema Migrasi
 
@@ -290,7 +291,8 @@ PostgreSQL dengan connection pool `pgxpool` ([storage/supabase.go](file:///C:/pr
 | `0007` | `0007_document_uploads` | Kolom upload pada `documents` | Legacy (ditunda) |
 | `0008` | `0008_message_attachments` | `message_attachments` | Legacy (ditunda) |
 | `0009` | `0009_code_executions` | `code_executions` | Legacy (ditunda) |
-| `0010` | `0010_projects` | `projects`, `project_versions`, `project_attachments` | **Baru** |
+| `0010` | `0010_projects` | `projects`, `project_versions`, `project_attachments` | Aktif (inti Tahap A) |
+| `0011` | `0011_drop_user_role` | `ALTER TABLE users DROP COLUMN role` (hapus kolom role yang tidak dipakai; tidak ada otorisasi berbasis role) | Aktif |
 
 > Migrasi lama **tidak dihapus atau diubah** karena sudah pernah diterapkan. Tabel legacy dibiarkan; pembersihan (jika diinginkan) dilakukan lewat migrasi baru di kemudian hari.
 
@@ -322,6 +324,7 @@ erDiagram
         varchar email UK
         text password_hash
         timestamptz created_at
+        timestamptz updated_at
     }
 
     projects {
@@ -356,26 +359,33 @@ erDiagram
     }
 ```
 
-Tabel legacy (`conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, `code_executions`) tidak digambar karena tidak dipakai pada Tahap A.
+Tabel legacy (`conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, `code_executions`) tidak digambar karena tidak dipakai pada Tahap A. Kolom `users.role` sudah dihapus pada migrasi `0011`; tidak ada otorisasi berbasis role.
 
 ---
 
 ## Configuration
 
-Variabel environment yang relevan untuk Tahap A:
+Variabel environment yang relevan untuk Tahap A (lihat `.env.example` dan `internal/config/config.go`):
 
 | Variabel | Fungsi |
 | --- | --- |
-| `APP_HOST`, `APP_PORT` | Alamat server |
-| `DATABASE_URL` | Koneksi PostgreSQL |
-| `JWT_SECRET`, `JWT_ISSUER`, `JWT_EXPIRATION` | Konfigurasi JWT |
+| `APP_ENV`, `APP_HOST`, `APP_PORT` | Lingkungan & alamat server |
+| `SERVER_READ_TIMEOUT`, `SERVER_WRITE_TIMEOUT`, `SERVER_IDLE_TIMEOUT` | Timeout HTTP server (write deadline di-refresh tiap write SSE agar stream sehat tidak terpotong) |
+| `DATABASE_URL` (atau `DATABASE_HOST/PORT/USER/PASSWORD/NAME/SSLMODE` + pool `DATABASE_MAX_CONNS` dsb.) | Koneksi PostgreSQL |
+| `JWT_SECRET` (wajib), `JWT_ISSUER`, `JWT_EXPIRATION` | Konfigurasi JWT |
 | `CORS_ALLOWED_ORIGINS` | Whitelist origin |
-| `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_BURST` | Limit General API (default 120/menit) |
-| `GENERATE_RATE_LIMIT_PER_MINUTE` | Limit `generate`/`revise` (default 5/menit) |
-| `UPLOAD_MAX_BYTES` | Ukuran maksimum per gambar (default 10 MB) |
+| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_BURST` | Limit General API (default 120/menit) |
+| `GENERATE_RATE_LIMIT_ENABLED`, `GENERATE_RATE_LIMIT_PER_MINUTE` | Limit `generate`/`revise` (default 5/menit, tambahan di atas General) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_TIMEOUT` | Konfigurasi Gemini; diperiksa oleh `GET /ai/health` (server tetap boot tanpa API key) |
+| `AI_MAX_REQUEST_BYTES` | Batas body JSON global (default 1 MB) |
+| `AI_MAX_GENERATE_BODY_BYTES` | Batas body JSON khusus generate/revise (default 32 MB; base64 ±33% lebih besar, pakai multipart untuk gambar besar) |
+| `AI_MAX_OUTPUT_TOKENS`, `AI_THINKING_BUDGET` | Knob opsional Gemini; kosong = default model |
+| `AI_DEBUG_LOG_OUTPUT_EDGES` | Dev only: log 200 char awal/akhir output gagal |
+| `AI_STREAM_MAX_DURATION` (default 180s), `AI_STREAM_IDLE_TIMEOUT` (default 60s) | Batas total & idle satu stream generate/revise |
+| `AI_RETRY_ON_UNAVAILABLE` (0–2, default 0), `AI_RETRY_BACKOFF` (default 2s) | Retry buka stream hanya untuk 429/503 pra-stream |
+| `UPLOAD_DIR`, `UPLOAD_MAX_BYTES` | Dir & ukuran maksimum per gambar (default 10 MB) |
 | `PROJECT_MAX_IMAGES` | Jumlah gambar maksimum per request (default 4) |
 | `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (default 512 KiB / 524288: longgar untuk satu file mandiri berisi Tailwind via CDN + JS inline, sekaligus membatasi memori/DB) |
-| Konfigurasi Gemini (provider, API key, model) | Diperiksa oleh `GET /ai/health` |
 
 Variabel Judge0 (`EXEC_*`) dan RAG **opsional** dan tidak divalidasi saat startup selama modulnya tidak diregistrasi.
 
@@ -415,7 +425,7 @@ backend/
 │   ├── repository/           # Repository User dasar
 │   ├── routes/               # Routing Chi & middleware wiring
 │   └── service/              # Service Auth
-├── migrations/               # 0001 s.d. 0010
+├── migrations/               # 0001 s.d. 0011
 ├── pkg/
 │   ├── logger/               # slog wrapper
 │   └── response/             # Format response standar & request validator
@@ -438,6 +448,6 @@ backend/
 
 | Tahap | Cakupan |
 | --- | --- |
-| **A (sekarang)** | Single-file HTML: project, generate, revise, versions, export, attachments |
+| **A (sekarang)** | Single-file HTML: project (CRUD + rename via `PATCH /projects/{id}`), generate, revise, versions, export, attachments |
 | **B** | Multi-file (mis. React/Vite): tabel `project_files`, parsing banyak file, bundling untuk preview, revisi per file |
 | Opsional | Basis pengetahuan brand via RAG, kuota generate per user, publish/hosting hasil website, rollback ke versi lama sebagai versi baru |

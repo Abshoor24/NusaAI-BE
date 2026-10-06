@@ -912,16 +912,18 @@ data: {"project_id":"5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01","version_id":"b3c1d2e
 | `version_id` | `string` (UUID) | ID versi baru |
 | `version_number` | `integer` | Nomor versi baru (mulai dari 1) |
 
-**3. `event: error`** — dikirim jika terjadi kegagalan **di tengah streaming**
+**3. `event: error`** — dikirim jika terjadi kegagalan **di tengah streaming** (bentuk envelope sama seperti semua JSON error, termasuk `reason` opsional; lihat §9.3.1)
 
 ```
 event: error
-data: {"error":"The AI provider returned an error"}
+data: {"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"The AI provider returned an error","reason":"PROVIDER_ERROR"}}
 ```
 
 | Field | Tipe | Deskripsi |
 | --- | --- | --- |
-| `error` | `string` | Pesan error generic (detail teknis disembunyikan) |
+| `error.code` | `string` | Selalu `"AI_PROVIDER_ERROR"` untuk error tengah stream |
+| `error.message` | `string` | Pesan error generic (detail teknis disembunyikan) |
+| `error.reason` | `string` (opsional) | Sub-kode stabil (`PROVIDER_OVERLOADED`, `STREAM_TIMEOUT`, `STREAM_STALLED`, `OUTPUT_TRUNCATED`, `OUTPUT_BLOCKED`, `STREAM_INTERRUPTED`, `INVALID_OUTPUT`, `PROVIDER_ERROR`); dihilangkan bila kosong |
 
 Penyebab `error` di tengah stream: provider Gemini error/timeout, stream melewati `AI_STREAM_MAX_DURATION` ("AI stream timed out") atau diam melewati `AI_STREAM_IDLE_TIMEOUT` ("AI stream stalled"), koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pesan `error` untuk provider sibuk (429/503) adalah `"The AI provider is temporarily overloaded, please try again"`. Pada semua kasus ini **tidak ada versi baru yang disimpan**.
 
@@ -1526,7 +1528,7 @@ async function streamGenerate(projectId, token, onToken) {
 
 - Dikonfigurasi via `CORS_ALLOWED_ORIGINS` (daftar dipisah koma).
 - Development default: `http://localhost:3000,http://localhost:5173`. Di luar development defaultnya **kosong** — tidak ada origin lintas-situs yang diizinkan kecuali dikonfigurasi eksplisit.
-- Origin dicocokkan persis lalu di-echo (`Access-Control-Allow-Origin: <origin>`, tidak pernah `*`) + `Vary: Origin`. Method: `GET, POST, PUT, PATCH, DELETE, OPTIONS`; header request: `Authorization, Content-Type, Accept`; expose: `Content-Disposition` (untuk nama file export), `X-Request-ID`; preflight `OPTIONS` dijawab `204` dengan `Access-Control-Max-Age: 600`.
+- Origin dicocokkan persis lalu di-echo (`Access-Control-Allow-Origin: <origin>`, tidak pernah `*`) + `Vary: Origin`. Method: `GET, POST, PUT, PATCH, DELETE, OPTIONS`; header request: `Authorization, Content-Type, Accept, X-Request-ID`; expose: `Content-Disposition` (untuk nama file export), `X-Request-ID`; preflight `OPTIONS` dijawab `204` dengan `Access-Control-Max-Age: 600`.
 
 ### 9.5. Unggah gambar
 
