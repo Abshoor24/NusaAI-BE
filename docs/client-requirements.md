@@ -36,7 +36,7 @@ Login
 | Area | Status | Fitur |
 | --- | --- | --- |
 | **Authentication & Access** | **Ready** | Registrasi, login, JWT HS256, profil (`/auth/me`); otorisasi berbasis kepemilikan resource, tanpa konsep role |
-| **Project & Brief** | **Ready** | Membuat, melihat daftar, melihat detail, dan menghapus project; brief terstruktur dengan validasi |
+| **Project & Brief** | **Ready** | Membuat, melihat daftar, melihat detail, mengubah judul (`PATCH /projects/{id}`), dan menghapus project; brief terstruktur dengan validasi |
 | **AI Generate** | **Ready** | Membuat versi 1 website dari brief, dialirkan real-time via SSE (token-by-token) |
 | **AI Revise** | **Ready** | Merevisi dari versi tertentu lewat instruksi teks; AI selalu mengembalikan dokumen lengkap |
 | **Versioning** | **Ready** | Riwayat versi per project, ambil versi tertentu, revisi dari versi lama (`base_version`) |
@@ -128,7 +128,7 @@ Pertanyaan terbuka:
   - [ ] Registrasi melalui undangan (invite-only)
   - [ ] Persetujuan admin (admin approval)
   - [ ] SSO / OAuth (Google, GitHub, Microsoft)
-- **Otorisasi & Peran Pengguna**: tidak ada konsep role. Setiap user terautentikasi punya hak yang sama; pembeda akses hanyalah kepemilikan resource (project milik user lain terbaca sebagai `404`). Jika klien butuh peran (mis. admin/member), rancang sebagai fitur baru.
+- **Otorisasi & Peran Pengguna**: tidak ada konsep role (kolom `users.role` sudah dihapus pada migrasi `0011`). Setiap user terautentikasi punya hak yang sama; pembeda akses hanyalah kepemilikan resource (project milik user lain terbaca sebagai `404`). Jika klien butuh peran (mis. admin/member), rancang sebagai fitur baru.
 - **Berbagi project antar user / kolaborasi tim**: `[Default: tidak. Setiap project privat milik satu user]`
 
 ### 3.7. Fitur Lanjutan (Backlog)
@@ -147,18 +147,18 @@ Centang yang dibutuhkan klien untuk dijadwalkan setelah Tahap A:
 
 ## 4. Menambahkan Modul Bisnis Klien
 
-Untuk fitur bisnis khusus (billing langganan, kuota generate, katalog template, manajemen lisensi, ticketing), gunakan modul template di [internal/modules/business/](file:///C:/project/pakhir/be/internal/modules/business/README.md). Modul [internal/modules/project/](file:///C:/project/pakhir/be/internal/modules/project/) dapat dijadikan contoh nyata strukturnya.
+Untuk fitur bisnis khusus (billing langganan, kuota generate, katalog template, manajemen lisensi, ticketing), gunakan modul template di [`internal/modules/business/`](../internal/modules/business/README.md). Modul [`internal/modules/project/`](../internal/modules/project/) dapat dijadikan contoh nyata strukturnya.
 
 1. **Duplikasi Template Modul**:
    Salin direktori template ke nama domain baru, mis. `internal/modules/billing` atau `internal/modules/templates`.
 2. **Definisikan DTO & Model**:
    Rancang struktur data pada `model/model.go`.
 3. **Tambahkan Migrasi Database**:
-   Buat migrasi SQL berurutan di `migrations/`. Nomor terakhir yang terpakai adalah `0010_projects`, jadi migrasi berikutnya mulai dari `0011` (mis. `0011_billing_subscriptions.up.sql`).
+   Buat migrasi SQL berurutan di `migrations/`. Nomor terakhir yang terpakai adalah `0011_drop_user_role`, jadi migrasi berikutnya mulai dari `0012` (mis. `0012_billing_subscriptions.up.sql`). Jangan mengubah migrasi yang sudah diterapkan.
 4. **Implementasikan Repository & Service**:
    Query parameterized di `repository/`, logika bisnis di `service/`. Semua query harus dibatasi `user_id` pemilik resource.
 5. **Daftarkan Handler ke Router**:
-   Tambahkan dependensi pada struct `Dependencies` di [internal/routes/routes.go](file:///C:/project/pakhir/be/internal/routes/routes.go) dan mapping endpoint di bawah `/api/v1`.
+   Tambahkan dependensi pada struct `Dependencies` di [`internal/routes/routes.go`](../internal/routes/routes.go) dan mapping endpoint di bawah `/api/v1`.
 6. **Dokumentasikan Kontrak**:
    Tambahkan endpoint baru ke [api.md](./api.md) pada commit yang sama.
 
