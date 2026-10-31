@@ -25,3 +25,4 @@ tmp/
 *.swp
 .DS_Store
 Thumbs.db
+.upload/
