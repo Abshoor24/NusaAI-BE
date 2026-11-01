@@ -184,7 +184,70 @@ V6-12 FINAL SELF-CHECK (do silently before output)
 The plan comment is the first element in head; no internal words; every fact is
 in the brief; no placeholder or invented URLs; icons only from the allowed
 list; the hero panel contains its decoration; text contrast is fine; the motion
-kit is present; the mobile menu is outside the header.`
+kit is present; the mobile menu is outside the header.
+
+V7 RULES (these override earlier rules when they conflict)
+
+V7-1 MENU ROWS
+Put priced items in a <ul>. Use exactly this row markup for every priced item
+(replace NAME and PRICE):
+<li class="flex items-baseline gap-3 py-3"><span class="font-medium">NAME</span><span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span><span class="tabular-nums">PRICE</span></li>
+Do not define your own dotted-leader CSS class. If an item has no price in the
+brief, write the row with NAME only (no leader, no price). Never write Rp 0,
+Rp -, or any price that is not in the brief.
+
+V7-2 HERO PANEL
+The visual panel in the hero is never empty and never relies on a faint
+decoration. Its main content is the opening hours from the brief in very large
+type (text-5xl or larger, tabular-nums), plus the open/closed status when hours
+exist. If the brief has no hours, show the business name in large type. A
+decorative element is allowed only at 10 to 20 percent opacity of a contrasting
+color so it is really visible; otherwise leave it out.
+
+V7-3 BANNED WORDS AND INVENTED CLAIMS
+Never write: terbaik, berkualitas tinggi, premium, otentik, istimewa, sempurna,
+sepenuh hati, dengan cinta, presisi, artisan, artisanal, single origin, petani
+lokal, per batch, sesuai permintaan. Never claim a process, frequency or origin
+that the brief does not state (for example roasting daily). Use plain words
+taken from the brief for eyebrows, subheads and body text.
+
+V7-4 TEXT COLORS
+Color tokens lighter than a mid grey are for borders and backgrounds only,
+never for text. Captions, timestamps and muted text on a light background use
+the dark brand color at 70 percent opacity or more. On a dark background use
+the light color at 80 percent opacity or more.
+
+V7-5 FONT RENDERING
+Use italic only with fonts that have a real italic in the link you load (DM
+Serif Display, Fraunces, Playfair Display). Outfit, Inter, DM Sans, Manrope and
+Plus Jakarta Sans have no italic in the links we load: emphasize a word with
+color instead. In the Google Fonts URL, load every weight that appears in your
+classes (for Inter: 400;500;600 when font-medium or font-semibold is used).
+
+V7-6 MOBILE MENU PATTERN
+The panel is <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 ...">
+placed after the header as a direct child of body. Do not use any translate
+class on it. Open and close only through:
+function setMenu(open){menu.classList.toggle('hidden',!open);document.body.classList.toggle('overflow-hidden',open);}
+The menu button calls setMenu(true). The close button, every link inside the
+panel, the Escape key and a click on the empty overlay call setMenu(false).
+
+V7-7 HEADER
+When the page is scrolled, the header background is the page color at 90
+percent opacity or more with backdrop-blur-md, so text underneath is not
+readable through it.
+
+V7-8 HOVER AND REVEAL
+Never put the reveal class on an element that also has hover:-translate or
+active:scale (the reveal transform blocks them). Put reveal on a wrapper.
+
+V7-9 DEPTH SNIPPETS (use at least two of these three)
+Hero background layers (replace R,G,B with the brand colors):
+style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(R,G,B,.30),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(R,G,B,.15),transparent 60%)"
+Grid texture on one dark section:
+style="background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:48px 48px"
+One oversized numeral or Indonesian word at 10 to 20 percent opacity inside a
+container that has overflow-hidden.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
