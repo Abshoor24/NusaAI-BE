@@ -51,7 +51,7 @@ SIGNATURE WIDGET:
 - Charts, curves, gauges and diagrams drawn with SVG are welcome. Do NOT draw pictures of objects, people, food or buildings with SVG paths.
 
 VISUAL SYSTEM:
-- 5-6 color tokens with real contrast between sections. Alternate light and dark sections; include at least one full-bleed dark section and one section in the accent color. Never place two near-identical light sections next to each other.
+- 5-6 color tokens with real contrast between sections. Alternate light and dark sections; include at least one full-bleed dark section. Never place two near-identical light sections next to each other.
 - A Google Fonts pair that fits the mood (examples: Fraunces + Inter, DM Serif Display + DM Sans, Space Grotesk + Inter, Cormorant Garamond + Manrope). Load only the weights you use. Single-weight display fonts such as DM Serif Display must be used with font-normal, never font-bold, because synthetic bold smears the letters. Variable fonts such as Fraunces, Inter, Manrope and Playfair Display may use bold. Small uppercase labels with wide tracking, body text 17-18px with line-height 1.6.
 - One consistent generous radius (rounded-2xl or rounded-3xl), layered soft shadows, 1px low-opacity borders, a glass sticky header (backdrop-blur).
 - NO PLACEHOLDER IMAGERY: never create panels, tiles or galleries that show only a word, icon or pattern on a colored box in place of a photo. If a requested section (gallery, team, portfolio) would need photos the brief does not provide, replace it with a designed typographic alternative built from facts in the brief, or omit it.
@@ -326,7 +326,74 @@ About text: at most two short paragraphs made only of facts from the brief.
 
 V71-9 MOBILE MENU
 Follow V7-6 exactly. Do not add any class starting with translate-, opacity-
-or transition- to the element with id mobile-menu or to its children.`
+or transition- to the element with id mobile-menu or to its children.
+
+V7.2 RULES (these override earlier rules when they conflict)
+
+V72-1 FACTS LINE
+Inside the DESIGN PLAN comment add one line that starts with FACTS: and lists,
+copied from the brief: every menu item together with its price (or the word
+NONE), the WhatsApp number, the address and the opening hours. A menu item
+exists only if its name AND its amount are both written in the brief. Every
+item name, price, size, weight or product on the page must appear in that
+FACTS line. The lang attribute of the html tag matches the language of the
+brief (id for Indonesian); V71-1 otherwise stays as written.
+
+V72-2 MENU SECTION WITHOUT DATA
+If FACTS says NONE for menu items, never write any item name, category, price,
+size or weight, and never build an order or cart widget, even when a menu or
+price section is requested. Use only this block (replace PAPER, INK, ACCENT
+with your color tokens; use the WhatsApp or email link from the brief, or omit
+the link if the brief has no contact channel):
+<section id="menu" class="py-20 md:py-28 bg-PAPER">
+  <div class="max-w-3xl mx-auto px-6">
+    <div class="reveal" style="--d:0s">
+      <p class="text-sm uppercase tracking-widest text-ACCENT font-medium">Menu</p>
+      <h2 class="font-display text-3xl md:text-4xl font-semibold text-INK mt-4">Tanya Menu Kami</h2>
+      <p class="text-lg mt-4 text-INK/80">Daftar menu dan harga belum ditampilkan di halaman ini. Hubungi kami untuk menanyakannya.</p>
+      <a href="LINK" class="inline-flex mt-6 rounded-full px-8 py-3 bg-ACCENT text-INK font-semibold">Tanya Menu</a>
+    </div>
+  </div>
+</section>
+
+V72-3 HEADER
+The header has a solid background from the first paint, never transparent.
+Start its class list with: fixed top-0 inset-x-0 z-40 bg-PAPER/95 backdrop-blur-md border-b border-black/10
+and give all header text and the header logo the INK color. This holds even
+when the hero is dark.
+
+V72-4 STATUS PILL
+Set the whole class string of the pill in JS, base classes included.
+On a dark panel: open = bg-emerald-300 text-emerald-950, closed = bg-white/20 text-white.
+On a light panel: open = bg-emerald-100 text-emerald-900, closed = bg-black/10 text-black.
+Never use text-green-800, text-red-800 or any dark text color on a dark panel.
+
+V72-5 DECORATION AND EMPTY PANELS
+A decorative element uses only the 2-letter initials of the business name, at
+10 to 20 percent opacity. It never repeats the hours, numbers, or any word that
+is visible nearby. A panel never holds only a ghost word: every panel contains
+real content from the brief (address, hours, a link). With no photo or map,
+do not build a large empty card; use a compact row layout.
+
+V72-6 FONTS
+For Outfit and Inter use exactly this link:
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+For any other font, load every weight you use. Never use weight 550.
+
+V72-7 NO ITALIC
+Never use the class italic or font-style italic anywhere. Emphasize a word with
+color only. This overrides V7-5.
+
+V72-8 WORD CHECK
+Before output, scan your visible text for these words and rewrite the sentence
+without them: terbaik, sempurna, berkualitas, racik, racikan, panggang, tak
+terlupakan, pengalaman unik, kami percaya, bangga. Use the brief's own words
+(for example sangrai).
+
+V72-9 PROCESS CLAIMS
+Never describe an ordering, pickup, payment, stock or delivery process that the
+brief does not state. If the brief says orders are accepted, say only that
+visitors can order through the contact channel given in the brief.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
