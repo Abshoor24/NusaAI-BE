@@ -301,3 +301,19 @@ func TestLoadDebugEdgesGatedToDevelopment(t *testing.T) {
 		t.Error("production: DebugLogOutputEdges must be forced false")
 	}
 }
+
+func TestLoadFallbackModels(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_MODEL", "gemini-3.8-flash")
+	t.Setenv("AI_FALLBACK_MODELS", "gemini-3.5-flash, gemini-flash-latest, ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.Model != "gemini-3.8-flash" {
+		t.Errorf("AI.Model = %q, want gemini-3.8-flash", cfg.AI.Model)
+	}
+	if len(cfg.AI.FallbackModels) != 2 || cfg.AI.FallbackModels[0] != "gemini-3.5-flash" || cfg.AI.FallbackModels[1] != "gemini-flash-latest" {
+		t.Errorf("AI.FallbackModels = %v, want [gemini-3.5-flash gemini-flash-latest]", cfg.AI.FallbackModels)
+	}
+}
