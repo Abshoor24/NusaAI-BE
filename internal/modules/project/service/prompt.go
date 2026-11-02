@@ -393,7 +393,59 @@ terlupakan, pengalaman unik, kami percaya, bangga. Use the brief's own words
 V72-9 PROCESS CLAIMS
 Never describe an ordering, pickup, payment, stock or delivery process that the
 brief does not state. If the brief says orders are accepted, say only that
-visitors can order through the contact channel given in the brief.`
+visitors can order through the contact channel given in the brief.
+
+V7.3 RULES (these override earlier rules when they conflict)
+
+V73-1 STATUS PILL (replaces V72-4)
+The open or closed pill must be readable on any background, so it always has
+its own solid light background with dark text. Set the whole class string in
+JS, base classes included. Always include: px-4 py-1.5 rounded-full
+font-semibold text-base. Open: bg-emerald-200 text-emerald-950.
+Closed: bg-amber-200 text-amber-950. Never use a transparent or translucent
+background (no bg-white/20, no bg-black/10). Never use text-black, text-white
+or the page text color on the pill.
+
+V73-2 NO GHOST TEXT (replaces the initials part of V72-5)
+No watermark, ghost or background text of any kind: no initials, no hours, no
+city name, no large faint words. Decoration uses only shapes, lines, gradients
+or dots, with no letters. Every card and panel contains real content from the
+brief: a title plus at least one fact (address, hours, a facility, a contact
+link). A panel never holds only decoration. With no photo or map, use a
+compact row layout.
+
+V73-3 ABOUT SECTION
+The About section (Tentang) contains a heading, a short paragraph built only
+from words in the brief, and a short list of facts copied from the FACTS line
+(hours, address, facilities named in the brief). If there are few facts, use a
+single text column. Never add an empty side panel next to it.
+
+V73-4 ORDER AND PROCESS WORDS (replaces V72-9)
+Call-to-action text may only tell the visitor to contact the business through
+the channel given in the brief. Allowed patterns: Pesan lewat WhatsApp, Tanya
+lewat WhatsApp, Hubungi kami. Do not write these words or any sentence about
+what happens after the visitor sends a message, unless the brief states it:
+stok, ketersediaan, konfirmasi, mengonfirmasi, diambil, ambil, siap diambil,
+antar, kirim, pengiriman, bayar, pembayaran, responsif, cepat balas.
+
+V73-5 PRAISE WORDS (extends V72-8)
+Add to the V72-8 list: terpercaya, istimewa, nomor satu. The check covers every
+visible text, including the page title, meta description, headings and alt
+text. Replace praise with facts: say what is sold, where, and when it is open,
+using the brief's own words.
+
+V73-6 COLORS
+Add to the FACTS line: PRIMARY and ACCENT, each a hex code copied from the
+brief, or NONE. Every hex color that the brief gives must appear exactly as
+written in tailwind.config as a color token. Never replace a given hex with a
+similar shade. Lighter or darker tints may be added as extra tokens.
+
+V73-7 MAP LINK
+A map link is built only from a full street address or a Maps URL that the
+brief contains. Never build a map link from a city name alone. If the brief has
+neither, show no map link and no map card; show the address as plain text if
+there is one. Link format: https://www.google.com/maps/search/?api=1&query=
+followed by the URL-encoded full address.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
