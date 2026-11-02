@@ -239,6 +239,35 @@ func (s *service) decodeImages(imgs []model.ImagePayload) ([]decodedImage, error
 	return out, nil
 }
 
+// candidateModels builds the deduplicated list of AI models to attempt in order
+// (primary model followed by configured fallback models).
+func (s *service) candidateModels() []string {
+	models := make([]string, 0, 1+len(s.aiCfg.FallbackModels))
+	if m := strings.TrimSpace(s.aiCfg.Model); m != "" {
+		models = append(models, m)
+	}
+	for _, fb := range s.aiCfg.FallbackModels {
+		fb = strings.TrimSpace(fb)
+		if fb == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range models {
+			if strings.EqualFold(existing, fb) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			models = append(models, fb)
+		}
+	}
+	if len(models) == 0 {
+		return []string{""}
+	}
+	return models
+}
+
 func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, error) {
 	if s.provider == nil {
 		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
@@ -247,69 +276,92 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 	for _, im := range imgs {
 		converted = append(converted, aiprovider.ImageAttachment{MimeType: im.MimeType, Data: im.Data})
 	}
-	req := aiprovider.Request{
-		Model: s.aiCfg.Model,
-		Messages: []aiprovider.ChatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt, Images: converted},
-		},
-	}
-	// Limited pre-stream retry on provider overload (HTTP 429/503 before
-	// any chunk exists). Default 0 keeps this a single call, byte-identical
-	// in behavior to before. Never retries mid-stream errors (those arrive
-	// as StreamChunk.Err after open succeeds), truncation, blocks, or
-	// validation failures. The caller's context carries the overall
-	// AI_STREAM_MAX_DURATION deadline and client cancellation, so retries
-	// plus backoff never outlive either.
+
+	models := s.candidateModels()
 	maxRetries := s.aiCfg.RetryOnUnavailable
-	if maxRetries <= 0 {
-		return s.provider.CompleteStream(ctx, req)
-	}
 	if maxRetries > 2 {
 		maxRetries = 2
 	}
-	var err error
-	var stream <-chan aiprovider.StreamChunk
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+
+	var lastErr error
+	for modelIdx, modelName := range models {
 		if ctx.Err() != nil {
-			// Client gone or total deadline hit: stop retrying, surface
-			// the last provider error so rollback still runs.
-			if err != nil {
-				return nil, err
+			if lastErr != nil {
+				return nil, lastErr
 			}
 			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 		}
-		stream, err = s.provider.CompleteStream(ctx, req)
-		if err == nil {
-			if attempt > 0 {
-				s.logger.Info("ai stream open retry succeeded",
-					"attempt", attempt+1, "max_attempts", maxRetries+1)
+
+		req := aiprovider.Request{
+			Model: modelName,
+			Messages: []aiprovider.ChatMessage{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: userPrompt, Images: converted},
+			},
+		}
+
+		attempts := 1
+		if maxRetries > 0 {
+			attempts = maxRetries + 1
+		}
+
+		var stream <-chan aiprovider.StreamChunk
+		var err error
+
+		for attempt := 0; attempt < attempts; attempt++ {
+			if ctx.Err() != nil {
+				if err != nil {
+					return nil, err
+				}
+				return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 			}
-			return stream, nil
-		}
-		if !aiprovider.IsOverloadedError(err) {
-			return nil, err
-		}
-		if attempt == maxRetries {
-			s.logger.Warn("ai stream open retries exhausted",
-				"attempts", attempt+1, "max_attempts", maxRetries+1, "error", err)
-			return nil, err
-		}
-		s.logger.Warn("ai stream open overloaded, retrying",
-			"attempt", attempt+1, "max_attempts", maxRetries+1, "error", err)
-		if backoff := s.aiCfg.RetryBackoff; backoff > 0 {
-			timer := time.NewTimer(backoff)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, err
-			case <-timer.C:
+
+			stream, err = s.provider.CompleteStream(ctx, req)
+			if err == nil {
+				if modelIdx > 0 {
+					s.logger.Info("ai stream opened using fallback model",
+						"model", modelName, "primary_model", models[0], "fallback_index", modelIdx)
+				} else if attempt > 0 {
+					s.logger.Info("ai stream open retry succeeded",
+						"model", modelName, "attempt", attempt+1, "max_attempts", attempts)
+				}
+				return stream, nil
 			}
-		} else if ctx.Err() != nil {
-			return nil, err
+
+			// Do not retry the same model if error is not temporary overload
+			if !aiprovider.IsOverloadedError(err) {
+				break
+			}
+
+			if attempt+1 < attempts {
+				s.logger.Warn("ai stream open overloaded, retrying",
+					"model", modelName, "attempt", attempt+1, "max_attempts", attempts, "error", err)
+				if backoff := s.aiCfg.RetryBackoff; backoff > 0 {
+					timer := time.NewTimer(backoff)
+					select {
+					case <-ctx.Done():
+						timer.Stop()
+						return nil, err
+					case <-timer.C:
+					}
+				} else if ctx.Err() != nil {
+					return nil, err
+				}
+			} else {
+				s.logger.Warn("ai stream open retries exhausted",
+					"model", modelName, "attempts", attempts, "max_attempts", attempts, "error", err)
+			}
+		}
+
+		lastErr = err
+		// If another model is available in the fallback chain, log and continue
+		if modelIdx+1 < len(models) {
+			s.logger.Warn("ai stream failed on model, attempting fallback",
+				"failed_model", modelName, "next_model", models[modelIdx+1], "error", err)
 		}
 	}
-	return nil, err
+
+	return nil, lastErr
 }
 
 func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {

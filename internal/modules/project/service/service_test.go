@@ -1277,3 +1277,107 @@ func TestRetryStopsOnCancelledContext(t *testing.T) {
 		t.Errorf("version count = %d, want 0 (nothing stored)", got.VersionCount)
 	}
 }
+
+// --- model fallback chain ---
+
+func TestOpenFallbackOnNonRetryableErrorSucceedsWithNextModel(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned an error", errors.New("status 404")), nil}
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	uploadCfg.Dir = t.TempDir()
+	repo := newFakeRepo()
+	svc := New(repo, fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (primary failed with 404, fallback succeeded)", fp.calls)
+	}
+	if fp.lastReq.Model != "fallback-model" {
+		t.Errorf("lastReq.Model = %q, want fallback-model", fp.lastReq.Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusReady || got.VersionCount != 1 {
+		t.Errorf("status=%q count=%d, want ready/1", got.Status, got.VersionCount)
+	}
+}
+
+func TestOpenFallbackOnOverloadExhaustedSucceedsWithNextModel(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	// Primary model exhausts 1 retry (2 calls total), then fallback model succeeds on 1st call.
+	fp.openErrSeq = []error{overloadedOpenErr(), overloadedOpenErr(), nil}
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryOnUnavailable = 1
+	aiCfg.RetryBackoff = time.Millisecond
+	uploadCfg.Dir = t.TempDir()
+	repo := newFakeRepo()
+	svc := New(repo, fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 3 {
+		t.Errorf("provider calls = %d, want 3 (2 on primary, 1 on fallback)", fp.calls)
+	}
+	if fp.lastReq.Model != "fallback-model" {
+		t.Errorf("lastReq.Model = %q, want fallback-model", fp.lastReq.Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusReady || got.VersionCount != 1 {
+		t.Errorf("status=%q count=%d, want ready/1", got.Status, got.VersionCount)
+	}
+}
+
+func TestOpenFallbackAllModelsFailReturnsLastError(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErr = errors.New("upstream provider exploded")
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model-1", "fallback-model-2"}
+	uploadCfg.Dir = t.TempDir()
+	repo := newFakeRepo()
+	svc := New(repo, fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	_, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err == nil {
+		t.Fatal("expected error when all models fail, got nil")
+	}
+	if fp.calls != 3 {
+		t.Errorf("provider calls = %d, want 3 (attempted all 3 models)", fp.calls)
+	}
+	got, _, err := svc.Get(ctx, "user-1", p.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != model.StatusFailed || got.VersionCount != 0 {
+		t.Errorf("status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
