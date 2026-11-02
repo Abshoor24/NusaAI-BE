@@ -247,7 +247,86 @@ style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(R,G,B,.30),trans
 Grid texture on one dark section:
 style="background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:48px 48px"
 One oversized numeral or Indonesian word at 10 to 20 percent opacity inside a
-container that has overflow-hidden.`
+container that has overflow-hidden.
+
+V7.1 RULES (these override earlier rules when they conflict)
+
+V71-1 OUTPUT OPENING
+Your output must begin with exactly these three lines, and the DESIGN PLAN
+comment continues right after them, before any meta tag:
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- DESIGN PLAN:
+The comment is mandatory in every response, even for short briefs.
+
+V71-2 ACCENT COLOR IS NOT A BACKGROUND
+The accent color is only for small things: buttons, numerals, thin lines,
+small badges, and at most two highlighted words in a heading. Never use the
+accent color (or any mid-tone color) as the background of a full-width
+section, a band or a large panel that contains text. Full-width sections use
+only the dark brand color, the light paper color, or a very light tint of the
+brand color. Text on a dark section: light color at 90 percent opacity or more.
+Text on a light section: dark color at 80 percent opacity or more. A button
+filled with the accent color uses the darkest brand color for its label.
+
+V71-3 HERO HOURS PANEL (copy this structure, adapt colors and the hours from
+the brief; if the brief has no hours, show the business name instead)
+<div class="relative overflow-hidden rounded-3xl p-8 md:p-10 min-h-[22rem] flex items-center justify-center">
+  <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none" aria-hidden="true">DECORATION</div>
+  <div class="relative text-center">
+    <p class="text-sm uppercase tracking-widest opacity-80">Jam buka</p>
+    <p class="mt-3 text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap">08.00</p>
+    <p class="my-2 text-sm uppercase tracking-widest opacity-70">sampai</p>
+    <p class="text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap">22.00</p>
+    <p id="open-status" class="mt-5 inline-flex rounded-full px-4 py-1.5 text-base font-semibold"></p>
+  </div>
+</div>
+Rules: hours are always on separate lines, never one wrapping line. DECORATION
+is optional, uses a contrasting color at 10 to 20 percent opacity, stays fully
+inside the panel, and never uses a negative z-index. Do not combine the float
+class with any translate class on the same element; center with flex instead.
+
+V71-4 CONTACT BLOCK (copy this structure)
+<div class="max-w-5xl mx-auto px-6">
+  <h2 class="...">Heading</h2>
+  <ul class="mt-8 grid gap-4 sm:grid-cols-2">
+    <li><a href="..." class="flex flex-col gap-1 rounded-2xl p-5 ring-1 ring-black/10 break-words"><span class="text-sm uppercase tracking-widest opacity-70">WhatsApp</span><span class="text-lg font-medium tabular-nums">+62 812 0000 0000</span></a></li>
+  </ul>
+</div>
+Rules: heading and list share the same max-width wrapper. Use sm:grid-cols-2
+for 2 or 4 items, lg:grid-cols-3 for exactly 3 or 6 items, one column for 1
+item. Never leave a single card alone on the last row. Use ring-black/10 on
+light sections and ring-white/20 on dark sections. Never write border-current
+with an opacity suffix. Only items that exist in the brief.
+
+V71-5 NO REPETITION, FEWER SECTIONS
+The address and the phone number appear at most twice on the whole page (one
+contact block and the footer). Never create a separate call-to-action band AND
+a contact section: merge them into one. Use 5 to 7 sections in total. If the
+brief has little content, produce fewer sections instead of padding with
+generic copy.
+
+V71-6 NO EMOJI
+Never use emoji or pictograph characters anywhere. Icons come only from the
+allowed list in V6-4, or use numerals and short letter labels.
+
+V71-7 REVEAL AND HOVER (copy this pattern)
+<div class="reveal" style="--d:.1s"><div class="rounded-2xl p-6 transition-transform duration-300 hover:-translate-y-1">...</div></div>
+An element whose class list contains reveal must never contain hover:-translate
+or active:scale. Put them on an inner element.
+
+V71-8 PLAIN WORDS FROM THE BRIEF
+Use the exact words of the brief. Do not swap in synonyms (for example write
+sangrai, never panggang). Also never write: tak terlupakan, pengalaman unik,
+berkualitas, kami percaya, bangga, seperti keluarga, tim kami. Never claim
+delivery, shipping, couriers or a team unless the brief says so. Never claim
+freshness (segar, baru disangrai, setiap hari) unless the brief says so.
+About text: at most two short paragraphs made only of facts from the brief.
+
+V71-9 MOBILE MENU
+Follow V7-6 exactly. Do not add any class starting with translate-, opacity-
+or transition- to the element with id mobile-menu or to its children.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
