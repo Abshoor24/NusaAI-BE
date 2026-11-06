@@ -1,8 +1,9 @@
-// Migration round-trip test: 0001-0010 up, down, up.
+// Migration round-trip tests: 0001-0010 up/down/up and 0011-0012 down/up.
 //
-// Alur: migrasikan ke versi 9 → snapshot skema; ke versi 10 → snapshot;
-// turun ke 9 → snapshot harus SAMA dengan snapshot versi 9; naik ke 10 →
-// snapshot harus SAMA dengan snapshot versi 10 pertama.
+// Alur test pertama: migrasikan ke versi 9 → snapshot skema; ke versi 10 →
+// snapshot; turun ke 9 → snapshot harus SAMA dengan snapshot versi 9; naik ke
+// 10 → snapshot harus SAMA dengan snapshot versi 10 pertama. Test kedua
+// melakukan hal yang sama untuk drop legacy tables 0012 (11 → 12 → 11 → 12).
 //
 // Berjalan HANYA jika TEST_DATABASE_URL menunjuk ke database Postgres kosong
 // khusus test (jangan pernah produksi). Tanpa variabel itu test di-skip.
@@ -348,4 +349,56 @@ func TestMigrationIntegration_UpDownUp0010(t *testing.T) {
 		t.Fatalf("schema after 0010-up-again differs from first 0010-up snapshot:\n%s", diffSnapshots(snap10a, snap10b))
 	}
 	t.Logf("round-trip 9→10→9→10 stable: %d schema lines", len(sortedLines(snap10b)))
+}
+
+// TestMigrationIntegration_UpDownUp0012 verifies that dropping the six legacy
+// chatbot/RAG/code-execution tables is reversible and that the four active
+// tables are untouched.
+func TestMigrationIntegration_UpDownUp0012(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	pool := requireMigrationTestDB(t)
+	t.Cleanup(func() { cleanupMigrationObjects(t, pool) })
+
+	legacy := []string{
+		"conversations", "messages", "message_attachments",
+		"documents", "document_chunks", "code_executions",
+	}
+	active := []string{"users", "projects", "project_versions", "project_attachments"}
+
+	migrateTo(t, dsn, 11)
+	snap11 := snapshotSchema(t, pool)
+	for _, tbl := range legacy {
+		want := "table|" + tbl + "\n"
+		if !strings.Contains(snap11, want) {
+			t.Fatalf("snapshot after v11 must contain %q", want)
+		}
+	}
+
+	migrateTo(t, dsn, 12)
+	snap12a := snapshotSchema(t, pool)
+	for _, tbl := range legacy {
+		gone := "table|" + tbl + "\n"
+		if strings.Contains(snap12a, gone) {
+			t.Fatalf("snapshot after v12-up must not contain %q", gone)
+		}
+	}
+	for _, tbl := range active {
+		want := "table|" + tbl + "\n"
+		if !strings.Contains(snap12a, want) {
+			t.Fatalf("snapshot after v12-up must keep %q", want)
+		}
+	}
+
+	migrateTo(t, dsn, 11)
+	snap11b := snapshotSchema(t, pool)
+	if snap11b != snap11 {
+		t.Fatalf("schema after 0012-down differs from after-0011 snapshot:\n%s", diffSnapshots(snap11, snap11b))
+	}
+
+	migrateTo(t, dsn, 12)
+	snap12b := snapshotSchema(t, pool)
+	if snap12b != snap12a {
+		t.Fatalf("schema after 0012-up-again differs from first 0012-up snapshot:\n%s", diffSnapshots(snap12a, snap12b))
+	}
+	t.Logf("round-trip 11→12→11→12 stable: %d schema lines", len(sortedLines(snap12b)))
 }

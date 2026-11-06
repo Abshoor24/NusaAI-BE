@@ -36,7 +36,7 @@ import (
 )
 
 // requireProjectTestDB connects to the TEST_DATABASE_URL database, runs all
-// embedded migrations (currently through 0011) on it, and returns the pool
+// embedded migrations (currently through 0012) on it, and returns the pool
 // plus a project repository. It never touches the app .env / DATABASE_URL: TEST_DATABASE_URL
 // is read directly so a production connection string in .env cannot leak in.
 func requireProjectTestDB(t *testing.T) (*pgxpool.Pool, projectrepo.Repository) {
