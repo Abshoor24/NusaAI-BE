@@ -17,11 +17,11 @@ Produk ini adalah **AI Website Generator**: user login, menjelaskan website yang
 | `POST /ai/chat`, `POST /ai/chat/stream` | **Dihapus dari router** | Digantikan `generate` dan `revise` |
 | `/ai/conversations*` | **Dihapus dari router** | Digantikan `/projects*` |
 | `/ai/attachments/{id}` | **Dihapus dari router** | Digantikan `/projects/{id}/attachments/{attachmentId}` |
-| `/ai/documents*` (RAG) | **Ditunda** | Tidak diregistrasi di router; kode dan tabel dipertahankan untuk tahap berikutnya |
-| `/execute*` (Judge0 sandbox) | **Ditunda** | Tidak diregistrasi di router; preview website dirender di browser |
+| `/ai/documents*` (RAG) | **Dihapus** | Route, kode, dan tabel RAG sudah dihapus (migrasi `0012`) |
+| `/execute*` (Judge0 sandbox) | **Dihapus** | Route, kode, dan tabel execution sudah dihapus; preview website dirender di browser |
 | Field `system` (override system prompt) | **Dihapus** | System prompt dikunci di server |
 
-Endpoint yang ditandai "dihapus dari router" atau "ditunda" akan mengembalikan `404 Not Found` standar router.
+Endpoint yang ditandai "dihapus" tidak tersedia dan mengembalikan `404 Not Found` standar router.
 
 ---
 
@@ -209,7 +209,6 @@ Ketika error code adalah `VALIDATION_ERROR` dan error berasal dari struct valida
 | `CONFLICT` | 409 | Email sudah terdaftar saat register; **atau** state project tidak mengizinkan operasi (lihat bagian 4: generate/revise). |
 | `RATE_LIMITED` | 429 | Terlalu banyak request dari IP yang sama dalam satu menit. Selalu disertai header `Retry-After: 60`. |
 | `AI_PROVIDER_ERROR` | 502 | Upstream LLM provider (Gemini) error, tidak dapat dijangkau, atau timeout. Detail teknis tidak diekspos ke client. |
-| `EXECUTION_PROVIDER_ERROR` | 502 | **Tidak digunakan saat ini** (modul execution ditunda). Kode dipertahankan di `apperror` untuk tahap berikutnya. |
 | `SERVICE_UNAVAILABLE` | 503 | Database tidak tersedia atau tidak dapat dijangkau. |
 | `DATABASE_ERROR` | 500 | Operasi database gagal (query error, constraint violation, dsb.). |
 | `INTERNAL_SERVER_ERROR` | 500 | Kesalahan internal server yang tidak terklasifikasi. |

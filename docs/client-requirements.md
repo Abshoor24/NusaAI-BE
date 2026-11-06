@@ -44,9 +44,9 @@ Login
 | **Multimodal Reference** | **Ready** | Upload gambar referensi (JPEG, PNG, WebP; logo, contoh desain, screenshot) via JSON base64 atau `multipart/form-data`; tersimpan per project dan terisolasi per user |
 | **Safe Preview Contract** | **Ready** | Aturan preview aman (`<iframe sandbox>` tanpa `allow-same-origin`) didokumentasikan untuk frontend |
 | **Security & Stability** | **Ready** | Rate limiting 2 tingkat (General, Generate), CORS configurable, Security Headers, structured logging (`slog`), graceful shutdown |
-| **AI Chat & Conversations** | Dihapus dari router | Digantikan `generate` dan `revise` |
-| **RAG Knowledge Base** | Ditunda | Kode & tabel dipertahankan; tidak diregistrasi di router |
-| **Code Sandbox (Judge0)** | Ditunda | Kode & tabel dipertahankan; preview dirender di browser |
+| **AI Chat & Conversations** | Dihapus | Kode dan tabelnya sudah dihapus; digantikan `generate` dan `revise` |
+| **RAG Knowledge Base** | Dihapus | Kode dan tabel RAG sudah dihapus (migrasi `0012`) |
+| **Code Sandbox (Judge0)** | Dihapus | Kode dan tabel execution sudah dihapus; preview dirender di browser |
 | **Multi-file Project (React/Vite)** | Rencana Tahap B | Skema versi dirancang agar bisa diperluas |
 
 ---
@@ -136,7 +136,7 @@ Pertanyaan terbuka:
 Centang yang dibutuhkan klien untuk dijadwalkan setelah Tahap A:
 
 - [ ] **Tahap B:** proyek multi-file (React/Vite) dengan preview hasil bundling
-- [ ] Basis pengetahuan brand/klien (mengaktifkan kembali modul RAG) agar hasil sesuai identitas bisnis
+- [ ] Basis pengetahuan brand/klien sebagai fitur baru (modul RAG perlu dibangun ulang) agar hasil sesuai identitas bisnis
 - [ ] Template / galeri contoh sebagai titik awal
 - [ ] Rollback: menjadikan versi lama sebagai versi terbaru
 - [ ] Berbagi link preview hasil website
@@ -154,7 +154,7 @@ Untuk fitur bisnis khusus (billing langganan, kuota generate, katalog template, 
 2. **Definisikan DTO & Model**:
    Rancang struktur data pada `model/model.go`.
 3. **Tambahkan Migrasi Database**:
-   Buat migrasi SQL berurutan di `migrations/`. Nomor terakhir yang terpakai adalah `0011_drop_user_role`, jadi migrasi berikutnya mulai dari `0012` (mis. `0012_billing_subscriptions.up.sql`). Jangan mengubah migrasi yang sudah diterapkan.
+   Buat migrasi SQL berurutan di `migrations/`. Nomor terakhir yang terpakai adalah `0012_drop_legacy_tables`, jadi migrasi berikutnya mulai dari `0013` (mis. `0013_billing_subscriptions.up.sql`). Jangan mengubah migrasi yang sudah diterapkan.
 4. **Implementasikan Repository & Service**:
    Query parameterized di `repository/`, logika bisnis di `service/`. Semua query harus dibatasi `user_id` pemilik resource.
 5. **Daftarkan Handler ke Router**:

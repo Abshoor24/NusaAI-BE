@@ -8,7 +8,7 @@ Backend untuk platform **AI Website Generator** (konsep: deskripsikan → genera
 
 Sistem menyediakan fitur lengkap out-of-the-box:
 - **REST API Clean Architecture**: Handler, Service, Repository, dan Provider abstraction.
-- **PostgreSQL + pgvector**: Connection pool terkelola (`pgxpool`), migrasi embedded otomatis via `embed.FS`.
+- **PostgreSQL**: Connection pool terkelola (`pgxpool`), migrasi embedded otomatis via `embed.FS`.
 - **Autentikasi**: Registrasi, login, verifikasi profil, JWT (`HS256`). Otorisasi berbasis kepemilikan resource per user.
 - **AI Website Generate & Revise (SSE Streaming)**: Integrasi Google Gemini API, system prompt terkunci di server, streaming token real-time via Server-Sent Events (mendukung `Authorization` header dan query param `?token=`).
 - **Versioning**: Setiap generate/revise menyimpan versi HTML lengkap baru; versi lama tidak pernah diubah.
@@ -16,12 +16,12 @@ Sistem menyediakan fitur lengkap out-of-the-box:
 - **Export**: Unduh website sebagai file `.html` tunggal.
 - **Keamanan & Stabilitas**: Rate limiting 2 tingkat (General, Generate), CORS configurable, Security Headers, structured logging (`slog`), graceful shutdown, dan pemulihan status project saat startup.
 
-Modul **AI Chat & Conversations**, **RAG Knowledge Base**, dan **Code Execution Sandbox (Judge0)** ditunda pada Tahap A: kode dan tabelnya dipertahankan, tetapi route-nya tidak diregistrasi (mengembalikan `404`) dan konfigurasinya opsional. Preview website dirender di browser (`<iframe sandbox>`).
+Modul legacy **AI Chat & Conversations**, **RAG Knowledge Base**, dan **Code Execution Sandbox (Judge0)** beserta enam tabelnya sudah dihapus. Migrasi `0012` men-drop `conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, dan `code_executions`; schema aktif hanya berisi `users`, `projects`, `project_versions`, dan `project_attachments`. Preview website dirender di browser (`<iframe sandbox>`).
 
 ## Tech Stack
 
 - **Bahasa & Routing**: Go (net/http + chi router v5)
-- **Database**: PostgreSQL dengan ekstensi `pgvector` (driver `pgx/v5`, connection pooling)
+- **Database**: PostgreSQL (driver `pgx/v5`, connection pooling)
 - **Autentikasi**: JWT (golang-jwt/v5) + bcrypt
 - **AI**: Google Generative Language API (Gemini)
 - **Containerization**: Docker & Docker Compose
@@ -42,13 +42,12 @@ backend/
 │   ├── model/             database models + user auth DTOs
 │   ├── modules/
 │   │   ├── project/       domain inti AI Website Generator (handler/model/repository/service)
-│   │   ├── ai/            DITUNDA kecuali /ai/health & GeminiProvider (chat, RAG, extractor, dsb.)
-│   │   ├── execution/     DITUNDA: Code Sandbox Execution (Judge0)
+│   │   ├── ai/            /ai/health (handler) + Gemini provider (dipakai project)
 │   │   └── business/      TEMPLATE/scaffold modul bisnis (handler/service/repository/migration)
 │   ├── repository/        database access (UserRepository)
 │   ├── routes/            route definition & middleware wiring
 │   └── service/           business logic (AuthService)
-├── migrations/            SQL migrations berurutan (0001 s.d. 0010, embedded via embed.FS)
+├── migrations/            SQL migrations berurutan (0001 s.d. 0012, embedded via embed.FS)
 ├── pkg/
 │   ├── logger/            structured logging (slog), env-aware formatting (text / JSON)
 │   └── response/          standard JSON API response + request validation helpers
@@ -122,7 +121,6 @@ Variabel penting lainnya:
 - `UPLOAD_DIR`, `UPLOAD_MAX_BYTES`
 - `CORS_ALLOWED_ORIGINS` (CSV; default development `http://localhost:3000,http://localhost:5173`, di luar development default kosong), `RATE_LIMIT_*`
 - `GENERATE_RATE_LIMIT_PER_MINUTE` (default 5), `PROJECT_MAX_IMAGES` (default 4), `PROJECT_MAX_HTML_BYTES` (default 524288 = 512 KiB)
-- `EXEC_*` (Judge0) dan RAG: opsional, tidak dibutuhkan Tahap A
 
 > Jangan pernah commit `.env` yang berisi secret nyata.
 
@@ -135,11 +133,13 @@ go test ./...
 
 Jalankan integration test database (membutuhkan database aktif):
 ```bash
+# PERINGATAN: test ini memakai DATABASE_URL dari .env. Jangan jalankan
+# dengan .env yang menunjuk database produksi.
 TEST_DB_INTEGRATION=true go test ./tests/...
 ```
 
 Jalankan integration test repository project dengan Postgres asli
-(menjalankan migrasi 0001–0010 dan menguji atomisitas `generating` serta
+(menjalankan migrasi 0001–0012 dan menguji atomisitas `generating` serta
 penomoran versi konkuren). `TEST_DATABASE_URL` wajib menunjuk ke database
 kosong khusus test — jangan pernah mengarahkannya ke database produksi.
 Test membuat user/project sekali pakai miliknya sendiri lalu menghapusnya

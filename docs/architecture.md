@@ -27,7 +27,7 @@ Sistem tetap menerapkan **Clean Architecture**, **Dependency Injection**, dan **
    - `Provider` mengisolasi komunikasi dengan Google Gemini API.
 2. **Dependency Injection**: Semua komponen diinisialisasi eksplisit di [`cmd/server/main.go`](../cmd/server/main.go) dan diinjeksikan ke router lewat struct `Dependencies` tanpa global mutable state.
 3. **Abstraction Over Implementation**: Project service hanya bergantung pada interface `provider.Provider`, sehingga model AI bisa diganti tanpa mengubah logika bisnis.
-4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([`internal/config/config.go`](../internal/config/config.go)), database di-ping dengan timeout, dan migrasi SQL berjalan otomatis saat boot. Konfigurasi modul yang **ditunda** (Judge0, RAG) tidak boleh menggagalkan startup.
+4. **Fail-Fast Startup**: Konfigurasi divalidasi saat startup ([`internal/config/config.go`](../internal/config/config.go)), database di-ping dengan timeout, dan migrasi SQL berjalan otomatis saat boot.
 5. **System Prompt Dikunci di Server**: Client tidak bisa mengirim atau menimpa system prompt. Input user (brief dan instruksi revisi) selalu diperlakukan sebagai **data**, bukan sebagai instruksi sistem.
 6. **Output AI adalah Konten Tidak Tepercaya**: HTML hasil model divalidasi dan disimpan apa adanya sebagai teks, tidak pernah dieksekusi atau disisipkan di sisi server, dan wajib dirender frontend di `<iframe sandbox>` tanpa `allow-same-origin`.
 7. **Safe by Default & Defense in Depth**:
@@ -73,11 +73,6 @@ flowchart TD
         DB[("PostgreSQL<br>(pgxpool / Supabase)")]
         Disk[("Local Storage<br>uploads/ gambar referensi")]
         Ext_Gemini["External Google Gemini API"]
-    end
-
-    subgraph Deferred["Ditunda: kode & tabel ada, tidak diregistrasi di router"]
-        D_AI["AI Chat, Conversations, RAG"]
-        D_Exec["Code Execution (Judge0)"]
     end
 
     Client --> MW_Global
@@ -146,7 +141,7 @@ Request Masuk
      └─ POST /projects/{id}/revise     (SSE)
 ```
 
-Endpoint lama `/ai/chat*`, `/ai/conversations*`, `/ai/attachments/*`, `/ai/documents*`, dan `/execute*` **tidak diregistrasi** sehingga menghasilkan `404` standar router. `/health` dan `/health/db` berada di luar `/api/v1` dan tidak kena rate limit.
+Endpoint lama `/ai/chat*`, `/ai/conversations*`, `/ai/attachments/*`, `/ai/documents*`, dan `/execute*` sudah dihapus sehingga menghasilkan `404` standar router. `/health` dan `/health/db` berada di luar `/api/v1` dan tidak kena rate limit.
 
 ---
 
@@ -262,17 +257,16 @@ Backend tidak me-render HTML. Frontend wajib:
 3. Tidak menyisipkan HTML hasil AI ke DOM aplikasi (`innerHTML`, `dangerouslySetInnerHTML`).
 4. Tidak menampilkan stream `token` sebagai website; stream hanya indikator progres. HTML final diambil dari `GET /versions/{number}` setelah `done`.
 
-### 3. Modul yang Ditunda
+### 3. Modul Legacy yang Dihapus
 
-Kode dan tabel dipertahankan, tetapi **tidak diregistrasi di router** dan tidak boleh mempengaruhi startup.
+Kode dan tabel untuk chatbot, RAG, dan code execution sudah dihapus pada pembersihan Tahap A. Yang tersisa dari modul `ai` hanya `GET /api/v1/ai/health` dan `GeminiProvider` (dipakai `project`).
 
-| Modul | Lokasi | Alasan Ditunda | Kemungkinan Pemakaian Kembali |
+| Modul | Kode Lama | Tabel yang Di-drop (`0012`) | Pengganti |
 | --- | --- | --- | --- |
-| AI Chat & Conversations | `internal/modules/ai` | Digantikan `generate`/`revise` | Tidak direncanakan; `provider` Gemini tetap dipakai |
-| RAG & Document Upload | `internal/modules/ai` (`rag/`, `extractor/`) | Belum dibutuhkan Tahap A | Basis pengetahuan brand/klien untuk memperkaya generate |
-| Code Execution (Judge0) | `internal/modules/execution` | Preview dirender di browser | Menjalankan proyek Tahap B jika dibutuhkan |
-
-Yang **tetap aktif** dari modul `ai` hanya `GET /api/v1/ai/health` dan `GeminiProvider`.
+| AI Chat & Conversations | `ai/service`, `ai/repository`, `ai/model`, `ai/handler` (chat/SSE) | `conversations`, `messages` | `generate`/`revise` project |
+| Attachment Chat | `ai/handler` (attachment) | `message_attachments` | `project_attachments` |
+| RAG & Document Upload | `ai/rag`, `ai/extractor` | `documents`, `document_chunks` | Tidak diperlukan Tahap A |
+| Code Execution (Judge0) | `execution/*`, `ai/provider/judge0_provider.go` | `code_executions` | Preview di browser (`<iframe sandbox>`) |
 
 ---
 
@@ -286,15 +280,16 @@ PostgreSQL dengan connection pool `pgxpool` ([`storage/supabase.go`](../storage/
 | --- | --- | --- | --- |
 | `0001` | `0001_init` | Tabel `users` | Aktif |
 | `0002-0004` | `company_profile_rag` & cleanup | Migrasi transisi & pembersihan skema legacy | Historis |
-| `0005` | `0005_conversations` | `conversations`, `messages` | Legacy (ditunda) |
-| `0006` | `0006_rag_documents` | Ekstensi `vector`, `documents`, `document_chunks` | Legacy (ditunda) |
-| `0007` | `0007_document_uploads` | Kolom upload pada `documents` | Legacy (ditunda) |
-| `0008` | `0008_message_attachments` | `message_attachments` | Legacy (ditunda) |
-| `0009` | `0009_code_executions` | `code_executions` | Legacy (ditunda) |
+| `0005` | `0005_conversations` | `conversations`, `messages` | Legacy (di-drop `0012`) |
+| `0006` | `0006_rag_documents` | Ekstensi `vector`, `documents`, `document_chunks` | Legacy (di-drop `0012`) |
+| `0007` | `0007_document_uploads` | Kolom upload pada `documents` | Legacy (di-drop `0012`) |
+| `0008` | `0008_message_attachments` | `message_attachments` | Legacy (di-drop `0012`) |
+| `0009` | `0009_code_executions` | `code_executions` | Legacy (di-drop `0012`) |
 | `0010` | `0010_projects` | `projects`, `project_versions`, `project_attachments` | Aktif (inti Tahap A) |
 | `0011` | `0011_drop_user_role` | `ALTER TABLE users DROP COLUMN role` (hapus kolom role yang tidak dipakai; tidak ada otorisasi berbasis role) | Aktif |
+| `0012` | `0012_drop_legacy_tables` | Drop 6 tabel legacy chatbot/RAG/code execution | Aktif |
 
-> Migrasi lama **tidak dihapus atau diubah** karena sudah pernah diterapkan. Tabel legacy dibiarkan; pembersihan (jika diinginkan) dilakukan lewat migrasi baru di kemudian hari.
+> Migrasi lama **tidak dihapus atau diubah** karena sudah pernah diterapkan. Pembersihan dilakukan lewat migrasi `0012`; `down`-nya membuat ulang keenam tabel persis seperti state `0011` untuk keperluan rollback.
 
 ### Skema Tabel Baru (`0010_projects`)
 
@@ -359,7 +354,7 @@ erDiagram
     }
 ```
 
-Tabel legacy (`conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, `code_executions`) tidak digambar karena tidak dipakai pada Tahap A. Kolom `users.role` sudah dihapus pada migrasi `0011`; tidak ada otorisasi berbasis role.
+Tabel legacy (`conversations`, `messages`, `message_attachments`, `documents`, `document_chunks`, `code_executions`) sudah di-drop oleh migrasi `0012` dan tidak lagi menjadi bagian schema. Kolom `users.role` sudah dihapus pada migrasi `0011`; tidak ada otorisasi berbasis role.
 
 ---
 
@@ -387,8 +382,6 @@ Variabel environment yang relevan untuk Tahap A (lihat `.env.example` dan `inter
 | `PROJECT_MAX_IMAGES` | Jumlah gambar maksimum per request (default 4) |
 | `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (default 512 KiB / 524288: longgar untuk satu file mandiri berisi Tailwind via CDN + JS inline, sekaligus membatasi memori/DB) |
 
-Variabel Judge0 (`EXEC_*`) dan RAG **opsional** dan tidak divalidasi saat startup selama modulnya tidak diregistrasi.
-
 ---
 
 ## Directory & Package Organization
@@ -412,20 +405,14 @@ backend/
 │   │   │   ├── model/        # Brief, Project, Version, Attachment, request DTOs
 │   │   │   ├── repository/   # Parameterized SQL untuk projects, versions, attachments
 │   │   │   └── service/      # State machine, prompt builder, HTML validator, storage gambar
-│   │   ├── ai/               # DITUNDA (kecuali /ai/health & GeminiProvider)
-│   │   │   ├── extractor/    # Parser PDF, DOCX, TXT
-│   │   │   ├── handler/
-│   │   │   ├── model/
-│   │   │   ├── provider/     # Provider abstraction & Gemini (tetap dipakai project)
-│   │   │   ├── rag/
-│   │   │   ├── repository/
-│   │   │   └── service/
-│   │   ├── execution/        # DITUNDA: Code Execution Sandbox (Judge0)
+│   │   ├── ai/               # /ai/health (handler) + Gemini provider
+│   │   │   ├── handler/      # Health only
+│   │   │   └── provider/     # Provider abstraction & Gemini (dipakai project)
 │   │   └── business/         # Template/scaffold modul bisnis masa depan
 │   ├── repository/           # Repository User dasar
 │   ├── routes/               # Routing Chi & middleware wiring
 │   └── service/              # Service Auth
-├── migrations/               # 0001 s.d. 0011
+├── migrations/               # 0001 s.d. 0012
 ├── pkg/
 │   ├── logger/               # slog wrapper
 │   └── response/             # Format response standar & request validator
@@ -439,7 +426,7 @@ backend/
 ## Observability & Error Handling
 
 1. **Structured Logging** (`log/slog`): `development` memakai text + `DEBUG`; `production` memakai JSON + `INFO`. Password, secret, JWT, dan API key tidak pernah di-log. Untuk proses generate, catat `project_id`, `version_number`, durasi, dan jumlah byte, **bukan** isi HTML atau prompt lengkap.
-2. **Canonical Error Handling**: `apperror.Error` membungkus status HTTP dan kode error standar. Pesan internal hanya di log; pesan ke client selalu disaring. Mapping kode: `VALIDATION_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `AI_PROVIDER_ERROR`, `SERVICE_UNAVAILABLE`, `DATABASE_ERROR`, `INTERNAL_SERVER_ERROR`. Kode `EXECUTION_PROVIDER_ERROR` dipertahankan tetapi belum dipakai.
+2. **Canonical Error Handling**: `apperror.Error` membungkus status HTTP dan kode error standar. Pesan internal hanya di log; pesan ke client selalu disaring. Mapping kode: `VALIDATION_ERROR`, `BAD_REQUEST`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `AI_PROVIDER_ERROR`, `SERVICE_UNAVAILABLE`, `DATABASE_ERROR`, `INTERNAL_SERVER_ERROR`.
 3. **Graceful Shutdown**: menangkap `SIGINT`/`SIGTERM` dan memberi window 30 detik agar stream generate yang sedang berjalan selesai sebelum server ditutup.
 
 ---
@@ -450,4 +437,4 @@ backend/
 | --- | --- |
 | **A (sekarang)** | Single-file HTML: project (CRUD + rename via `PATCH /projects/{id}`), generate, revise, versions, export, attachments |
 | **B** | Multi-file (mis. React/Vite): tabel `project_files`, parsing banyak file, bundling untuk preview, revisi per file |
-| Opsional | Basis pengetahuan brand via RAG, kuota generate per user, publish/hosting hasil website, rollback ke versi lama sebagai versi baru |
+| Opsional | Kuota generate per user, publish/hosting hasil website, rollback ke versi lama sebagai versi baru |
