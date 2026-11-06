@@ -16,17 +16,16 @@ import (
 // Secrets (database password, JWT secret, AI API key) are only read from the
 // environment and never hardcoded or written into source code.
 type Config struct {
-	App       AppConfig
-	Server    ServerConfig
-	DB        DBConfig
-	JWT       JWTConfig
-	AI        AIConfig
-	Execution ExecutionConfig
-	CORS      CORSConfig
-	Rate      RateLimitConfig
-	Generate  RateLimitConfig
-	Project   ProjectConfig
-	Upload    UploadConfig
+	App      AppConfig
+	Server   ServerConfig
+	DB       DBConfig
+	JWT      JWTConfig
+	AI       AIConfig
+	CORS     CORSConfig
+	Rate     RateLimitConfig
+	Generate RateLimitConfig
+	Project  ProjectConfig
+	Upload   UploadConfig
 }
 
 type AppConfig struct {
@@ -108,18 +107,6 @@ type RateLimitConfig struct {
 	Burst     int
 }
 
-type ExecutionConfig struct {
-	Provider         string
-	BaseURL          string
-	APIKey           string
-	CPUTimeLimitSec  float64
-	WallTimeLimitSec float64
-	MemoryLimitKB    int64
-	MaxCodeBytes     int64
-	PollInterval     time.Duration
-	MaxPollDuration  time.Duration
-}
-
 type UploadConfig struct {
 	Dir          string
 	MaxSizeBytes int64
@@ -196,13 +183,13 @@ func Load() (*Config, error) {
 			Issuer:     getEnv("JWT_ISSUER", "backend"),
 		},
 		AI: AIConfig{
-			Provider:             getEnv("AI_PROVIDER", "gemini"),
-			APIKey:               getEnv("AI_API_KEY", ""),
-			Model:                getEnv("AI_MODEL", "gemini-3.8-flash"),
-			FallbackModels:       splitCSV(getEnv("AI_FALLBACK_MODELS", "gemini-3.5-flash")),
-			BaseURL:              getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
-			Timeout:  getDuration("AI_TIMEOUT", 30*time.Second),
-			MaxBytes: getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
+			Provider:       getEnv("AI_PROVIDER", "gemini"),
+			APIKey:         getEnv("AI_API_KEY", ""),
+			Model:          getEnv("AI_MODEL", "gemini-3.8-flash"),
+			FallbackModels: splitCSV(getEnv("AI_FALLBACK_MODELS", "gemini-3.5-flash")),
+			BaseURL:        getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+			Timeout:        getDuration("AI_TIMEOUT", 30*time.Second),
+			MaxBytes:       getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
 			// Separate JSON body cap for generate/revise: base64 images inflate
 			// ~33%, so these endpoints allow up to the 32 MB multipart buffer.
 			// Other endpoints keep the global AI_MAX_REQUEST_BYTES limit.
@@ -222,17 +209,6 @@ func Load() (*Config, error) {
 			// bounded by AI_STREAM_MAX_DURATION.
 			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 0),
 			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
-		},
-		Execution: ExecutionConfig{
-			Provider:         getEnv("EXEC_PROVIDER", "judge0"),
-			BaseURL:          getEnv("EXEC_BASE_URL", "http://localhost:2358"),
-			APIKey:           getEnv("EXEC_API_KEY", ""),
-			CPUTimeLimitSec:  getFloat64("EXEC_CPU_TIME_LIMIT_SEC", 5.0),
-			WallTimeLimitSec: getFloat64("EXEC_WALL_TIME_LIMIT_SEC", 10.0),
-			MemoryLimitKB:    getInt64("EXEC_MEMORY_LIMIT_KB", 131072), // 128 MB default
-			MaxCodeBytes:     getInt64("EXEC_MAX_CODE_BYTES", 65536),   // 64 KB default
-			PollInterval:     getDuration("EXEC_POLL_INTERVAL", 250*time.Millisecond),
-			MaxPollDuration:  getDuration("EXEC_MAX_POLL_DURATION", 15*time.Second),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", defaultCORSOrigins())),
@@ -274,8 +250,9 @@ func (c *Config) validate() error {
 	if c.JWT.Secret == "" {
 		missing = append(missing, "JWT_SECRET")
 	}
-	// AI config is intentionally optional: the AI provider is only required
-	// when the /ai/chat prototype endpoint is used. TODO: CLIENT REQUIREMENT
+	// AI config is intentionally optional: the server still boots without a
+	// key and /ai/health reports configured=false. Only generate/revise calls
+	// fail when the provider is not configured. TODO: CLIENT REQUIREMENT
 	// decide whether AI is mandatory for the final product.
 	if err := c.App.valid(); err != nil {
 		return err
@@ -458,15 +435,6 @@ func getOptionalInt(key string) (*int, error) {
 		return nil, fmt.Errorf("config: %s must be an integer, got %q", key, v)
 	}
 	return &n, nil
-}
-
-func getFloat64(key string, fallback float64) float64 {
-	if v, ok := os.LookupEnv(key); ok {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
-		}
-	}
-	return fallback
 }
 
 func getDuration(key string, fallback time.Duration) time.Duration {

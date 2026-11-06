@@ -13,6 +13,7 @@ server.log
 server.err.log
 server.pid
 tmp/
+uploads/
 
 # Go
 *.exe

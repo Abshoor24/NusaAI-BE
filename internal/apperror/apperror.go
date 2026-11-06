@@ -11,19 +11,18 @@ import (
 type Kind string
 
 const (
-	KindValidation        Kind = "VALIDATION_ERROR"
-	KindUnauthorized      Kind = "UNAUTHORIZED"
-	KindForbidden         Kind = "FORBIDDEN"
-	KindNotFound          Kind = "NOT_FOUND"
-	KindMethodNotAllowed  Kind = "METHOD_NOT_ALLOWED"
-	KindConflict          Kind = "CONFLICT"
-	KindBadRequest        Kind = "BAD_REQUEST"
-	KindDatabase          Kind = "DATABASE_ERROR"
-	KindAIProvider        Kind = "AI_PROVIDER_ERROR"
-	KindExecutionProvider Kind = "EXECUTION_PROVIDER_ERROR"
-	KindUnavailable       Kind = "SERVICE_UNAVAILABLE"
-	KindRateLimited       Kind = "RATE_LIMITED"
-	KindInternal          Kind = "INTERNAL_SERVER_ERROR"
+	KindValidation       Kind = "VALIDATION_ERROR"
+	KindUnauthorized     Kind = "UNAUTHORIZED"
+	KindForbidden        Kind = "FORBIDDEN"
+	KindNotFound         Kind = "NOT_FOUND"
+	KindMethodNotAllowed Kind = "METHOD_NOT_ALLOWED"
+	KindConflict         Kind = "CONFLICT"
+	KindBadRequest       Kind = "BAD_REQUEST"
+	KindDatabase         Kind = "DATABASE_ERROR"
+	KindAIProvider       Kind = "AI_PROVIDER_ERROR"
+	KindUnavailable      Kind = "SERVICE_UNAVAILABLE"
+	KindRateLimited      Kind = "RATE_LIMITED"
+	KindInternal         Kind = "INTERNAL_SERVER_ERROR"
 )
 
 // AI failure reasons. Stable machine-readable sub-codes for AI_PROVIDER_ERROR
@@ -78,7 +77,7 @@ func (k Kind) httpStatus() int {
 		return http.StatusConflict
 	case KindRateLimited:
 		return http.StatusTooManyRequests
-	case KindAIProvider, KindExecutionProvider:
+	case KindAIProvider:
 		return http.StatusBadGateway
 	case KindUnavailable:
 		return http.StatusServiceUnavailable
@@ -120,7 +119,7 @@ func NotFound(message string, err error) *Error     { return new(KindNotFound, m
 func MethodNotAllowed(message string) *Error        { return new(KindMethodNotAllowed, message, nil) }
 func Conflict(message string, err error) *Error     { return new(KindConflict, message, err) }
 func Database(message string, err error) *Error     { return new(KindDatabase, message, err) }
-func AIProvider(message string, err error) *Error { return new(KindAIProvider, message, err) }
+func AIProvider(message string, err error) *Error   { return new(KindAIProvider, message, err) }
 
 // AIProviderReason builds an AI provider error with a stable machine-readable
 // sub-code for the frontend. Kind, HTTP status and message semantics are
@@ -137,9 +136,6 @@ func AIProviderReason(reason, message string, err error) *Error {
 func (e *Error) WithReason(reason string) *Error {
 	e.Reason = reason
 	return e
-}
-func ExecutionProvider(message string, err error) *Error {
-	return new(KindExecutionProvider, message, err)
 }
 func Unavailable(message string, err error) *Error { return new(KindUnavailable, message, err) }
 func Internal(message string, err error) *Error    { return new(KindInternal, message, err) }

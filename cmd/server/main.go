@@ -15,8 +15,6 @@ import (
 	"github.com/Abshoor24/backend-go/internal/config"
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
-	airepo "github.com/Abshoor24/backend-go/internal/modules/ai/repository"
-	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
 	projectrepo "github.com/Abshoor24/backend-go/internal/modules/project/repository"
 	projectservice "github.com/Abshoor24/backend-go/internal/modules/project/service"
 	"github.com/Abshoor24/backend-go/internal/repository"
@@ -59,15 +57,11 @@ func run() error {
 	// The Gemini provider never requires an API key at construction time:
 	// without one, /ai/health reports configured=false and generate/revise
 	// fail with a JSON 502 only when actually streamed. The server always
-	// boots. RAG and Judge0 execution modules are deferred (not registered
-	// in the router), so their services are intentionally not initialized
-	// here and their configuration is optional.
+	// boots.
 	aiProvider, err := provider.New(cfg.AI, log)
 	if err != nil {
 		return err
 	}
-	aiRepo := airepo.New(supabase.Pool())
-	aiService := aiservice.New(aiProvider, cfg.AI, cfg.Upload, log, aiRepo)
 
 	projectRepo := projectrepo.New(supabase.Pool())
 	projectService := projectservice.New(projectRepo, aiProvider, cfg.AI, cfg.Upload, cfg.Project, log)
@@ -85,7 +79,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:         net.JoinHostPort(cfg.Server.Host, cfg.Server.Port),
-		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, AI: aiService, Project: projectService, Tokens: tokens}),
+		Handler:      routes.New(routes.Dependencies{Config: cfg, Logger: log, DB: supabase, Auth: authService, Project: projectService, Tokens: tokens}),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,

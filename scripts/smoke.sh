@@ -4,7 +4,7 @@
 # TIDAK ADA RAHASIA DI DALAM SKRIP INI. Jangan jalankan terhadap database
 # produksi dalam kondisi apa pun. Prasyarat di environment sesi shell:
 #   TEST_DATABASE_URL   -> database Supabase KHUSUS TEST (Session pooler,
-#                        port 5432, BUKAN 6543), sudah dimigrasi 0001-0010.
+#                        port 5432, BUKAN 6543), sudah dimigrasi 0001-0012.
 #   GEMINI_API_KEY      -> key Gemini khusus test (untuk alur normal).
 #                         Tanpa key ini, hanya kasus 1 dan 3 yang dijalankan.
 #

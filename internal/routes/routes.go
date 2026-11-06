@@ -14,7 +14,6 @@ import (
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/middleware"
 	aihandler "github.com/Abshoor24/backend-go/internal/modules/ai/handler"
-	aiservice "github.com/Abshoor24/backend-go/internal/modules/ai/service"
 	projecthandler "github.com/Abshoor24/backend-go/internal/modules/project/handler"
 	projectservice "github.com/Abshoor24/backend-go/internal/modules/project/service"
 	"github.com/Abshoor24/backend-go/internal/service"
@@ -25,17 +24,15 @@ import (
 // Dependencies are explicitly injected into the router from main.go to avoid
 // global state and make the wiring testable.
 //
-// AI stays because GET /ai/health and the Gemini provider (used by the
-// project module) remain active. The legacy AI chat/conversation/document
-// handlers and the code execution module are intentionally NOT wired here:
-// their code and tables are kept for later stages, but their routes return
-// the router's standard 404.
+// The Gemini provider (used by the project module) and GET /ai/health remain
+// active. The legacy AI chat/conversation/document handlers and the code
+// execution module were removed; their routes return the router's standard
+// 404.
 type Dependencies struct {
 	Config  *config.Config
 	Logger  *slog.Logger
 	DB      *storage.Supabase
 	Auth    service.AuthService
-	AI      aiservice.Service
 	Project projectservice.Service
 	Tokens  *jwt.Manager
 }
@@ -74,9 +71,8 @@ func New(deps Dependencies) http.Handler {
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
 
-		// AI diagnostic endpoint (public). The only active route of the
-		// deferred ai module; everything else under /ai/* is unregistered.
-		aiH := aihandler.New(deps.AI, deps.Logger, deps.Config.AI, deps.Config.Upload)
+		// AI diagnostic endpoint (public).
+		aiH := aihandler.New(deps.Config.AI)
 		r.Get("/ai/health", aiH.Health)
 
 		// Protected endpoints requiring authentication
