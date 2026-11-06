@@ -227,6 +227,35 @@ func snapshotSchema(t *testing.T, pool *pgxpool.Pool) string {
 	return b.String()
 }
 
+func snapshotColumnOrdinals(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testConnTimeout)
+	defer cancel()
+
+	rows, err := pool.Query(ctx, `SELECT table_name, column_name, ordinal_position
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name <> 'schema_migrations'
+		ORDER BY table_name, ordinal_position`)
+	if err != nil {
+		t.Fatalf("snapshot column ordinals: %v", err)
+	}
+	defer rows.Close()
+
+	var b strings.Builder
+	for rows.Next() {
+		var table, column string
+		var position int
+		if err := rows.Scan(&table, &column, &position); err != nil {
+			t.Fatalf("scan column ordinal: %v", err)
+		}
+		fmt.Fprintf(&b, "%s|%s|%d\n", table, column, position)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("snapshot column ordinals: %v", err)
+	}
+	return b.String()
+}
+
 func sortedLines(s string) []string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	sort.Strings(lines)
@@ -367,6 +396,7 @@ func TestMigrationIntegration_UpDownUp0012(t *testing.T) {
 
 	migrateTo(t, dsn, 11)
 	snap11 := snapshotSchema(t, pool)
+	ord11 := snapshotColumnOrdinals(t, pool)
 	for _, tbl := range legacy {
 		want := "table|" + tbl + "\n"
 		if !strings.Contains(snap11, want) {
@@ -393,6 +423,10 @@ func TestMigrationIntegration_UpDownUp0012(t *testing.T) {
 	snap11b := snapshotSchema(t, pool)
 	if snap11b != snap11 {
 		t.Fatalf("schema after 0012-down differs from after-0011 snapshot:\n%s", diffSnapshots(snap11, snap11b))
+	}
+	ord11b := snapshotColumnOrdinals(t, pool)
+	if ord11b != ord11 {
+		t.Fatalf("column ordinals after 0012-down differ from after-0011 snapshot:\n%s", diffSnapshots(ord11, ord11b))
 	}
 
 	migrateTo(t, dsn, 12)

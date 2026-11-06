@@ -38,13 +38,13 @@ CREATE TABLE IF NOT EXISTS documents (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     source VARCHAR(255) NOT NULL DEFAULT 'text',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     file_name VARCHAR(255),
     file_type VARCHAR(100),
     file_size BIGINT NOT NULL DEFAULT 0,
     file_path TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'ready',
-    error_message TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    error_message TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents (user_id);
