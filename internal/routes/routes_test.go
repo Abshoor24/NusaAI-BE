@@ -133,7 +133,6 @@ func setupTestRouterFull(general, generate config.RateLimitConfig, origins []str
 		Logger:  logger,
 		DB:      nil,
 		Auth:    &dummyAuthService{},
-		AI:      nil, // /ai/health only reads config, never the service
 		Project: &dummyProjectService{},
 		Tokens:  tokens,
 	})

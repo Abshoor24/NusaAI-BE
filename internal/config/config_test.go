@@ -123,19 +123,17 @@ func TestLoadDatabaseURLPrecedence(t *testing.T) {
 	}
 }
 
-// The deferred modules (Judge0 execution, RAG) must not block startup:
-// the server boots with none of their configuration set.
-func TestLoadWithoutDeferredModuleConfig(t *testing.T) {
+// Optional provider configuration must not block startup: the server boots
+// without an AI key/model and reports configured=false from /ai/health.
+func TestLoadWithoutOptionalProviderConfig(t *testing.T) {
 	t.Setenv("APP_ENV", "test") // skip local .env so the test is hermetic
 	t.Setenv("JWT_SECRET", "test-secret")
 	t.Setenv("AI_API_KEY", "")
 	t.Setenv("AI_MODEL", "")
-	t.Setenv("EXEC_API_KEY", "")
-	t.Setenv("EXEC_BASE_URL", "")
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load() without Judge0/RAG config error = %v", err)
+		t.Fatalf("Load() without optional AI config error = %v", err)
 	}
 	if cfg.Generate.PerMinute != 5 {
 		t.Errorf("Generate.PerMinute = %d, want 5", cfg.Generate.PerMinute)

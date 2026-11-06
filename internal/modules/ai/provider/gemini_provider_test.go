@@ -25,8 +25,8 @@ func TestGeminiProviderBuildsChatRequest(t *testing.T) {
 		gotAuth = r.Header.Get("x-goog-api-key")
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &gotPayload)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"halo"},{"text":" dunia"}]}}],"modelVersion":"gemini-2.5-flash"}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"halo"},{"text":" dunia"}]},"finishReason":"STOP"}]}`)
 	}))
 	defer srv.Close()
 
@@ -36,7 +36,7 @@ func TestGeminiProviderBuildsChatRequest(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}, testLogger())
 
-	resp, err := p.Complete(context.Background(), Request{
+	ch, err := p.CompleteStream(context.Background(), Request{
 		Model: "gemini-2.5-flash",
 		Messages: []ChatMessage{
 			{Role: "system", Content: "You are a bakery assistant."},
@@ -46,21 +46,25 @@ func TestGeminiProviderBuildsChatRequest(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("Complete() error = %v", err)
+		t.Fatalf("CompleteStream() error = %v", err)
 	}
 
-	if gotPath != "/models/gemini-2.5-flash:generateContent" {
-		t.Errorf("path = %q, want generateContent path", gotPath)
+	if gotPath != "/models/gemini-2.5-flash:streamGenerateContent" {
+		t.Errorf("path = %q, want streamGenerateContent path", gotPath)
 	}
 	if gotAuth != "test-key" {
 		t.Errorf("x-goog-api-key = %q, want test-key", gotAuth)
 	}
 
-	if resp.Content != "halo dunia" {
-		t.Errorf("content = %q, want \"halo dunia\"", resp.Content)
+	var sb strings.Builder
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("unexpected stream error: %v", chunk.Err)
+		}
+		sb.WriteString(chunk.Token)
 	}
-	if resp.Model != "gemini-2.5-flash" {
-		t.Errorf("model = %q, want gemini-2.5-flash", resp.Model)
+	if sb.String() != "halo dunia" {
+		t.Errorf("content = %q, want \"halo dunia\"", sb.String())
 	}
 
 	// systemInstruction holds the system message.
@@ -91,14 +95,14 @@ func TestGeminiProviderMergesConsecutiveSameRole(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &gotPayload)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
 	}))
 	defer srv.Close()
 
 	p := NewGeminiProvider(config.AIConfig{APIKey: "k", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
 
-	_, err := p.Complete(context.Background(), Request{
+	ch, err := p.CompleteStream(context.Background(), Request{
 		Model: "gemini-2.5-flash",
 		Messages: []ChatMessage{
 			{Role: "user", Content: "a"},
@@ -106,7 +110,9 @@ func TestGeminiProviderMergesConsecutiveSameRole(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("Complete() error = %v", err)
+		t.Fatalf("CompleteStream() error = %v", err)
+	}
+	for range ch {
 	}
 
 	contents := gotPayload["contents"].([]interface{})
@@ -119,42 +125,11 @@ func TestGeminiProviderMergesConsecutiveSameRole(t *testing.T) {
 	}
 }
 
-func TestGeminiProviderLegacyPath(t *testing.T) {
-	var gotPayload map[string]interface{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &gotPayload)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"answer"}]}}]}`))
-	}))
-	defer srv.Close()
-
-	p := NewGeminiProvider(config.AIConfig{APIKey: "k", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
-
-	_, err := p.Complete(context.Background(), Request{
-		Model:   "gemini-2.5-flash",
-		Prompt:  "Question",
-		Context: []string{"doc line"},
-	})
-	if err != nil {
-		t.Fatalf("Complete() error = %v", err)
-	}
-
-	si := gotPayload["systemInstruction"].(map[string]interface{})
-	if si["parts"].([]interface{})[0].(map[string]interface{})["text"] != "doc line" {
-		t.Errorf("legacy context not mapped to systemInstruction: %v", si)
-	}
-	contents := gotPayload["contents"].([]interface{})
-	if len(contents) != 1 || contents[0].(map[string]interface{})["role"] != "user" {
-		t.Errorf("legacy prompt not mapped to user content: %v", contents)
-	}
-}
-
 func TestGeminiProviderRequiresModel(t *testing.T) {
 	p := NewGeminiProvider(config.AIConfig{APIKey: "k", BaseURL: "http://localhost", Timeout: time.Second}, testLogger())
-	_, err := p.Complete(context.Background(), Request{})
+	_, err := p.CompleteStream(context.Background(), Request{})
 	if err == nil {
-		t.Fatal("Complete() expected error when model is empty")
+		t.Fatal("CompleteStream() expected error when model is empty")
 	}
 }
 
@@ -236,8 +211,8 @@ func TestGeminiProviderBuildsMultimodalRequest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &gotPayload)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"That is a golden retriever puppy."}]}}],"modelVersion":"gemini-2.5-flash"}`))
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"parts":[{"text":"That is a golden retriever puppy."}]},"finishReason":"STOP"}]}`)
 	}))
 	defer srv.Close()
 
@@ -248,7 +223,7 @@ func TestGeminiProviderBuildsMultimodalRequest(t *testing.T) {
 	}, testLogger())
 
 	fakeData := []byte("raw-image-bytes")
-	resp, err := p.Complete(context.Background(), Request{
+	ch, err := p.CompleteStream(context.Background(), Request{
 		Model: "gemini-2.5-flash",
 		Messages: []ChatMessage{
 			{
@@ -264,11 +239,18 @@ func TestGeminiProviderBuildsMultimodalRequest(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("Complete() multimodal failed: %v", err)
+		t.Fatalf("CompleteStream() multimodal failed: %v", err)
 	}
 
-	if resp.Content != "That is a golden retriever puppy." {
-		t.Errorf("content = %q, want 'That is a golden retriever puppy.'", resp.Content)
+	var sb strings.Builder
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("unexpected stream error: %v", chunk.Err)
+		}
+		sb.WriteString(chunk.Token)
+	}
+	if sb.String() != "That is a golden retriever puppy." {
+		t.Errorf("content = %q, want 'That is a golden retriever puppy.'", sb.String())
 	}
 
 	contents, ok := gotPayload["contents"].([]interface{})

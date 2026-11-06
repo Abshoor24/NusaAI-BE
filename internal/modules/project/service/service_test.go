@@ -34,10 +34,10 @@ func testConfigs() (config.AIConfig, config.UploadConfig, config.ProjectConfig) 
 // --- fake provider ---
 
 type fakeProvider struct {
-	mu       sync.Mutex
-	tokens   []string
-	errAt    int // emit Err instead of token at this index (-1 = no error)
-	openErr  error
+	mu      sync.Mutex
+	tokens  []string
+	errAt   int // emit Err instead of token at this index (-1 = no error)
+	openErr error
 	// openErrSeq scripts consecutive open failures (e.g. 503 then success):
 	// one entry is consumed per CompleteStream call, a nil entry succeeds.
 	// When empty, openErr applies to every call.
@@ -50,10 +50,6 @@ type fakeProvider struct {
 	doneReason string
 	doneBlock  string
 	doneUsage  *aiprovider.UsageMetadata
-}
-
-func (f *fakeProvider) Complete(_ context.Context, req aiprovider.Request) (aiprovider.Response, error) {
-	return aiprovider.Response{Content: "unused", Model: "test"}, nil
 }
 
 func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request) (<-chan aiprovider.StreamChunk, error) {
@@ -95,10 +91,6 @@ func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request)
 		ch <- aiprovider.StreamChunk{Done: true, FinishReason: reason, BlockReason: block, Usage: usage}
 	}()
 	return ch, nil
-}
-
-func (f *fakeProvider) Embed(_ context.Context, _ string, _ string) ([]float32, error) {
-	return make([]float32, 8), nil
 }
 
 // newFakeProvider scripts a stream emitting tokens then a normal Done
