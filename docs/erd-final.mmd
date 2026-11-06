@@ -1,0 +1,43 @@
+erDiagram
+    users ||--o{ projects : "owns (ON DELETE CASCADE)"
+    projects ||--o{ project_versions : "has (ON DELETE CASCADE)"
+    projects ||--o{ project_attachments : "has (ON DELETE CASCADE)"
+
+    users {
+        uuid id PK "UUID tanpa default DB (di-generate aplikasi)"
+        varchar_255 email UK "Email unik akun pengguna"
+        text password_hash "Bcrypt hash kredensial"
+        timestamptz created_at "DEFAULT now()"
+        timestamptz updated_at "DEFAULT now()"
+    }
+
+    projects {
+        uuid id PK "DEFAULT gen_random_uuid()"
+        uuid user_id FK "REFERENCES users(id) ON DELETE CASCADE"
+        varchar_200 title "Judul project website"
+        varchar_20 status "DEFAULT 'draft' - CHECK: draft, generating, ready, failed"
+        jsonb brief "DEFAULT '{}' - Deskripsi terstruktur website"
+        timestamptz created_at "DEFAULT now()"
+        timestamptz updated_at "DEFAULT now()"
+    }
+
+    project_versions {
+        uuid id PK "DEFAULT gen_random_uuid()"
+        uuid project_id FK "REFERENCES projects(id) ON DELETE CASCADE"
+        integer version_number "Nomor urut versi - CHECK: >= 1"
+        varchar_20 kind "Tipe versi - CHECK: generate, revise"
+        text prompt "DEFAULT '' - Prompt instruksi AI"
+        text html "Dokumen HTML lengkap hasil generasi AI"
+        timestamptz created_at "DEFAULT now()"
+    }
+
+    project_attachments {
+        uuid id PK "DEFAULT gen_random_uuid()"
+        uuid project_id FK "REFERENCES projects(id) ON DELETE CASCADE"
+        varchar_255 file_name "Nama berkas asli yang diunggah"
+        varchar_20 file_type "Tipe berkas (e.g. image/png)"
+        bigint file_size "Ukuran berkas dalam bytes - CHECK: >= 0"
+        text storage_path "Lokasi path berkas fisik di disk"
+        varchar_100 mime_type "MIME type berkas"
+        timestamptz created_at "DEFAULT now()"
+    }
