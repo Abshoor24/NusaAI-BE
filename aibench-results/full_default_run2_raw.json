@@ -1,0 +1,15 @@
+{
+  "run_number": 2,
+  "first_chunk_ms": 267031,
+  "first_text_ms": 267031,
+  "total_ms": 436198,
+  "usage_metadata": {
+    "promptTokenCount": 10572,
+    "candidatesTokenCount": 6475,
+    "thoughtsTokenCount": 5357,
+    "totalTokenCount": 22404
+  },
+  "finish_reason": "STOP",
+  "html_file": "full_default_run2.html",
+  "attempt_count": 3
+}

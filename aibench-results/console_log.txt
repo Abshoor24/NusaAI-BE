@@ -1,0 +1,39 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261111183107
+Username: IDEAPAD-MNA\absho
+RunAs User: IDEAPAD-MNA\absho
+Configuration Name: 
+Machine: IDEAPAD-MNA (Microsoft Windows NT 10.0.26300.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\absho\AppData\Local\Programs\Microsoft VS Code\c4453f8ea4\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 5796
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is .\aibench-results\console_log.txt
+2026/11/11 18:40:54 Gagal tulis HTML : open : The system cannot find the file specified.
+Run 2: firstChunk=0.000s, firstText=0.000s, Total=300.001s, PromptTok=0, CandTok=0, ThinkTok=0, Tok/s=0.0, FinishReason=, Valid=false, Attempts=1
+  ERROR: AI_PROVIDER_ERROR: The AI provider could not be reached: Post "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:strea
+mGenerateContent?alt=sse": http2: timeout awaiting response headers
+AVERAGE: firstChunk=109.776s, firstText=109.776s, Total=286.185s, Tok/s=77.5, Valid%=50% (1/2)
+
+=== SUMMARY TABLE ===
+Brief           FirstChunk(s) FirstText(s)  Total(s)   Tok/s      Valid%
+full            109.776       109.776       286.185    77.5       50
+
+
+
+
+
+
+
+**********************
+Windows PowerShell transcript end
+End time: 20261111191241
+**********************

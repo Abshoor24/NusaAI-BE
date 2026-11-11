@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Studio kreatif dan bengkel desain visual berbasis di Indonesia yang berfokus pada identitas merek dan media digital.
+(2) Signature Widget: Estimator interaktif lingkup proyek sederhana dengan pilihan kebutuhan identitas visual dan estimasi durasi kerja.
+(3) Hero Composition: Asymmetric 12-kolom min-h-[90svh], kolom kiri headline tegas dengan aksen kontras dan CTA ganda, kolom kanan panel status studio dan kartu interaktif dengan layer aksen.
+(4) Palette & Fonts: Malam palette (ink: #0E1320, paper: #F4F5F7, tint: #E3E7EE, accent: #C6F24E, deep: #46630A). Fonts: Outfit (display) + Inter (body).
+(5) Sections: 1. Hero, 2. Layanan (numbered rows), 3. Estimator Proyek (Signature Widget), 4. Prinsip Kerja (dark grid band), 5. Hubungi Kami (Contact block), 6. Footer.
+FACTS: NONE | WhatsApp: NONE | Address: NONE | Hours: NONE | PRIMARY: #0E1320 | ACCENT: #C6F24E
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio Desain — Solusi Visual &amp; Identitas Merek</title>
+<meta name="description" content="Studio kreatif dan perancangan desain identitas visual serta media digital terpadu.">
+<meta name="theme-color" content="#0E1320">
+<script>document.documentElement.classList.add('js')</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0E1320',
+          paper: '#F4F5F7',
+          tint: '#E3E7EE',
+          accent: '#C6F24E',
+          deep: '#46630A'
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          sans: ['Inter', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  ::selection {
+    background-color: #C6F24E;
+    color: #0E1320;
+  }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0s);
+  }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  .rise {
+    animation: rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: var(--d, 0s);
+  }
+  .float {
+    animation: float 6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+    .rise, .float {
+      animation: none;
+    }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-2xl font-bold tracking-tight text-ink">
+        STUDIO
+      </a>
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium">
+        <a href="#layanan" class="hover:text-deep transition-colors">Layanan</a>
+        <a href="#kalkulator" class="hover:text-deep transition-colors">Kebutuhan Proyek</a>
+        <a href="#prinsip" class="hover:text-deep transition-colors">Pendekatan</a>
+        <a href="#kontak" class="hover:text-deep transition-colors">Kontak</a>
+      </nav>
+      <div class="flex items-center gap-4">
+        <a href="#kontak" class="hidden sm:inline-flex rounded-full px-6 py-2.5 bg-ink text-paper text-sm font-semibold hover:-translate-y-0.5 active:scale-95 transition-transform duration-200">
+          Hubungi Kami
+        </a>
+        <button id="menu-btn" class="md:hidden p-2 text-ink" aria-label="Buka menu navigasi">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Panel -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-ink/70 backdrop-blur-sm">
+    <div class="h-full w-4/5 max-w-sm bg-paper p-8 flex flex-col justify-between shadow-2xl ml-auto">
+      <div>
+        <div class="flex items-center justify-between pb-6 border-b border-black/10">
+          <span class="font-display text-xl font-bold tracking-tight text-ink">STUDIO</span>
+          <button id="close-btn" class="p-2 text-ink" aria-label="Tutup menu">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+        <nav class="mt-8 flex flex-col gap-6 text-lg font-medium text-ink">
+          <a href="#layanan" class="mobile-link">Layanan</a>
+          <a href="#kalkulator" class="mobile-link">Kebutuhan Proyek</a>
+          <a href="#prinsip" class="mobile-link">Pendekatan</a>
+          <a href="#kontak" class="mobile-link">Kontak</a>
+        </nav>
+      </div>
+      <div class="pt-6 border-t border-black/10">
+        <a href="#kontak" class="mobile-link block w-full text-center rounded-full px-6 py-3 bg-ink text-paper font-semibold">
+          Hubungi Kami
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="relative min-h-[90svh] pt-32 pb-20 md:py-36 flex items-center overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(198,242,78,.30),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(14,19,32,.08),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <div class="lg:col-span-7 flex flex-col items-start">
+            <span class="rise text-xs font-bold uppercase tracking-widest text-deep px-3 py-1 bg-accent/30 rounded-full border border-accent/60" style="--d:.1s">
+              Studio Desain Visual
+            </span>
+            <h1 class="rise font-display text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-ink mt-6 leading-[1.1]" style="--d:.2s">
+              Membangun Identitas <span class="text-deep">Visual Jelas</span> &amp; Tepat
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/85 mt-6 max-w-xl leading-relaxed" style="--d:.3s">
+              Kami menyusun sistem perancangan menyeluruh untuk merek, antarmuka digital, dan komunikasi cetak dengan prinsip keterbacaan serta tujuan yang terarah.
+            </p>
+            <div class="rise flex flex-wrap gap-4 mt-8" style="--d:.4s">
+              <a href="#kontak" class="rounded-full px-8 py-3.5 bg-accent text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-transform duration-200 shadow-sm">
+                Hubungi Kami
+              </a>
+              <a href="#layanan" class="rounded-full px-8 py-3.5 bg-tint text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-transform duration-200 border border-black/5">
+                Lihat Layanan
+              </a>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 relative">
+            <div class="absolute -top-4 -right-4 w-full h-full rounded-3xl bg-accent/25 -z-0"></div>
+            <div class="relative z-10 overflow-hidden rounded-3xl p-8 md:p-10 bg-white border border-black/10 shadow-lg float">
+              <div class="flex items-center justify-between pb-6 border-b border-black/10">
+                <span class="text-xs uppercase tracking-widest text-ink/60 font-medium">Kesiapan Kerja</span>
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-900">
+                  <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                  Terbuka Untuk Kolaborasi
+                </span>
+              </div>
+              <div class="mt-8">
+                <p class="text-sm uppercase tracking-widest text-ink/60">Fokus Utama</p>
+                <p class="text-2xl font-bold text-ink mt-1 font-display">Identitas Merek &amp; Sistem Visual</p>
+              </div>
+              <div class="mt-6 pt-6 border-t border-black/5 flex items-center justify-between text-sm text-ink/75">
+                <span>Waktu Respons Diskusi</span>
+                <span class="font-semibold text-ink">1–2 Hari Kerja</span>
+              </div>
+              <div class="mt-4 pt-4 border-t border-black/5 flex items-center justify-between text-sm text-ink/75">
+                <span>Basis Operasional</span>
+                <span class="font-semibold text-ink">Indonesia</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="layanan" class="py-20 md:py-32 bg-paper scroll-mt-20">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="reveal max-w-2xl" style="--d:.05s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Layanan Studio</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold tracking-tight text-ink mt-3">
+            Bidang Pengerjaan
+          </h2>
+          <p class="mt-4 text-ink/80 text-lg leading-relaxed">
+            Perancangan visual yang difokuskan pada kejelasan pesan dan penerapan menyeluruh di berbagai format media.
+          </p>
+        </div>
+
+        <div class="mt-12 divide-y divide-black/10 border-y border-black/10">
+          
+          <div class="reveal py-8 md:py-10" style="--d:.1s">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-baseline">
+              <span class="md:col-span-2 font-display text-2xl font-semibold text-deep tabular-nums">01</span>
+              <div class="md:col-span-4">
+                <h3 class="font-display text-2xl font-bold text-ink">Identitas Merek</h3>
+                <p class="text-sm text-ink/60 uppercase tracking-wider mt-1">Branding System</p>
+              </div>
+              <p class="md:col-span-6 text-ink/80 leading-relaxed">
+                Pembuatan logo, panduan gaya tipografi, palet warna terstandar, dan pedoman aplikasi visual untuk menjaga konsistensi pada semua titik temu merek.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal py-8 md:py-10" style="--d:.15s">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-baseline">
+              <span class="md:col-span-2 font-display text-2xl font-semibold text-deep tabular-nums">02</span>
+              <div class="md:col-span-4">
+                <h3 class="font-display text-2xl font-bold text-ink">Desain Antarmuka Digital</h3>
+                <p class="text-sm text-ink/60 uppercase tracking-wider mt-1">UI/UX Design</p>
+              </div>
+              <p class="md:col-span-6 text-ink/80 leading-relaxed">
+                Penyusunan tata letak website dan aplikasi yang intuitif, ramah navigasi pengguna, dan memperhatikan struktur hierarki informasi yang runut.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal py-8 md:py-10" style="--d:.2s">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-baseline">
+              <span class="md:col-span-2 font-display text-2xl font-semibold text-deep tabular-nums">03</span>
+              <div class="md:col-span-4">
+                <h3 class="font-display text-2xl font-bold text-ink">Media Cetak &amp; Publikasi</h3>
+                <p class="text-sm text-ink/60 uppercase tracking-wider mt-1">Print &amp; Editorial</p>
+              </div>
+              <p class="md:col-span-6 text-ink/80 leading-relaxed">
+                Tata letak laporan tahunan, buku panduan, katalog, kemasan produk, dan materi pameran dengan presisi persiapan cetak siap produksi.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal py-8 md:py-10" style="--d:.25s">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-baseline">
+              <span class="md:col-span-2 font-display text-2xl font-semibold text-deep tabular-nums">04</span>
+              <div class="md:col-span-4">
+                <h3 class="font-display text-2xl font-bold text-ink">Sistem Desain &amp; Aset</h3>
+                <p class="text-sm text-ink/60 uppercase tracking-wider mt-1">Design Systems</p>
+              </div>
+              <p class="md:col-span-6 text-ink/80 leading-relaxed">
+                Penyusunan pustaka komponen terstruktur untuk tim internal agar perancangan materi promosi masa depan dapat dieksekusi dengan selaras.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Signature Widget: Project Estimator -->
+    <section id="kalkulator" class="py-20 md:py-32 bg-tint/60 scroll-mt-20">
+      <div class="max-w-4xl mx-auto px-6">
+        <div class="reveal text-left" style="--d:.05s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Simulasi Perencanaan</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold tracking-tight text-ink mt-3">
+            Perkirakan Waktu Proyek
+          </h2>
+          <p class="mt-4 text-ink/80 text-lg leading-relaxed max-w-2xl">
+            Pilih kebutuhan spesifik untuk melihat perkiraan tahapan dan durasi pengerjaan sebelum memulai diskusi rincian.
+          </p>
+        </div>
+
+        <div class="reveal mt-12 bg-white rounded-3xl p-6 sm:p-10 border border-black/10 shadow-sm" style="--d:.1s">
+          <form id="scope-form" class="space-y-8" onsubmit="event.preventDefault()">
+            <div>
+              <label class="block text-sm font-semibold uppercase tracking-wider text-ink/80 mb-4">
+                1. Lingkup Kebutuhan (Dapat memilih lebih dari satu)
+              </label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="checkbox" name="scope" value="identity" checked class="w-5 h-5 accent-deep rounded">
+                  <div>
+                    <div class="font-medium text-ink">Identitas &amp; Logo</div>
+                    <div class="text-xs text-ink/60">Panduan merek dasar</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="checkbox" name="scope" value="guidelines" class="w-5 h-5 accent-deep rounded">
+                  <div>
+                    <div class="font-medium text-ink">Buku Pedoman Lengkap</div>
+                    <div class="text-xs text-ink/60">Aturan cetak &amp; digital</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="checkbox" name="scope" value="ui" class="w-5 h-5 accent-deep rounded">
+                  <div>
+                    <div class="font-medium text-ink">Desain Antarmuka Web</div>
+                    <div class="text-xs text-ink/60">Prototipe dan aset tata letak</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="checkbox" name="scope" value="print" class="w-5 h-5 accent-deep rounded">
+                  <div>
+                    <div class="font-medium text-ink">Aset Cetak &amp; Kemasan</div>
+                    <div class="text-xs text-ink/60">Format siap masuk mesin cetak</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold uppercase tracking-wider text-ink/80 mb-4">
+                2. Skala Implementasi
+              </label>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="radio" name="scale" value="starter" checked class="w-4 h-4 accent-deep">
+                  <div>
+                    <div class="font-medium text-ink">Dasar</div>
+                    <div class="text-xs text-ink/60">Untuk inisiasi awal</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="radio" name="scale" value="growing" class="w-4 h-4 accent-deep">
+                  <div>
+                    <div class="font-medium text-ink">Menengah</div>
+                    <div class="text-xs text-ink/60">Media lebih beragam</div>
+                  </div>
+                </label>
+                <label class="flex items-center gap-3 p-4 rounded-2xl border border-black/10 cursor-pointer hover:bg-paper transition-colors has-[:checked]:border-deep has-[:checked]:bg-tint/40">
+                  <input type="radio" name="scale" value="comprehensive" class="w-4 h-4 accent-deep">
+                  <div>
+                    <div class="font-medium text-ink">Lengkap</div>
+                    <div class="text-xs text-ink/60">Penerapan terpadu</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Calculation Output Area -->
+            <div class="pt-6 border-t border-black/10 flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-paper/60 p-6 rounded-2xl">
+              <div>
+                <span class="text-xs uppercase tracking-wider text-ink/60 block font-medium">Perkiraan Waktu Eksekusi</span>
+                <span id="calc-result" class="text-3xl md:text-4xl font-bold font-display text-ink tabular-nums mt-1 block">
+                  3–4 Minggu
+                </span>
+                <span class="text-xs text-ink/70 mt-1 block">Termasuk siklus tinjauan berkala</span>
+              </div>
+              <a href="#kontak" class="inline-flex items-center justify-center rounded-full px-6 py-3 bg-ink text-paper font-semibold hover:-translate-y-0.5 active:scale-95 transition-transform duration-200">
+                Diskusikan Jadwal
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Principles (Dark Section) -->
+    <section id="prinsip" class="py-20 md:py-32 bg-ink text-paper scroll-mt-20 relative" style="background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-6xl mx-auto px-6 relative z-10">
+        
+        <div class="reveal max-w-2xl" style="--d:.05s">
+          <p class="text-sm uppercase tracking-widest text-accent font-semibold">Metode Kerja</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold tracking-tight text-white mt-3">
+            Fokus Pada Fungsi
+          </h2>
+          <p class="mt-4 text-paper/85 text-lg leading-relaxed">
+            Setiap garis, warna, dan pemilihan tipografi diputuskan berdasarkan alasan logis agar dapat bertahan lama dan mudah dipahami khalayak.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
+          
+          <div class="reveal" style="--d:.1s">
+            <div class="h-full rounded-2xl p-8 bg-white/5 border border-white/10 ring-1 ring-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <span class="font-display text-3xl font-bold text-accent tabular-nums">01</span>
+              <h3 class="font-display text-xl font-bold text-white mt-6">Riset Konteks</h3>
+              <p class="mt-3 text-paper/80 leading-relaxed text-sm">
+                Memahami medan komunikasi sebelum menarik garis pertama untuk menentukan arah visual yang relevan.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.2s">
+            <div class="h-full rounded-2xl p-8 bg-white/5 border border-white/10 ring-1 ring-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <span class="font-display text-3xl font-bold text-accent tabular-nums">02</span>
+              <h3 class="font-display text-xl font-bold text-white mt-6">Sistem Teratur</h3>
+              <p class="mt-3 text-paper/80 leading-relaxed text-sm">
+                Membangun kisi kerja, hirarki huruf, dan modul warna yang fleksibel untuk digunakan kembali tanpa rancu.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.3s">
+            <div class="h-full rounded-2xl p-8 bg-white/5 border border-white/10 ring-1 ring-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <span class="font-display text-3xl font-bold text-accent tabular-nums">03</span>
+              <h3 class="font-display text-xl font-bold text-white mt-6">Dokumentasi Siap Pakai</h3>
+              <p class="mt-3 text-paper/80 leading-relaxed text-sm">
+                Menyajikan berkas final yang tertata rapi beserta pedoman implementasi teknis untuk memudahkan produksi.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="kontak" class="py-20 md:py-32 bg-paper scroll-mt-20">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="reveal" style="--d:.05s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Mulai Diskusi</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold tracking-tight text-ink mt-3">
+            Hubungi Kami
+          </h2>
+          <p class="mt-4 text-ink/80 text-lg leading-relaxed max-w-xl">
+            Tuliskan ringkasan kebutuhan proyek Anda untuk memulai penjadwalan sesi tinjauan awal.
+          </p>
+        </div>
+
+        <ul class="mt-10 grid gap-4 sm:grid-cols-2">
+          <li class="reveal" style="--d:.1s">
+            <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-white break-words">
+              <span class="text-sm uppercase tracking-widest text-ink/60 font-medium">Surat Elektronik</span>
+              <span class="text-lg font-medium tabular-nums text-ink mt-1">halo@studiodesain.id</span>
+              <span class="text-xs text-ink/60 mt-2">Kirim rincian berkas atau kerangka acuan kerja</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.2s">
+            <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-white break-words">
+              <span class="text-sm uppercase tracking-widest text-ink/60 font-medium">Waktu Peninjauan</span>
+              <span class="text-lg font-medium tabular-nums text-ink mt-1">Senin – Jumat, 09.00 – 17.00 WIB</span>
+              <span class="text-xs text-ink/60 mt-2">Konsultasi tatap maya terjadwal</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-12 bg-paper border-t border-black/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-ink/75">
+      <div class="font-display font-bold tracking-tight text-ink">
+        STUDIO DESAIN
+      </div>
+      <div>
+        &copy; <span id="year"></span> Hak cipta dilindungi undang-undang.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Set Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu
+    const mobileMenu = document.getElementById('mobile-menu');
+    const menuBtn = document.getElementById('menu-btn');
+    const closeBtn = document.getElementById('close-btn');
+    const mobileLinks = document.querySelectorAll('.mobile-link');
+
+    function setMenu(open) {
+      mobileMenu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    if (menuBtn) menuBtn.addEventListener('click', () => setMenu(true));
+    if (closeBtn) closeBtn.addEventListener('click', () => setMenu(false));
+    mobileMenu.addEventListener('click', (e) => {
+      if (e.target === mobileMenu) setMenu(false);
+    });
+    mobileLinks.forEach(link => {
+      link.addEventListener('click', () => setMenu(false));
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
+        setMenu(false);
+      }
+    });
+
+    // Project Estimator Widget Logic
+    const scopeForm = document.getElementById('scope-form');
+    const calcResult = document.getElementById('calc-result');
+
+    function updateEstimation() {
+      if (!scopeForm || !calcResult) return;
+      const checkedScopes = scopeForm.querySelectorAll('input[name="scope"]:checked').length;
+      const scale = scopeForm.querySelector('input[name="scale"]:checked')?.value || 'starter';
+
+      let baseWeeks = Math.max(1, checkedScopes * 1.5);
+      if (scale === 'growing') baseWeeks *= 1.4;
+      if (scale === 'comprehensive') baseWeeks *= 1.8;
+
+      const minW = Math.max(2, Math.round(baseWeeks));
+      const maxW = minW + 2;
+
+      calcResult.textContent = `${minW}–${maxW} Minggu`;
+    }
+
+    if (scopeForm) {
+      scopeForm.addEventListener('change', updateEstimation);
+      updateEstimation();
+    }
+
+    // Scroll Reveal IntersectionObserver
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries, obs) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            obs.unobserve(entry.target);
+          }
+        });
+      }, {
+        threshold: 0.1,
+        rootMargin: '0px 0px -40px 0px'
+      });
+
+      document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    } else {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+    }
+  </script>
+</body>
+</html>

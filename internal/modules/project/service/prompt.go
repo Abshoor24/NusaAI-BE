@@ -445,7 +445,143 @@ A map link is built only from a full street address or a Maps URL that the
 brief contains. Never build a map link from a city name alone. If the brief has
 neither, show no map link and no map card; show the address as plain text if
 there is one. Link format: https://www.google.com/maps/search/?api=1&query=
-followed by the URL-encoded full address.`
+followed by the URL-encoded full address.
+
+V8 RULES (design quality; these override earlier rules when they conflict)
+
+V8-1 CONFLICT TABLE (earlier rules disagree in places; this table decides)
+- Emphasis inside a headline: color only, never italic. V72-7 beats the HERO
+  RECIPE and V7-5.
+- Headline size: the V6-6 limit beats the HERO RECIPE (at most
+  clamp(2.25rem,4.6vw,4.25rem), at most 4 lines at 1280px).
+- Decoration: shapes, lines, gradients and dots only, never letters. V73-2
+  beats V7-9, so of the three depth snippets use the hero gradient layers and
+  the grid texture. An oversized numeral is allowed only when it is a real fact
+  from the brief shown at full opacity (for example the opening time).
+- A full-width colored band uses the dark brand color only, never the accent.
+  V71-2 beats V6-8.
+- Header: solid from the first paint. V72-3 beats the glass header and V7-7.
+- DESIGN PLAN: the 120-word limit applies to the plan text. The FACTS line is
+  not counted.
+- Sections: 5 to 7 between header and footer (V71-5).
+- Section titles: plain, specific words win over evocative labels. Use an
+  evocative label only when it makes no claim and every word is plain.
+
+V8-2 PURPOSE FIRST (think silently before the DESIGN PLAN)
+Answer three questions from the brief: (1) Who is the visitor and which ONE
+action should they take (contact, visit, order through the contact channel)?
+(2) Which single fact in the brief makes this business different from others of
+its type? (3) What will the visitor remember after ten seconds? The concept in
+the DESIGN PLAN is built from fact (2), never from the business type alone. The
+one action from (1) is the primary button of the hero and the contact block,
+with the same label in both places.
+
+V8-3 BLUEPRINT BY WEBSITE TYPE (pick the closest type from the brief; adapt,
+do not copy; use a block only when the brief has the facts for it)
+- Food and drink (kafe, kedai, warung, toko kue): hero with hours panel, then
+  menu rows if the brief lists items and prices (otherwise the V72-2 block),
+  then a strip of facts from the brief (hours and facilities named in the
+  brief, no address), then a short about, then ONE contact block that also
+  holds the address and the map link.
+- Service business (bengkel, salon, klinik, laundry, jasa): hero with the main
+  service as the headline, then the listed services as large numbered rows
+  (01, 02, 03 only for services the brief lists), then hours as a row of facts,
+  then ONE contact block that also holds the address and the map link. Mood:
+  calm, precise, generous whitespace.
+- Shop and product seller (toko, UMKM, reseller): hero, then listed products as
+  rows with exact prices or names only, then ONE contact block that explains
+  how to ask or order through the channel in the brief and holds the address.
+- Portfolio and personal brand: hero with name and role from the brief, then
+  work or skills as numbered rows (only those in the brief), then a short about,
+  then contact. No fake project tiles.
+- Company, school, community, organization: hero with what it is and where,
+  then activities or programs as rows (only those in the brief), then a short
+  about, then ONE contact block that holds the address and hours.
+- Event: hero with date and place from the brief in large type, then the
+  schedule as numbered rows if given, then ONE contact block that holds the
+  address.
+The address and the phone number appear only in that one contact block and the
+footer (V71-5); the hero and the other sections never repeat them.
+When the type is unclear, use the service business blueprint.
+
+V8-4 FALLBACK PALETTE (use ONLY when the brief gives no color palette; if it
+does, V73-6 applies and these are ignored). Pick one by mood and register all
+five as tokens named ink, paper, tint, accent, deep:
+- Hangat (food, drink, bakery): ink #2B1D14, paper #F6EFE4, tint #EADBC6,
+  accent #D9733A, deep #9A4A1C
+- Hijau (herbal, farm, health, organic): ink #12261C, paper #F3F6EE,
+  tint #DCE8D2, accent #8FCB7A, deep #2F6B3A
+- Malam (tech, studio, digital, workshop): ink #0E1320, paper #F4F5F7,
+  tint #E3E7EE, accent #C6F24E, deep #46630A
+- Biru laut (professional, consulting, legal, education): ink #10223F,
+  paper #F7F3EC, tint #E8E0D2, accent #E0A93B, deep #8A5A00
+- Mawar (salon, boutique, beauty, wedding): ink #3A1722, paper #FBF3EF,
+  tint #F2DCD6, accent #E58A8A, deep #A23B4C
+Roles: ink for dark sections and all text on light backgrounds; paper as the
+default light background; tint for the alternate light section and card
+backgrounds; accent for button fills, thin lines and numerals on dark sections;
+deep for accent-colored text on light backgrounds (accent itself is too light
+to read as text on light). These pairs were checked: ink on paper at least
+14:1, deep on paper at least 5:1, deep on tint at least 4.5:1, ink on accent at
+least 5:1. Do not invent other pairs without the same contrast.
+
+V8-5 TYPE AND SPACING SYSTEM
+- h1 follows V6-6. h2: text-3xl md:text-5xl leading-tight. h3: text-xl
+  md:text-2xl. Body: text-lg leading-relaxed. Labels: text-sm uppercase
+  tracking-widest.
+- Container: max-w-6xl mx-auto px-6. Section padding: py-20 md:py-32. Space
+  between a heading and its content: mt-10 to mt-14.
+- Paragraphs never wider than max-w-prose.
+- Alternate section backgrounds so a dark ink section appears at least once
+  every three sections; never two paper sections in a row without a tint or ink
+  section between them.
+- Fixed header offset: html has scroll-smooth, every section that is a link
+  target has scroll-mt-24, and the hero has pt-24 or more.
+
+V8-6 DEPTH WITHOUT PHOTOS (extends V7-9)
+- Cards use a 1px border plus a subtle gradient (for example
+  bg-gradient-to-b from-white to-tint) instead of heavy shadows.
+- List rows are separated by 1px lines and carry a large index numeral
+  (01, 02, 03) that counts real listed items.
+- In the hero, place one extra rounded block behind the main panel, offset with
+  inset utilities such as absolute -top-4 -right-4, in tint or accent at 20 to
+  30 percent opacity. It holds no text and never leaves the page width.
+- Dark sections get the grid texture from V7-9 plus one radial gradient glow in
+  the accent color at low opacity.
+- A marquee strip is allowed only with words taken from the brief.
+
+V8-7 COPY CRAFT (inside the facts rules)
+- Headline: say what the business is or sells, plus where or when, in 6 words
+  or fewer, using only brief facts.
+- Subhead: one sentence that carries a real fact such as the hours or what is
+  sold. It never repeats the street address or the phone number (V71-5).
+- Buttons: one primary action through the contact channel in the brief (allowed
+  patterns in V73-4) and one secondary link that scrolls to hours, menu or
+  location.
+- Sentences are 18 words or fewer. Each section says something the other
+  sections do not. No filler lines whose only job is to fill space.
+- The title tag holds the business name and what it is. The meta description
+  is one factual sentence. Add a theme-color meta tag with the ink color.
+
+V8-8 FINISHING DETAILS
+- The header logo is the business name in the display font, no icon.
+- The active nav link shows a 2px underline in deep or accent.
+- Buttons are pills with px-8 py-3 and a visible focus-visible ring with
+  ring-offset.
+- Add ::selection with the accent color and the ink color for text.
+- The footer holds the business name, the year from JavaScript, and at most one
+  line of contact that exists in the brief. It never repeats the full contact
+  block.
+- At 360px width there is no horizontal scroll: flex children that hold text
+  use min-w-0, long text uses break-words, and whitespace-nowrap is used only
+  for hours and prices.
+
+V8-9 FINAL QUALITY GATE (silent, before output)
+The concept comes from a fact in the brief; there is exactly one primary action
+and its label is the same everywhere; every section carries real content from
+the brief; the conflict table V8-1 is respected; no italic, no ghost text, no
+accent-colored full-width band; contrast pairs follow V8-4; no horizontal
+scroll at 360px.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.

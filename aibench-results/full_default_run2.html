@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- DESIGN PLAN:
+Concept: Distinctive minimalist brand page for Brief Full focused on direct inquiry generation.
+Signature widget: Interactive message composer allowing visitors to draft and copy structured inquiry text.
+Hero composition: Asymmetric 12-column layout with bold headline and action buttons on the left, offset decorative visual panel on the right.
+Palette tokens: ink (#2B1D14), paper (#F6EFE4), tint (#EADBC6), accent (#D9733A), deep (#9A4A1C). Fonts: Outfit and Inter.
+Section order: Hero, Information, Menu Inquiry, Message Builder, About, Contact.
+FACTS: Menu: NONE | WhatsApp: NONE | Address: NONE | Hours: NONE | PRIMARY: NONE | ACCENT: NONE
+-->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brief Full — Informasi Resmi</title>
+  <meta name="description" content="Halaman informasi resmi Brief Full. Hubungi kami untuk pertanyaan dan informasi layanan.">
+  <meta name="theme-color" content="#2B1D14">
+  <script>document.documentElement.classList.add('js')</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#2B1D14',
+            paper: '#F6EFE4',
+            tint: '#EADBC6',
+            accent: '#D9733A',
+            deep: '#9A4A1C'
+          },
+          fontFamily: {
+            display: ['Outfit', 'sans-serif'],
+            sans: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    ::selection { background-color: #D9733A; color: #2B1D14; }
+    .js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s); }
+    .js .reveal.in { opacity: 1; transform: none; }
+    @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    .rise { animation: rise .8s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d,0s); }
+    .float { animation: float 7s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .js .reveal { opacity: 1; transform: none; transition: none; }
+      .rise, .float { animation: none; }
+    }
+  </style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10 text-ink">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#beranda" class="font-display text-2xl font-bold tracking-tight text-ink hover:text-deep transition-colors">
+        Brief Full
+      </a>
+      
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium">
+        <a href="#beranda" class="text-ink hover:text-deep transition-colors py-1">Beranda</a>
+        <a href="#informasi" class="text-ink hover:text-deep transition-colors py-1">Informasi</a>
+        <a href="#menu" class="text-ink hover:text-deep transition-colors py-1">Menu</a>
+        <a href="#pesan" class="text-ink hover:text-deep transition-colors py-1">Pesan</a>
+        <a href="#tentang" class="text-ink hover:text-deep transition-colors py-1">Tentang</a>
+        <a href="#kontak" class="text-ink hover:text-deep transition-colors py-1">Kontak</a>
+      </nav>
+
+      <button type="button" onclick="setMenu(true)" class="md:hidden p-2 text-ink hover:text-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg" aria-label="Buka navigasi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Menu -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 flex flex-col bg-paper text-ink p-6">
+    <div class="flex items-center justify-between pb-6 border-b border-black/10">
+      <span class="font-display text-2xl font-bold text-ink">Brief Full</span>
+      <button type="button" onclick="setMenu(false)" class="p-2 text-ink hover:text-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg" aria-label="Tutup navigasi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+    <nav class="flex flex-col gap-6 pt-8 text-xl font-medium">
+      <a href="#beranda" onclick="setMenu(false)" class="hover:text-deep transition-colors">Beranda</a>
+      <a href="#informasi" onclick="setMenu(false)" class="hover:text-deep transition-colors">Informasi</a>
+      <a href="#menu" onclick="setMenu(false)" class="hover:text-deep transition-colors">Menu</a>
+      <a href="#pesan" onclick="setMenu(false)" class="hover:text-deep transition-colors">Pesan</a>
+      <a href="#tentang" onclick="setMenu(false)" class="hover:text-deep transition-colors">Tentang</a>
+      <a href="#kontak" onclick="setMenu(false)" class="hover:text-deep transition-colors">Kontak</a>
+    </nav>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section id="beranda" class="pt-32 pb-20 md:py-36 min-h-[100svh] flex items-center scroll-mt-24 relative overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,115,58,.15),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(234,219,198,.4),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <div class="lg:col-span-7 space-y-6">
+            <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:0s">
+              Selamat Datang
+            </p>
+            <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold tracking-tight text-ink leading-[1.1]" style="--d:.1s">
+              Layanan Informasi <span class="text-deep">Brief Full</span>
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/80 max-w-prose leading-relaxed" style="--d:.2s">
+              Halaman resmi untuk menyampaikan pertanyaan dan memperoleh informasi terbaru langsung dari kami.
+            </p>
+            <div class="rise flex flex-wrap gap-4 pt-2" style="--d:.3s">
+              <a href="#pesan" class="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-accent text-ink font-semibold shadow-sm hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+                Tulis Pesan
+              </a>
+              <a href="#informasi" class="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-tint text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Lihat Informasi
+              </a>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5">
+            <div class="relative">
+              <div class="absolute -top-3 -right-3 inset-0 rounded-3xl bg-accent/20 pointer-events-none" aria-hidden="true"></div>
+              <div class="relative overflow-hidden rounded-3xl p-8 md:p-10 min-h-[22rem] flex items-center justify-center bg-tint text-ink border border-black/10 float">
+                <div class="relative text-center space-y-3">
+                  <span class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-paper text-deep font-display font-bold text-xl mb-2">
+                    BF
+                  </span>
+                  <p class="text-sm uppercase tracking-widest text-deep font-semibold">Informasi Utama</p>
+                  <p class="text-3xl md:text-4xl font-bold tracking-tight text-ink leading-tight">
+                    Brief Full
+                  </p>
+                  <div class="pt-4 flex justify-center">
+                    <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-paper/80 border border-black/10 text-xs font-semibold uppercase tracking-wider text-ink">
+                      Status Aktif
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Section Informasi -->
+    <section id="informasi" class="py-20 md:py-32 bg-paper border-t border-black/10 scroll-mt-24">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Layanan Kami</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Informasi dan Pertanyaan</h2>
+        </div>
+
+        <div class="mt-12 grid gap-6 md:grid-cols-3">
+          <div class="reveal" style="--d:.08s">
+            <div class="rounded-2xl p-8 bg-gradient-to-b from-white to-tint/40 border border-black/10 transition-transform duration-300 hover:-translate-y-1 h-full">
+              <span class="text-3xl font-display font-bold text-deep">01</span>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Konsultasi Informasi</h3>
+              <p class="mt-2 text-ink/80 text-base leading-relaxed">
+                Tanyakan seputar layanan dan keperluan Anda melalui format pesan yang tersedia.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.16s">
+            <div class="rounded-2xl p-8 bg-gradient-to-b from-white to-tint/40 border border-black/10 transition-transform duration-300 hover:-translate-y-1 h-full">
+              <span class="text-3xl font-display font-bold text-deep">02</span>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Pengajuan Pertanyaan</h3>
+              <p class="mt-2 text-ink/80 text-base leading-relaxed">
+                Kirimkan detail kebutuhan Anda untuk mendapatkan penjelasan lebih rinci.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.24s">
+            <div class="rounded-2xl p-8 bg-gradient-to-b from-white to-tint/40 border border-black/10 transition-transform duration-300 hover:-translate-y-1 h-full">
+              <span class="text-3xl font-display font-bold text-deep">03</span>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Komunikasi Langsung</h3>
+              <p class="mt-2 text-ink/80 text-base leading-relaxed">
+                Hubungi saluran resmi kami untuk koordinasi lebih lanjut secara langsung.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Menu Section (V72-2 block) -->
+    <section id="menu" class="py-20 md:py-28 bg-tint scroll-mt-24 border-t border-black/10">
+      <div class="max-w-3xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Menu</p>
+          <h2 class="font-display text-3xl md:text-4xl font-semibold text-ink mt-4">Tanya Menu Kami</h2>
+          <p class="text-lg mt-4 text-ink/80 leading-relaxed">Daftar menu dan harga belum ditampilkan di halaman ini. Hubungi kami untuk menanyakannya.</p>
+          <a href="#pesan" class="inline-flex mt-6 rounded-full px-8 py-3.5 bg-accent text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">Tanya Menu</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Signature Widget Section -->
+    <section id="pesan" class="py-20 md:py-32 bg-ink text-paper scroll-mt-24 relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-5xl mx-auto px-6 relative">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-accent font-semibold">Pembuat Pesan</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-paper mt-3">Susun Pesan Informasi</h2>
+          <p class="mt-4 text-paper/80 max-w-prose text-lg leading-relaxed">
+            Gunakan alat ini untuk membuat draf pesan secara rapi sebelum Anda menyalin dan mengirimkannya.
+          </p>
+        </div>
+
+        <div class="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          <div class="reveal" style="--d:.1s">
+            <form onsubmit="return false;" class="bg-paper/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 space-y-5">
+              <div>
+                <label for="input-nama" class="block text-sm font-medium text-paper/90 mb-2">Nama Anda</label>
+                <input type="text" id="input-nama" oninput="updateDraft()" placeholder="Masukkan nama..." class="w-full px-4 py-3 rounded-xl bg-paper/10 border border-white/20 text-paper placeholder-paper/40 focus:outline-none focus:ring-2 focus:ring-accent text-base transition-colors">
+              </div>
+
+              <div>
+                <label for="select-topik" class="block text-sm font-medium text-paper/90 mb-2">Kategori Pertanyaan</label>
+                <select id="select-topik" onchange="updateDraft()" class="w-full px-4 py-3 rounded-xl bg-paper/10 border border-white/20 text-paper focus:outline-none focus:ring-2 focus:ring-accent text-base transition-colors">
+                  <option value="Informasi Umum" class="bg-ink text-paper">Informasi Umum</option>
+                  <option value="Pertanyaan Layanan" class="bg-ink text-paper">Pertanyaan Layanan</option>
+                  <option value="Permintaan Menu & Harga" class="bg-ink text-paper">Permintaan Menu &amp; Harga</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="input-detail" class="block text-sm font-medium text-paper/90 mb-2">Pesan Tambahan</label>
+                <textarea id="input-detail" rows="3" oninput="updateDraft()" placeholder="Tuliskan detail pertanyaan Anda..." class="w-full px-4 py-3 rounded-xl bg-paper/10 border border-white/20 text-paper placeholder-paper/40 focus:outline-none focus:ring-2 focus:ring-accent text-base transition-colors resize-none"></textarea>
+              </div>
+            </form>
+          </div>
+
+          <div class="reveal" style="--d:.2s">
+            <div class="bg-paper/10 rounded-2xl p-6 border border-white/15 space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-white/10">
+                <span class="text-xs font-semibold uppercase tracking-wider text-accent">Pratinjau Draf Pesan</span>
+                <span class="text-xs text-paper/60">Teks Siap Salin</span>
+              </div>
+              <pre id="preview-box" class="whitespace-pre-wrap font-sans text-sm text-paper/90 leading-relaxed bg-black/30 p-4 rounded-xl border border-white/10 min-h-[140px]"></pre>
+              <button type="button" onclick="copyDraft()" id="copy-btn" class="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-accent text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5" aria-hidden="true">
+                  <path d="M5 13l4 4L19 7"/>
+                </svg>
+                <span id="copy-btn-text">Salin Pesan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tentang Section (V73-3 block) -->
+    <section id="tentang" class="py-20 md:py-32 bg-paper border-t border-black/10 scroll-mt-24">
+      <div class="max-w-3xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Tentang</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Tentang Brief Full</h2>
+          <p class="mt-6 text-lg text-ink/80 leading-relaxed">
+            Brief Full hadir sebagai sarana penyedia informasi terpadu. Kami memfasilitasi komunikasi dan pertanyaan seputar layanan kami.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Kontak Section (V71-4 block pattern) -->
+    <section id="kontak" class="py-20 md:py-32 bg-tint border-t border-black/10 scroll-mt-24">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Hubungi Kami</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Kontak</h2>
+          <p class="mt-4 text-lg text-ink/80 max-w-prose">
+            Silakan gunakan sarana pembuat pesan di atas untuk menyiapkan pertanyaan Anda secara mandiri.
+          </p>
+        </div>
+
+        <ul class="mt-10 grid gap-4 sm:grid-cols-2">
+          <li class="reveal" style="--d:.1s">
+            <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-paper break-words">
+              <span class="text-sm uppercase tracking-widest text-deep font-semibold">Layanan Pesan</span>
+              <span class="text-lg font-medium text-ink mt-1">Siapkan draf pesan pada bagian pembuat pesan di atas.</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.2s">
+            <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-paper break-words">
+              <span class="text-sm uppercase tracking-widest text-deep font-semibold">Informasi Saluran</span>
+              <span class="text-lg font-medium text-ink mt-1">Saluran komunikasi tambahan akan diperbarui secara berkala.</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-12 bg-ink text-paper border-t border-white/10 text-sm">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <p class="font-display font-semibold text-base tracking-wide">Brief Full</p>
+      <p class="text-paper/70">
+        &copy; <span id="year"></span> Brief Full. Seluruh hak cipta dilindungi.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Set Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    function setMenu(open) {
+      var menu = document.getElementById('mobile-menu');
+      if (menu) {
+        menu.classList.toggle('hidden', !open);
+        document.body.classList.toggle('overflow-hidden', open);
+      }
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') setMenu(false);
+    });
+
+    // Intersection Observer for Reveal
+    document.addEventListener('DOMContentLoaded', function() {
+      var reveals = document.querySelectorAll('.reveal');
+      if ('IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function(entries) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('in');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.1 });
+        reveals.forEach(function(el) { observer.observe(el); });
+      } else {
+        reveals.forEach(function(el) { el.classList.add('in'); });
+      }
+      updateDraft();
+    });
+
+    // Message Builder Widget Script
+    function updateDraft() {
+      var nama = document.getElementById('input-nama').value.trim() || '[Nama Anda]';
+      var topik = document.getElementById('select-topik').value;
+      var detail = document.getElementById('input-detail').value.trim() || 'Saya ingin menanyakan informasi mengenai layanan Brief Full.';
+      
+      var text = 'Halo Brief Full,\n\nSaya ' + nama + '.\nKategori: ' + topik + '\n\nPesan:\n' + detail;
+      document.getElementById('preview-box').textContent = text;
+    }
+
+    function copyDraft() {
+      var text = document.getElementById('preview-box').textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          showCopySuccess();
+        });
+      } else {
+        showCopySuccess();
+      }
+    }
+
+    function showCopySuccess() {
+      var btnText = document.getElementById('copy-btn-text');
+      var original = btnText.textContent;
+      btnText.textContent = 'Tersalin!';
+      setTimeout(function() {
+        btnText.textContent = original;
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

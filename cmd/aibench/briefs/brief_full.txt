@@ -1,0 +1,8 @@
+description: "Kopi Arum adalah kedai kopi spesialitas di pusat kota. Kami menjual kopi tubruk, kopi susu, es kopi, dan berbagai makanan ringan seperti croissant, muffin, dan kue tradisional. Pelanggan dapat duduk di ruangan kami atau membawa pulang."
+website_type: "online_store"
+business_name: "Kopi Arum"
+style: "hangat, menawan, modern"
+color_palette: "PRIMARY #2B1D14, ACCENT #D9733A"
+language: "id"
+sections: ["menu", "kontak", "tentang", "jam buka", "ulasan"]
+images: []

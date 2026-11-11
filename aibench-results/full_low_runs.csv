@@ -1,0 +1,6 @@
+run_number,first_chunk_ms,first_text_ms,total_ms,prompt_tokens,candidates_tokens,thoughts_tokens,total_tokens,finish_reason,html_file,attempt_count,error
+1,299330,299330,368155,10572,10903,0,21475,STOP,full_low_run1.html,1,
+2,152305,152305,199856,10572,7552,0,18124,STOP,full_low_run2.html,2,
+1,6213,6213,32896,10572,6281,0,16853,STOP,full_low_run1.html,1,
+2,2373,2373,7117,0,0,0,0,,full_low_run2.html,1,
+1,279302,279302,316046,10572,6864,0,17436,STOP,full_low_run1.html,1,

@@ -31,13 +31,16 @@ type GeminiProvider struct {
 	// preserving the model defaults.
 	maxOutputTokens int64
 	thinkingBudget  *int
+	// thinkingLevel is the Gemini 3.x thinking level (MINIMAL/LOW/MEDIUM/HIGH).
+	// nil means omit thinkingConfig from the payload entirely.
+	thinkingLevel *string
 	logger          *slog.Logger
 }
 
 func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider {
 	return &GeminiProvider{
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:  cfg.APIKey,
+		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:       cfg.APIKey,
 		// Stream client: no Timeout so we don't kill a long-running stream body.
 		// ResponseHeaderTimeout protects against a server that accepts the TCP
 		// connection but never sends response headers.
@@ -48,6 +51,7 @@ func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider
 		},
 		maxOutputTokens: cfg.MaxOutputTokens,
 		thinkingBudget:  cfg.ThinkingBudget,
+		thinkingLevel:   cfg.ThinkingLevel,
 		logger:          logger,
 	}
 }
@@ -130,14 +134,16 @@ func providerStatusError(code int) error {
 // generationConfig returns the Gemini generationConfig payload, or nil when
 // neither knob is set so the request is byte-identical to before.
 func (p *GeminiProvider) generationConfig() map[string]interface{} {
-	if p.maxOutputTokens <= 0 && p.thinkingBudget == nil {
+	if p.maxOutputTokens <= 0 && p.thinkingBudget == nil && p.thinkingLevel == nil {
 		return nil
 	}
 	genCfg := map[string]interface{}{}
 	if p.maxOutputTokens > 0 {
 		genCfg["maxOutputTokens"] = p.maxOutputTokens
 	}
-	if p.thinkingBudget != nil {
+	if p.thinkingLevel != nil {
+		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingLevel": *p.thinkingLevel}
+	} else if p.thinkingBudget != nil {
 		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingBudget": *p.thinkingBudget}
 	}
 	return genCfg

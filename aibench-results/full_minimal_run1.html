@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Kedai kopi lokal modern yang berfokus pada kemudahan akses informasi jam buka dan kontak langsung tanpa klaim berlebihan.
+(2) Signature Widget: Visual panel jam buka interaktif di Hero yang mendeteksi status buka/tutup secara real-time (WIB) dengan layout waktu terpisah yang tegas.
+(3) Hero Composition: Asimetris 12-kolom (7 kolom kiri untuk headline, subhead factual, dan 2 tombol utama; 5 kolom kanan untuk panel visual jam buka berstruktur V71-3 dengan aksen blok offset).
+(4) Palette Tokens & Fonts: Palette Hangat (ink #2B1D14, paper #F6EFE4, tint #EADBC6, accent #D9733A, deep #9A4A1C). Fonts: Outfit (Display) & Inter (Body).
+(5) Section Order & Layout:
+    1. Header (Fixed solid bg-paper/95, logo + nav + CTA)
+    2. Hero (Split 7/5, asymmetric, dark gradient depth)
+    3. Menu (V72-2 block karena brief tidak menyertakan daftar menu/harga)
+    4. Jam Buka & Fasilitas (Split layout, tint background, list fakta)
+    5. Tentang (Single text column factual, ink background full-bleed)
+    6. Kontak & Lokasi (Single contact block V71-4)
+    7. Footer (Minimal, ink bg, year via JS)
+FACTS: menu items: NONE, WhatsApp: NONE, address: NONE, opening hours: NONE
+-->
+<script>document.documentElement.classList.add('js')</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kedai Kopi Lokal</title>
+<meta name="description" content="Informasi kedai kopi lokal, jam operasional, dan layanan kontak resmi.">
+<meta name="theme-color" content="#2B1D14">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#2B1D14',
+          paper: '#F6EFE4',
+          tint: '#EADBC6',
+          accent: '#D9733A',
+          deep: '#9A4A1C',
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          sans: ['Inter', 'sans-serif'],
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  ::selection {
+    background-color: #D9733A;
+    color: #2B1D14;
+  }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+  }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .rise {
+    animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+    animation-delay: var(--d,0s);
+  }
+  .float {
+    animation: float 7s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- HEADER -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-2xl font-bold tracking-tight text-ink">
+        Kopi Lokal
+      </a>
+      
+      <nav class="hidden md:flex items-center gap-8">
+        <a href="#menu" class="text-sm uppercase tracking-widest font-semibold text-ink/80 hover:text-deep transition-colors">Menu</a>
+        <a href="#layanan" class="text-sm uppercase tracking-widest font-semibold text-ink/80 hover:text-deep transition-colors">Informasi</a>
+        <a href="#tentang" class="text-sm uppercase tracking-widest font-semibold text-ink/80 hover:text-deep transition-colors">Tentang</a>
+        <a href="#kontak" class="text-sm uppercase tracking-widest font-semibold text-ink/80 hover:text-deep transition-colors">Kontak</a>
+      </nav>
+
+      <div class="flex items-center gap-4">
+        <a href="#kontak" class="hidden sm:inline-flex rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+          Hubungi Kami
+        </a>
+        <button type="button" onclick="setMenu(true)" class="md:hidden p-2 text-ink rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep" aria-label="Buka menu navigasi">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO SECTION -->
+    <section class="relative min-h-[90svh] pt-32 pb-20 md:pt-40 md:pb-32 flex items-center overflow-hidden bg-paper" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,115,58,.15),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(154,74,28,.1),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <!-- Left Column -->
+          <div class="lg:col-span-7 flex flex-col items-start">
+            <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.1s">Kedai Kopi Lokal</p>
+            <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink leading-[1.1] mt-4 max-w-xl text-balance" style="--d:.2s">
+              Ruang Minum Kopi untuk Hari Anda
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/80 mt-6 max-w-prose leading-relaxed" style="--d:.3s">
+              Tempat berkumpul dan menikmati seduhan kopi. Silakan hubungi kami untuk informasi lebih lanjut mengenai layanan kami.
+            </p>
+            <div class="rise flex flex-wrap items-center gap-4 mt-8" style="--d:.4s">
+              <a href="#kontak" class="rounded-full px-8 py-3.5 bg-accent text-ink font-semibold text-base hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Hubungi Kami
+              </a>
+              <a href="#menu" class="rounded-full px-8 py-3.5 bg-tint/60 text-ink font-semibold text-base hover:bg-tint transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Lihat Menu
+              </a>
+            </div>
+          </div>
+
+          <!-- Right Column / Hero Hours Panel -->
+          <div class="lg:col-span-5 relative">
+            <div class="absolute -top-4 -right-4 inset-0 bg-accent/20 rounded-3xl transform rotate-2 pointer-events-none" aria-hidden="true"></div>
+            <div class="relative overflow-hidden rounded-3xl p-8 md:p-10 min-h-[22rem] flex items-center justify-center bg-ink text-paper shadow-xl">
+              <!-- Grid Texture background -->
+              <div class="absolute inset-0 pointer-events-none opacity-20" style="background-image:linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px);background-size:32px 32px" aria-hidden="true"></div>
+              
+              <!-- Simple Geometric Accent Decoration (No ghost text/words) -->
+              <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-10" aria-hidden="true">
+                <div class="w-48 h-48 rounded-full border-4 border-accent float"></div>
+              </div>
+
+              <div class="relative text-center z-10">
+                <p class="text-sm uppercase tracking-widest text-tint/90 font-medium">Informasi Kedai</p>
+                <div class="mt-6 space-y-2">
+                  <p class="text-2xl md:text-3xl font-bold tracking-tight text-paper">Kedai Kopi</p>
+                  <p class="text-base text-tint/80">Lokal &amp; Ramah</p>
+                </div>
+                <div class="mt-8">
+                  <span id="open-status-pill" class="px-4 py-1.5 rounded-full font-semibold text-base inline-block">
+                    Informasi Kontak tersedia
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- MENU SECTION (V72-2 block: brief does not contain menu or prices) -->
+    <section id="menu" class="scroll-mt-24 py-20 md:py-32 bg-tint/40 border-y border-black/5">
+      <div class="max-w-3xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Menu Kedai</p>
+          <h2 class="font-display text-3xl md:text-4xl font-semibold text-ink mt-3">Tanya Menu Kami</h2>
+          <p class="text-lg mt-4 text-ink/80 leading-relaxed">Daftar menu dan harga belum ditampilkan di halaman ini. Hubungi kami untuk menanyakannya secara langsung.</p>
+          <div class="mt-8">
+            <a href="#kontak" class="inline-flex rounded-full px-8 py-3.5 bg-accent text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">Hubungi Kami</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INFORMATION STRIP SECTION -->
+    <section id="layanan" class="scroll-mt-24 py-20 md:py-32 bg-paper">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="reveal max-w-2xl" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Layanan &amp; Suasana</p>
+          <h2 class="font-display text-3xl md:text-5xl font-semibold text-ink mt-3">Kenyamanan di Kedai</h2>
+        </div>
+
+        <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="reveal" style="--d:.1s">
+            <div class="rounded-3xl p-8 bg-gradient-to-b from-white to-tint/30 border border-black/10 h-full transition-transform duration-300 hover:-translate-y-1">
+              <div class="text-3xl font-display font-bold text-accent">01</div>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Ruang Santai</h3>
+              <p class="text-ink/80 mt-2 leading-relaxed">Suasana yang tenang untuk menikmati minuman Anda atau menyelesaikan pekerjaan.</p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.2s">
+            <div class="rounded-3xl p-8 bg-gradient-to-b from-white to-tint/30 border border-black/10 h-full transition-transform duration-300 hover:-translate-y-1">
+              <div class="text-3xl font-display font-bold text-accent">02</div>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Pelayanan Ramah</h3>
+              <p class="text-ink/80 mt-2 leading-relaxed">Staf kami siap menyambut dan memberikan layanan terbaik saat Anda berkunjung.</p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.3s">
+            <div class="rounded-3xl p-8 bg-gradient-to-b from-white to-tint/30 border border-black/10 h-full transition-transform duration-300 hover:-translate-y-1">
+              <div class="text-3xl font-display font-bold text-accent">03</div>
+              <h3 class="font-display text-xl font-semibold text-ink mt-4">Penyajian Kopi</h3>
+              <p class="text-ink/80 mt-2 leading-relaxed">Berbagai pilihan sajian minuman yang dibuat untuk melengkapi waktu istirahat Anda.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT SECTION (Dark Full-Bleed Section) -->
+    <section id="tentang" class="scroll-mt-24 py-20 md:py-32 bg-ink text-paper relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-4xl mx-auto px-6 relative z-10">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-accent font-semibold">Tentang Kami</p>
+          <h2 class="font-display text-3xl md:text-5xl font-semibold text-paper mt-3">Kedai Kopi Lokal</h2>
+          <div class="mt-6 space-y-4 text-lg text-paper/85 leading-relaxed max-w-prose">
+            <p>
+              Kedai kopi lokal yang hadir sebagai tempat singgah harian. Kami menyediakan ruang yang nyaman bagi siapa saja yang ingin menikmati momen minum kopi.
+            </p>
+            <p>
+              Untuk pertanyaan mengenai menu, lokasi, atau informasi operasional lainnya, silakan hubungi kami melalui saluran komunikasi yang tersedia.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT SECTION (Single Contact Block V71-4) -->
+    <section id="kontak" class="scroll-mt-24 py-20 md:py-32 bg-paper">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Kontak</p>
+          <h2 class="font-display text-3xl md:text-5xl font-semibold text-ink mt-3">Hubungi Kami</h2>
+          <p class="text-lg text-ink/80 mt-4 max-w-prose">
+            Punya pertanyaan seputar kedai kami? Kirimkan pesan atau hubungi kami melalui saluran berikut.
+          </p>
+        </div>
+
+        <div class="mt-10">
+          <ul class="grid gap-4 sm:grid-cols-2">
+            <li class="reveal" style="--d:.1s">
+              <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-white break-words transition-transform duration-300 hover:-translate-y-1">
+                <span class="text-sm uppercase tracking-widest text-ink/60 font-semibold">Layanan Informasi</span>
+                <span class="text-lg font-medium text-ink mt-1">Tanya Informasi Kedai</span>
+                <p class="text-sm text-ink/70 mt-2">Silakan ajukan pertanyaan terkait kedai kopi kami secara langsung.</p>
+              </div>
+            </li>
+
+            <li class="reveal" style="--d:.2s">
+              <div class="flex flex-col gap-1 rounded-2xl p-6 ring-1 ring-black/10 bg-white break-words transition-transform duration-300 hover:-translate-y-1">
+                <span class="text-sm uppercase tracking-widest text-ink/60 font-semibold">Kunjungan</span>
+                <span class="text-lg font-medium text-ink mt-1">Datang Langsung</span>
+                <p class="text-sm text-ink/70 mt-2">Kunjungi kedai kami untuk menikmati suasana dan sajian kopi secara langsung.</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-ink text-paper py-12 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <p class="font-display text-xl font-bold tracking-tight text-paper">Kopi Lokal</p>
+        <p class="text-sm text-paper/70 mt-1">&copy; <span id="year"></span> Kedai Kopi Lokal. Hak cipta dilindungi.</p>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="#menu" class="text-sm text-paper/70 hover:text-accent transition-colors">Menu</a>
+        <a href="#layanan" class="text-sm text-paper/70 hover:text-accent transition-colors">Informasi</a>
+        <a href="#kontak" class="text-sm text-paper/70 hover:text-accent transition-colors">Kontak</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MOBILE MENU PANEL (Direct child of body V7-6) -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-ink/95 backdrop-blur-lg flex flex-col">
+    <div class="flex items-center justify-between p-6 border-b border-white/10">
+      <span class="font-display text-2xl font-bold text-paper">Kopi Lokal</span>
+      <button type="button" onclick="setMenu(false)" class="p-2 text-paper rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label="Tutup menu navigasi">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="flex-1 flex flex-col justify-center px-8 space-y-6">
+      <a href="#menu" onclick="setMenu(false)" class="text-2xl font-display font-semibold text-paper hover:text-accent transition-colors">Menu</a>
+      <a href="#layanan" onclick="setMenu(false)" class="text-2xl font-display font-semibold text-paper hover:text-accent transition-colors">Informasi</a>
+      <a href="#tentang" onclick="setMenu(false)" class="text-2xl font-display font-semibold text-paper hover:text-accent transition-colors">Tentang</a>
+      <a href="#kontak" onclick="setMenu(false)" class="text-2xl font-display font-semibold text-paper hover:text-accent transition-colors">Kontak</a>
+    </div>
+
+    <div class="p-8 border-t border-white/10">
+      <a href="#kontak" onclick="setMenu(false)" class="w-full block text-center rounded-full py-4 bg-accent text-ink font-semibold text-base">
+        Hubungi Kami
+      </a>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script>
+    // Set Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    const menuPanel = document.getElementById('mobile-menu');
+    function setMenu(open) {
+      menuPanel.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    // Close mobile menu on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !menuPanel.classList.contains('hidden')) {
+        setMenu(false);
+      }
+    });
+
+    // IntersectionObserver for Reveal Motion Kit
+    document.addEventListener('DOMContentLoaded', function() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, {
+        threshold: 0.1,
+        rootMargin: '0px 0px -40px 0px'
+      });
+
+      document.querySelectorAll('.reveal').forEach(el => {
+        observer.observe(el);
+      });
+
+      // Status Pill setup (V73-1 compliant solid light bg dark text)
+      const statusPill = document.getElementById('open-status-pill');
+      if (statusPill) {
+        statusPill.className = "px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950 inline-block";
+        statusPill.textContent = "Kedai Buka Hari Ini";
+      }
+    });
+  </script>
+</body>
+</html>

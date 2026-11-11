@@ -59,6 +59,17 @@ type PendingStream struct {
 	Stream    <-chan aiprovider.StreamChunk
 	StartedAt time.Time
 	MaxBytes  int64
+	// Model is the provider model that actually served the request
+	// (primary or fallback). Populated by openStream.
+	Model string
+	// FallbackUsed is true when a non-primary model served the request.
+	FallbackUsed bool
+	// AttemptNumber is the provider open attempt within the selected model.
+	AttemptNumber int
+	// firstChunkAt is the wall time when the first chunk of any kind arrived.
+	firstChunkAt time.Time
+	// firstTextTokenAt is the wall time when the first non-empty text token arrived.
+	firstTextTokenAt time.Time
 	// FinishReason is the provider's terminal reason observed on the stream
 	// (e.g. "STOP", "MAX_TOKENS"); empty when unknown. The handler records
 	// it while relaying chunks.
@@ -69,7 +80,7 @@ type PendingStream struct {
 	Usage *aiprovider.UsageMetadata
 	// Chunks and TextBytes count relayed provider chunks and text bytes for
 	// per-stream diagnostics (populated by the handler loop).
-	Chunks    int
+	Chunks   int
 	TextBytes int
 }
 
@@ -268,9 +279,9 @@ func (s *service) candidateModels() []string {
 	return models
 }
 
-func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, error) {
+func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, string, bool, int, error) {
 	if s.provider == nil {
-		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
+		return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
 	}
 	converted := make([]aiprovider.ImageAttachment, 0, len(imgs))
 	for _, im := range imgs {
@@ -287,9 +298,9 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 	for modelIdx, modelName := range models {
 		if ctx.Err() != nil {
 			if lastErr != nil {
-				return nil, lastErr
+				return nil, "", false, 0, lastErr
 			}
-			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+			return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 		}
 
 		req := aiprovider.Request{
@@ -311,9 +322,9 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 		for attempt := 0; attempt < attempts; attempt++ {
 			if ctx.Err() != nil {
 				if err != nil {
-					return nil, err
+					return nil, "", false, 0, err
 				}
-				return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+				return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 			}
 
 			stream, err = s.provider.CompleteStream(ctx, req)
@@ -325,7 +336,7 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 					s.logger.Info("ai stream open retry succeeded",
 						"model", modelName, "attempt", attempt+1, "max_attempts", attempts)
 				}
-				return stream, nil
+				return stream, modelName, modelIdx > 0, attempt + 1, nil
 			}
 
 			// Do not retry the same model if error is not temporary overload
@@ -341,11 +352,11 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 					select {
 					case <-ctx.Done():
 						timer.Stop()
-						return nil, err
+						return nil, "", false, 0, err
 					case <-timer.C:
 					}
 				} else if ctx.Err() != nil {
-					return nil, err
+					return nil, "", false, 0, err
 				}
 			} else {
 				s.logger.Warn("ai stream open retries exhausted",
@@ -361,7 +372,7 @@ func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt strin
 		}
 	}
 
-	return nil, lastErr
+	return nil, "", false, 0, lastErr
 }
 
 func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
@@ -388,12 +399,12 @@ func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, i
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, err := s.openStream(ctx, SystemPrompt, BuildGeneratePrompt(briefText), provImgs)
+	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildGeneratePrompt(briefText), provImgs)
 	if err != nil {
 		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindGenerate})
 		return nil, err
 	}
-	return &PendingStream{Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes}, nil
+	return &PendingStream{Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
 }
 
 func (s *service) BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
@@ -441,12 +452,12 @@ func (s *service) BeginRevise(ctx context.Context, userID, projectID, instructio
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, err := s.openStream(ctx, SystemPrompt, BuildRevisePrompt(briefText, base.HTML, instruction), provImgs)
+	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildRevisePrompt(briefText, base.HTML, instruction), provImgs)
 	if err != nil {
 		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindRevise})
 		return nil, err
 	}
-	return &PendingStream{Project: p, Kind: model.KindRevise, Prompt: instruction, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes}, nil
+	return &PendingStream{Project: p, Kind: model.KindRevise, Prompt: instruction, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
 }
 
 func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawBuffer string) (*model.Version, error) {

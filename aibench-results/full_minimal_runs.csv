@@ -1,0 +1,4 @@
+run_number,first_chunk_ms,first_text_ms,total_ms,prompt_tokens,candidates_tokens,thoughts_tokens,total_tokens,finish_reason,html_file,attempt_count,error
+1,1364,1364,24635,10572,5967,0,16539,STOP,full_minimal_run1.html,1,
+2,1157,1157,40701,10572,9025,0,19597,STOP,full_minimal_run2.html,1,
+1,1836,1836,10416,0,0,0,0,,full_minimal_run1.html,1,

@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+Concept: Kopi Studio 26 adalah kedai kopi lokal modern yang berfokus pada pengalaman seduh autentik dan area santai yang tenang.
+Signature Widget: Calculator rasio seduh kopi & jam buka real-time (Asia/Jakarta WIB).
+Hero Composition: 12-kolom asimetris; kiri 7 kolom (eyebrow, headline tanpa cetak miring, subhead, 2 CTA), kanan 5 kolom (panel jam buka real-time dengan status WIB & aksen grafis).
+Palette: Ink (#1A1412), Paper (#F5F0EB), Tint (#E8DEC8), Accent (#D96B27), Deep (#9E3E0C).
+Section Order: 1. Hero (Hero + Jam Buka), 2. Menu (Menu Rows dengan Dotted Leaders & Kalkulator Seduh), 3. Fasilitas (Big Number Rows), 4. Tentang (Fakta Singkat), 5. Kontak (WhatsApp, Alamat & Peta), 6. Footer.
+FACTS: Menu: Espresso Rp 18.000, Americano Rp 20.000, Cafe Latte Rp 24.000, Cappuccino Rp 24.000, Kopi Susu Studio Rp 22.000, Manual Brew Rp 26.000; Jam Buka: 08.00 - 22.00 WIB; Alamat: Jl. Merdeka No. 45, Bandung; WhatsApp: +62 812 3456 7890; PRIMARY: NONE; ACCENT: NONE. -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kopi Studio 26 - Kedai Kopi &amp; Ruang Santai Bandung</title>
+<meta name="description" content="Kedai kopi lokal di Jl. Merdeka No. 45, Bandung. Menyajikan olahan espresso dan manual brew berkualitas dari jam 08.00 sampai 22.00 WIB.">
+<meta name="theme-color" content="#1A1412">
+
+<script>document.documentElement.classList.add('js')</script>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#1A1412',
+          paper: '#F5F0EB',
+          tint: '#E8DEC8',
+          accent: '#D96B27',
+          deep: '#9E3E0C',
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+        }
+      }
+    }
+  }
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  ::selection {
+    background-color: #D96B27;
+    color: #1A1412;
+  }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+  }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .rise {
+    animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+    animation-delay: var(--d, 0s);
+  }
+  .float {
+    animation: float 7s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+
+<body class="bg-paper text-ink font-body antialiased selection:bg-accent selection:text-ink">
+
+  <!-- HEADER -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-ink/10 transition-all duration-200">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-2xl font-bold tracking-tight text-ink">
+        Kopi Studio 26
+      </a>
+
+      <!-- Desktop Nav -->
+      <nav class="hidden md:flex items-center gap-8 font-medium text-sm">
+        <a href="#menu" class="hover:text-deep transition-colors py-1">Menu</a>
+        <a href="#fasilitas" class="hover:text-deep transition-colors py-1">Fasilitas</a>
+        <a href="#tentang" class="hover:text-deep transition-colors py-1">Tentang</a>
+        <a href="#kontak" class="hover:text-deep transition-colors py-1">Kontak</a>
+      </nav>
+
+      <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Studio%2026%2C%20saya%20ingin%20bertanya" class="hidden md:inline-flex items-center justify-center rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+        Pesan lewat WhatsApp
+      </a>
+
+      <!-- Mobile Menu Button -->
+      <button type="button" onclick="setMenu(true)" class="md:hidden p-2 rounded-lg text-ink hover:bg-tint/50 transition-colors" aria-label="Buka Menu Navigation">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MOBILE MENU (Direct child of body) -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm">
+    <div class="fixed inset-y-0 right-0 w-full max-w-xs bg-paper p-6 shadow-2xl flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between pb-6 border-b border-ink/10">
+          <span class="font-display text-xl font-bold">Kopi Studio 26</span>
+          <button type="button" onclick="setMenu(false)" class="p-2 rounded-lg text-ink hover:bg-tint/50 transition-colors" aria-label="Tutup Menu">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+        <nav class="mt-6 flex flex-col gap-4 text-lg font-medium">
+          <a href="#menu" onclick="setMenu(false)" class="py-2 border-b border-ink/5 hover:text-deep transition-colors">Menu</a>
+          <a href="#fasilitas" onclick="setMenu(false)" class="py-2 border-b border-ink/5 hover:text-deep transition-colors">Fasilitas</a>
+          <a href="#tentang" onclick="setMenu(false)" class="py-2 border-b border-ink/5 hover:text-deep transition-colors">Tentang</a>
+          <a href="#kontak" onclick="setMenu(false)" class="py-2 border-b border-ink/5 hover:text-deep transition-colors">Kontak</a>
+        </nav>
+      </div>
+      <div class="pt-6 border-t border-ink/10">
+        <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Studio%2026%2C%20saya%20ingin%20bertanya" onclick="setMenu(false)" class="w-full flex items-center justify-center rounded-full py-3 bg-accent text-ink font-semibold text-center">
+          Pesan lewat WhatsApp
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- HERO SECTION -->
+    <section class="relative pt-32 pb-20 md:pt-40 md:pb-32 min-h-[90vh] flex items-center overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,107,39,.18),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(232,222,200,.4),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <!-- Left Column (7 cols) -->
+          <div class="lg:col-span-7">
+            <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.1s">
+              Kedai Kopi Bandung
+            </p>
+            <h1 class="rise mt-4 font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink leading-[1.1] tracking-tight" style="--d:.2s">
+              Ruang Seduh &amp; Santai di <span class="text-deep">Jl. Merdeka</span>
+            </h1>
+            <p class="rise mt-6 text-lg md:text-xl text-ink/80 max-w-prose leading-relaxed" style="--d:.3s">
+              Kopi Studio 26 menyajikan aneka sajian espresso dan manual brew. Buka setiap hari dari jam 08.00 hingga 22.00 WIB.
+            </p>
+            <div class="rise mt-8 flex flex-wrap items-center gap-4" style="--d:.4s">
+              <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Studio%2026%2C%20saya%20ingin%20bertanya" class="inline-flex items-center justify-center rounded-full px-8 py-3.5 bg-accent text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep">
+                Pesan lewat WhatsApp
+              </a>
+              <a href="#menu" class="inline-flex items-center justify-center rounded-full px-8 py-3.5 bg-tint/60 text-ink font-semibold transition-colors duration-200 hover:bg-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink">
+                Lihat Menu
+              </a>
+            </div>
+          </div>
+
+          <!-- Right Column (5 cols) - Panel Jam Buka -->
+          <div class="lg:col-span-5 relative">
+            <div class="absolute -top-4 -right-4 inset-0 bg-tint/40 rounded-3xl pointer-events-none transform rotate-2"></div>
+            <div class="relative overflow-hidden rounded-3xl p-8 md:p-10 min-h-[22rem] flex items-center justify-center bg-gradient-to-b from-white to-tint/30 border border-ink/10 shadow-lg">
+              <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-10" aria-hidden="true">
+                <svg class="w-64 h-64 text-ink float" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V9z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 4v2M12 4v2"/>
+                </svg>
+              </div>
+              <div class="relative text-center">
+                <p class="text-sm uppercase tracking-widest text-ink/70 font-medium">Jam Buka Hari Ini</p>
+                <p class="mt-4 text-5xl md:text-6xl font-bold tabular-nums leading-none tracking-tight text-ink">08.00</p>
+                <p class="my-3 text-sm uppercase tracking-widest text-ink/60 font-semibold">sampai</p>
+                <p class="text-5xl md:text-6xl font-bold tabular-nums leading-none tracking-tight text-ink">22.00</p>
+                <div class="mt-6 flex justify-center">
+                  <p id="open-status" class="inline-flex items-center gap-2"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- MENU SECTION -->
+    <section id="menu" class="py-20 md:py-32 bg-paper scroll-mt-20">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl">
+          <div class="reveal" style="--d:0s">
+            <p class="text-sm uppercase tracking-widest text-deep font-semibold">Sajian Utama</p>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Daftar Menu &amp; Harga</h2>
+            <p class="text-lg text-ink/80 mt-4">Pilihan kopi espresso dan manual brew yang disajikan langsung di studio.</p>
+          </div>
+        </div>
+
+        <div class="mt-12 grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <!-- Left: Menu List (7 cols) -->
+          <div class="lg:col-span-7">
+            <div class="reveal bg-gradient-to-b from-white to-tint/20 rounded-3xl p-6 md:p-8 border border-ink/10" style="--d:.1s">
+              <h3 class="font-display text-xl font-bold text-ink pb-4 border-b border-ink/10">Minuman Kopi</h3>
+              <ul class="divide-y divide-ink/5 mt-2">
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Espresso</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 18.000</span>
+                </li>
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Americano</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 20.000</span>
+                </li>
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Kopi Susu Studio</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 22.000</span>
+                </li>
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Cafe Latte</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 24.000</span>
+                </li>
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Cappuccino</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 24.000</span>
+                </li>
+                <li class="flex items-baseline gap-3 py-4">
+                  <span class="font-medium text-lg text-ink">Manual Brew</span>
+                  <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+                  <span class="tabular-nums font-semibold text-deep">Rp 26.000</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Right: Brew Calculator Widget (5 cols) -->
+          <div class="lg:col-span-5">
+            <div class="reveal bg-white rounded-3xl p-6 md:p-8 border border-ink/10 shadow-sm" style="--d:.2s">
+              <p class="text-xs uppercase tracking-widest text-deep font-semibold">Simulasi Seduh</p>
+              <h3 class="font-display text-xl font-bold text-ink mt-1">Kalkulator Seduh Manual</h3>
+              <p class="text-sm text-ink/70 mt-2">Hitung perkiraan jumlah air berdasarkan rasio seduh acuan standar.</p>
+
+              <div class="mt-6 space-y-4">
+                <div>
+                  <label for="coffee-weight" class="block text-sm font-medium text-ink">Berat Kopi (Gram)</label>
+                  <input type="number" id="coffee-weight" value="15" min="8" max="50" class="mt-1.5 w-full rounded-xl border border-ink/20 px-4 py-2.5 bg-paper text-ink font-semibold focus:outline-none focus:ring-2 focus:ring-accent">
+                </div>
+
+                <div>
+                  <label for="brew-ratio" class="block text-sm font-medium text-ink">Rasio Air (1 : X)</label>
+                  <select id="brew-ratio" class="mt-1.5 w-full rounded-xl border border-ink/20 px-4 py-2.5 bg-paper text-ink font-semibold focus:outline-none focus:ring-2 focus:ring-accent">
+                    <option value="15">1 : 15 (Sedang)</option>
+                    <option value="16" selected>1 : 16 (Standar)</option>
+                    <option value="18">1 : 18 (Ringan)</option>
+                  </select>
+                </div>
+
+                <div class="pt-4 border-t border-ink/10 bg-tint/20 rounded-2xl p-4 text-center">
+                  <p class="text-xs uppercase tracking-widest text-ink/70">Kebutuhan Air Panas</p>
+                  <p id="water-result" class="text-4xl font-bold text-deep tabular-nums mt-1">240 ml</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- FASILITAS / FITUR SECTION (Dark Background Section) -->
+    <section id="fasilitas" class="py-20 md:py-32 bg-ink text-paper scroll-mt-20 relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-6xl mx-auto px-6 relative z-10">
+        <div class="max-w-3xl">
+          <div class="reveal" style="--d:0s">
+            <p class="text-sm uppercase tracking-widest text-accent font-semibold">Suasana Studio</p>
+            <h2 class="font-display text-3xl md:text-5xl font-bold mt-3 text-white">Fasilitas di Kopi Studio 26</h2>
+            <p class="text-lg text-paper/80 mt-4">Dirancang untuk kenyamanan saat menikmati kopi, bekerja, atau berbincang.</p>
+          </div>
+        </div>
+
+        <div class="mt-16 space-y-6">
+          
+          <div class="reveal" style="--d:.1s">
+            <div class="rounded-3xl p-8 bg-white/5 border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                <span class="md:col-span-2 font-display text-4xl md:text-5xl font-bold text-accent tabular-nums">01</span>
+                <div class="md:col-span-10">
+                  <h3 class="text-2xl font-bold text-white">Area Indoor &amp; Semi-Outdoor</h3>
+                  <p class="mt-2 text-paper/70 leading-relaxed">Pilihan tempat duduk di dalam ruangan dengan penyejuk udara atau di area luar untuk menikmati udara sore Bandung.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.2s">
+            <div class="rounded-3xl p-8 bg-white/5 border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                <span class="md:col-span-2 font-display text-4xl md:text-5xl font-bold text-accent tabular-nums">02</span>
+                <div class="md:col-span-10">
+                  <h3 class="text-2xl font-bold text-white">Koneksi Wi-Fi &amp; Stopkontak</h3>
+                  <p class="mt-2 text-paper/70 leading-relaxed">Fasilitas jaringan internet serta ketersediaan colokan listrik di sudut meja untuk mendukung aktivitas harian Anda.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.3s">
+            <div class="rounded-3xl p-8 bg-white/5 border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                <span class="md:col-span-2 font-display text-4xl md:text-5xl font-bold text-accent tabular-nums">03</span>
+                <div class="md:col-span-10">
+                  <h3 class="text-2xl font-bold text-white">Seduh Manual &amp; Espresso</h3>
+                  <p class="mt-2 text-paper/70 leading-relaxed">Barista siap menyajikan seduhan kopi sesuai dengan pilihan biji kopi dan metode yang Anda sukai.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- TENTANG SECTION -->
+    <section id="tentang" class="py-20 md:py-32 bg-tint/30 scroll-mt-20">
+      <div class="max-w-4xl mx-auto px-6">
+        <div class="reveal text-center" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Tentang Kami</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Kedai Kopi Studio 26</h2>
+        </div>
+
+        <div class="mt-8 reveal text-lg text-ink/80 space-y-6 leading-relaxed max-w-prose mx-auto" style="--d:.1s">
+          <p>
+            Kopi Studio 26 berlokasi di Jl. Merdeka No. 45, Bandung. Kami hadir sebagai tempat singgah bagi pecinta kopi yang menginginkan sajian kopi yang jujur dan suasana yang tenang.
+          </p>
+          <p>
+            Dengan jam operasional setiap hari mulai pukul 08.00 hingga 22.00 WIB, kami melayani pesanan kopi espresso, kopi susu, hingga pilihan manual brew di tempat maupun untuk dibawa.
+          </p>
+        </div>
+
+        <div class="mt-12 reveal grid grid-cols-2 md:grid-cols-4 gap-4" style="--d:.2s">
+          <div class="p-6 rounded-2xl bg-paper border border-ink/10 text-center">
+            <p class="text-xs uppercase tracking-widest text-ink/60">Kota</p>
+            <p class="font-display text-xl font-bold text-ink mt-1">Bandung</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-paper border border-ink/10 text-center">
+            <p class="text-xs uppercase tracking-widest text-ink/60">Buka Hari</p>
+            <p class="font-display text-xl font-bold text-ink mt-1">Setiap Hari</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-paper border border-ink/10 text-center">
+            <p class="text-xs uppercase tracking-widest text-ink/60">Jam Operasional</p>
+            <p class="font-display text-xl font-bold text-ink mt-1 tabular-nums">08.00-22.00</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-paper border border-ink/10 text-center">
+            <p class="text-xs uppercase tracking-widest text-ink/60">Harga Mulai</p>
+            <p class="font-display text-xl font-bold text-ink mt-1 tabular-nums">18k</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KONTAK SECTION -->
+    <section id="kontak" class="py-20 md:py-32 bg-paper scroll-mt-20">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Informasi &amp; Lokasi</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Hubungi Kopi Studio 26</h2>
+          <p class="text-lg text-ink/80 mt-4">Silakan hubungi kami untuk pertanyaan menu atau kunjungi lokasi kedai kami di Bandung.</p>
+        </div>
+
+        <div class="mt-12">
+          <ul class="grid gap-6 sm:grid-cols-2">
+            <!-- WhatsApp Card -->
+            <li class="reveal" style="--d:.1s">
+              <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Studio%2026%2C%20saya%20ingin%20bertanya" class="flex flex-col gap-3 rounded-3xl p-8 bg-white ring-1 ring-black/10 transition-transform duration-300 hover:-translate-y-1 h-full justify-between">
+                <div>
+                  <span class="text-xs uppercase tracking-widest text-deep font-semibold">WhatsApp</span>
+                  <p class="text-2xl font-bold text-ink mt-2 tabular-nums">+62 812 3456 7890</p>
+                  <p class="text-sm text-ink/70 mt-2">Kirim pesan langsung untuk bertanya seputar menu atau informasi lokasi.</p>
+                </div>
+                <span class="inline-flex items-center gap-2 text-sm font-semibold text-deep mt-4">
+                  Chat via WhatsApp 
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6"/>
+                  </svg>
+                </span>
+              </a>
+            </li>
+
+            <!-- Alamat & Map Card -->
+            <li class="reveal" style="--d:.2s">
+              <a href="https://www.google.com/maps/search/?api=1&query=Jl.+Merdeka+No.+45%2C+Bandung" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-3 rounded-3xl p-8 bg-white ring-1 ring-black/10 transition-transform duration-300 hover:-translate-y-1 h-full justify-between">
+                <div>
+                  <span class="text-xs uppercase tracking-widest text-deep font-semibold">Alamat Kedai</span>
+                  <p class="text-xl font-bold text-ink mt-2">Jl. Merdeka No. 45, Bandung</p>
+                  <p class="text-sm text-ink/70 mt-2">Buka Setiap Hari: 08.00 – 22.00 WIB</p>
+                </div>
+                <span class="inline-flex items-center gap-2 text-sm font-semibold text-deep mt-4">
+                  Buka di Google Maps 
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6"/>
+                  </svg>
+                </span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-ink text-paper py-12 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <p class="font-display text-xl font-bold text-white">Kopi Studio 26</p>
+        <p class="text-sm text-paper/60 mt-1">Jl. Merdeka No. 45, Bandung</p>
+      </div>
+
+      <p class="text-sm text-paper/60 text-center md:text-right">
+        &copy; <span id="year"></span> Kopi Studio 26. Semua hak dilindungi.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Set Footer Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    function setMenu(open) {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    // Escape Key Listener for Mobile Menu
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        setMenu(false);
+      }
+    });
+
+    // Close menu when clicking outside panel
+    document.getElementById('mobile-menu').addEventListener('click', function(e) {
+      if (e.target === this) {
+        setMenu(false);
+      }
+    });
+
+    // Open/Closed Status Widget (Asia/Jakarta WIB)
+    function updateOpenStatus() {
+      const statusEl = document.getElementById('open-status');
+      if (!statusEl) return;
+
+      try {
+        const now = new Date();
+        const options = { timeZone: 'Asia/Jakarta', hour: 'numeric', minute: 'numeric', hour12: false };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(now);
+        
+        let hour = 0;
+        let minute = 0;
+        parts.forEach(p => {
+          if (p.type === 'hour') hour = parseInt(p.value, 10);
+          if (p.type === 'minute') minute = parseInt(p.value, 10);
+        });
+
+        const timeInMinutes = hour * 60 + minute;
+        const openTime = 8 * 60; // 08:00
+        const closeTime = 22 * 60; // 22:00
+
+        if (timeInMinutes >= openTime && timeInMinutes < closeTime) {
+          statusEl.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950';
+          statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-700 animate-pulse"></span> Buka Sekarang (WIB)';
+        } else {
+          statusEl.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-amber-200 text-amber-950';
+          statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-700"></span> Tutup Sekarang (WIB)';
+        }
+      } catch (err) {
+        statusEl.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950';
+        statusEl.textContent = 'Buka Hari Ini (08.00 - 22.00 WIB)';
+      }
+    }
+    updateOpenStatus();
+
+    // Brew Calculator Widget
+    const coffeeInput = document.getElementById('coffee-weight');
+    const ratioSelect = document.getElementById('brew-ratio');
+    const waterResult = document.getElementById('water-result');
+
+    function calculateWater() {
+      if (!coffeeInput || !ratioSelect || !waterResult) return;
+      const coffee = parseFloat(coffeeInput.value) || 0;
+      const ratio = parseFloat(ratioSelect.value) || 16;
+      const water = Math.round(coffee * ratio);
+      waterResult.textContent = water + ' ml';
+    }
+
+    if (coffeeInput && ratioSelect) {
+      coffeeInput.addEventListener('input', calculateWater);
+      ratioSelect.addEventListener('change', calculateWater);
+    }
+
+    // Scroll Reveal Observer
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    } else {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+    }
+  </script>
+</body>
+</html>

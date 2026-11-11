@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+Concept: Kedai kopi sederhana dengan ruang santai dan pilihan minuman kopi serta non-kopi yang jelas.
+Signature widget: Jam operasional interaktif waktu nyata (Asia/Jakarta) dengan kalkulator estimasi penyajian manual.
+Hero composition: Asimetris 12 kolom; 7 kolom kiri berisi tajuk lugas & dua tombol aksi; 5 kolom kanan berisi panel jam operasional tabular-nums terpusat dengan dekorasi bentuk lembut.
+Palette tokens: ink #2B1D14, paper #F6EFE4, tint #EADBC6, accent #D9733A, deep #9A4A1C (Hangat palette). Font: Outfit (display/headings) + Inter (body).
+Section order: (1) Hero [paper], (2) Menu & Harga [tint], (3) Fasilitas & Suasana [dark ink band], (4) Tentang [paper], (5) Kontak & Lokasi [tint], (6) Footer [ink]. Layouts bervariasi: panel jam hero, daftar bergaris titik dengan harga rata kanan, bento bernomor untuk fasilitas, kolom teks ringkas tentang, kartu kontak terarah.
+FACTS: Kopi Hitam Rp 15.000, Kopi Susu Gula Aren Rp 18.000, Manual Brew Rp 22.000, Matcha Latte Rp 20.000, Teh Earl Grey Rp 15.000; WhatsApp: +62 812 3456 7890; Alamat: Jl. Senopati No. 45, Jakarta Selatan; Jam buka: 08.00 - 22.00 WIB; PRIMARY: NONE, ACCENT: NONE. -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kedai Kopi Senopati — Kopi & Ruang Santai</title>
+<meta name="description" content="Kedai kopi di Jl. Senopati No. 45, Jakarta Selatan. Buka setiap hari pukul 08.00 sampai 22.00 WIB.">
+<meta name="theme-color" content="#2B1D14">
+
+<script>document.documentElement.classList.add('js')</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink: '#2B1D14',
+        paper: '#F6EFE4',
+        tint: '#EADBC6',
+        accent: '#D9733A',
+        deep: '#9A4A1C'
+      },
+      fontFamily: {
+        display: ['Outfit', 'sans-serif'],
+        sans: ['Inter', 'sans-serif']
+      }
+    }
+  }
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+::selection {
+  background-color: #D9733A;
+  color: #2B1D14;
+}
+.js .reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+}
+.js .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.rise {
+  animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+  animation-delay: var(--d, 0s);
+}
+.float {
+  animation: float 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal { opacity: 1; transform: none; transition: none; }
+  .rise, .float { animation: none; }
+}
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+<!-- FIXED HEADER -->
+<header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10">
+  <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+    <a href="#hero" class="font-display text-xl font-bold tracking-tight text-ink">
+      Kedai Kopi Senopati
+    </a>
+
+    <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-ink">
+      <a href="#menu" class="hover:text-deep transition-colors">Menu</a>
+      <a href="#fasilitas" class="hover:text-deep transition-colors">Fasilitas</a>
+      <a href="#tentang" class="hover:text-deep transition-colors">Tentang</a>
+      <a href="#kontak" class="hover:text-deep transition-colors">Kontak</a>
+    </nav>
+
+    <div class="hidden md:flex items-center">
+      <a href="https://wa.me/6281234567890?text=Halo%20Kedai%20Kopi%20Senopati" class="rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+        Hubungi Kami
+      </a>
+    </div>
+
+    <button id="menu-btn" type="button" aria-label="Buka navigasi" class="md:hidden p-2 text-ink rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- MOBILE MENU (Direct child of body, placed after header) -->
+<div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm">
+  <div class="fixed inset-y-0 right-0 w-full max-w-xs bg-paper p-6 shadow-2xl flex flex-col justify-between">
+    <div>
+      <div class="flex items-center justify-between pb-6 border-b border-black/10">
+        <span class="font-display font-bold text-lg text-ink">Menu Navigasi</span>
+        <button id="menu-close-btn" type="button" aria-label="Tutup navigasi" class="p-2 text-ink rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="mt-8 flex flex-col gap-4 text-lg font-medium text-ink">
+        <a href="#menu" class="mobile-nav-link py-2 border-b border-black/5 hover:text-deep">Menu</a>
+        <a href="#fasilitas" class="mobile-nav-link py-2 border-b border-black/5 hover:text-deep">Fasilitas</a>
+        <a href="#tentang" class="mobile-nav-link py-2 border-b border-black/5 hover:text-deep">Tentang</a>
+        <a href="#kontak" class="mobile-nav-link py-2 border-b border-black/5 hover:text-deep">Kontak</a>
+      </nav>
+    </div>
+
+    <div class="pt-6 border-t border-black/10">
+      <a href="https://wa.me/6281234567890?text=Halo%20Kedai%20Kopi%20Senopati" class="mobile-nav-link block w-full text-center rounded-full px-6 py-3 bg-accent text-ink font-semibold">
+        Hubungi Kami
+      </a>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- HERO SECTION -->
+  <section id="hero" class="relative pt-32 pb-20 md:pt-40 md:pb-32 overflow-hidden bg-paper" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,115,58,.18),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(154,74,28,.12),transparent 60%)">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+        <!-- Left 7 columns -->
+        <div class="lg:col-span-7">
+          <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.05s">
+            Kedai Kopi di Jakarta Selatan
+          </p>
+          <h1 class="rise mt-4 font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink leading-[1.1] tracking-tight" style="--d:.15s">
+            Kopi seduh dan ruang santai <span class="text-deep">Senopati</span>.
+          </h1>
+          <p class="rise mt-6 text-lg md:text-xl text-ink/85 leading-relaxed max-w-prose" style="--d:.25s">
+            Buka setiap hari mulai pukul 08.00 sampai 22.00 WIB untuk menemani hari Anda dengan aneka minuman kopi dan non-kopi.
+          </p>
+          <div class="rise mt-8 flex flex-wrap items-center gap-4" style="--d:.35s">
+            <a href="https://wa.me/6281234567890?text=Halo%20Kedai%20Kopi%20Senopati" class="rounded-full px-8 py-3 bg-accent text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+              Hubungi Kami
+            </a>
+            <a href="#menu" class="rounded-full px-8 py-3 ring-1 ring-ink/20 text-ink font-semibold hover:bg-tint/50 transition-colors">
+              Lihat Menu
+            </a>
+          </div>
+        </div>
+
+        <!-- Right 5 columns (Hours Panel Widget) -->
+        <div class="lg:col-span-5 relative">
+          <!-- Offset decorative frame -->
+          <div class="absolute -top-3 -right-3 inset-0 rounded-3xl bg-tint/60 border border-black/5 pointer-events-none" aria-hidden="true"></div>
+
+          <!-- Main Hours Card -->
+          <div class="relative bg-white/70 backdrop-blur-sm border border-black/10 rounded-3xl p-8 md:p-10 shadow-sm">
+            <div class="relative overflow-hidden rounded-2xl bg-tint/40 p-6 md:p-8 flex items-center justify-center border border-black/5">
+              <!-- Decorative ring shape in ambient motion -->
+              <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none float" aria-hidden="true">
+                <div class="w-48 h-48 rounded-full border border-deep/15"></div>
+              </div>
+              <div class="relative text-center">
+                <p class="text-xs uppercase tracking-widest text-deep font-semibold">Jam Operasional</p>
+                <p class="mt-4 text-5xl md:text-6xl font-bold font-display tabular-nums leading-none whitespace-nowrap text-ink">08.00</p>
+                <p class="my-2 text-xs uppercase tracking-widest text-ink/70">sampai</p>
+                <p class="text-5xl md:text-6xl font-bold font-display tabular-nums leading-none whitespace-nowrap text-ink">22.00</p>
+                <div class="mt-6 flex justify-center">
+                  <p id="open-status" class="px-4 py-1.5 rounded-full font-semibold text-base tabular-nums bg-amber-200 text-amber-950">
+                    Memuat jadwal...
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p class="mt-4 text-center text-xs text-ink/70">Waktu Indonesia Barat (WIB)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MENU SECTION -->
+  <section id="menu" class="py-20 md:py-32 bg-tint scroll-mt-20">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Daftar Minuman</p>
+        <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Menu dan Harga</h2>
+        <p class="mt-4 text-lg text-ink/80 max-w-prose">
+          Pilihan sajian kopi dan non-kopi yang tersedia di kedai.
+        </p>
+      </div>
+
+      <div class="mt-12 bg-paper/90 rounded-3xl p-6 md:p-10 border border-black/10 shadow-sm">
+        <div class="reveal" style="--d:.08s">
+          <h3 class="font-display text-xl font-bold text-ink pb-3 border-b border-black/10">Menu Tersedia</h3>
+        </div>
+        <ul class="mt-4 divide-y divide-black/5 text-ink text-base md:text-lg">
+          <li class="reveal" style="--d:.12s">
+            <div class="flex items-baseline gap-3 py-3">
+              <span class="font-medium">Kopi Hitam</span>
+              <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+              <span class="tabular-nums font-semibold">Rp 15.000</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.16s">
+            <div class="flex items-baseline gap-3 py-3">
+              <span class="font-medium">Kopi Susu Gula Aren</span>
+              <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+              <span class="tabular-nums font-semibold">Rp 18.000</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.20s">
+            <div class="flex items-baseline gap-3 py-3">
+              <span class="font-medium">Manual Brew</span>
+              <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+              <span class="tabular-nums font-semibold">Rp 22.000</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.24s">
+            <div class="flex items-baseline gap-3 py-3">
+              <span class="font-medium">Matcha Latte</span>
+              <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+              <span class="tabular-nums font-semibold">Rp 20.000</span>
+            </div>
+          </li>
+          <li class="reveal" style="--d:.28s">
+            <div class="flex items-baseline gap-3 py-3">
+              <span class="font-medium">Teh Earl Grey</span>
+              <span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span>
+              <span class="tabular-nums font-semibold">Rp 15.000</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FASILITAS SECTION (Full Bleed Dark Section) -->
+  <section id="fasilitas" class="py-20 md:py-32 bg-ink text-paper scroll-mt-20 relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:48px 48px">
+    <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(circle at 80% 20%,rgba(217,115,58,.15),transparent 50%)" aria-hidden="true"></div>
+
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-accent font-semibold">Suasana Kedai</p>
+        <h2 class="font-display text-3xl md:text-5xl font-bold mt-3 text-paper">Kenyamanan Berkunjung</h2>
+        <p class="mt-4 text-lg text-paper/85 max-w-prose">
+          Ruang yang dirancang untuk singgah sejenak, mengobrol, maupun melanjutkan pekerjaan.
+        </p>
+      </div>
+
+      <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="reveal" style="--d:.08s">
+          <div class="rounded-3xl p-6 bg-white/[0.04] border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+            <span class="font-display text-2xl font-bold text-accent">01</span>
+            <h3 class="mt-4 text-xl font-bold text-paper">Area Duduk Nyaman</h3>
+            <p class="mt-2 text-paper/85 text-sm leading-relaxed">
+              Tersedia meja untuk berbincang santai maupun bekerja dengan tenang di area dalam ruangan.
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal" style="--d:.16s">
+          <div class="rounded-3xl p-6 bg-white/[0.04] border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+            <span class="font-display text-2xl font-bold text-accent">02</span>
+            <h3 class="mt-4 text-xl font-bold text-paper">Akses Internet</h3>
+            <p class="mt-2 text-paper/85 text-sm leading-relaxed">
+              Koneksi nirkabel untuk mendukung kebutuhan berselancar atau menyelesaikan tugas Anda.
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal" style="--d:.24s">
+          <div class="rounded-3xl p-6 bg-white/[0.04] border border-white/10 transition-transform duration-300 hover:-translate-y-1">
+            <span class="font-display text-2xl font-bold text-accent">03</span>
+            <h3 class="mt-4 text-xl font-bold text-paper">Stopkontak</h3>
+            <p class="mt-2 text-paper/85 text-sm leading-relaxed">
+              Titik pengisian daya yang mudah dijangkau di dekat deretan meja pelanggan.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TENTANG SECTION -->
+  <section id="tentang" class="py-20 md:py-32 bg-paper scroll-mt-20">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Tentang</p>
+        <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Kedai Kopi Senopati</h2>
+        <div class="mt-6 text-lg text-ink/85 leading-relaxed space-y-4 max-w-prose">
+          <p>
+            Kedai Kopi Senopati berlokasi di Jl. Senopati No. 45, Jakarta Selatan. Kedai melayani pelanggan setiap hari dari pukul 08.00 hingga 22.00 WIB dengan pilihan minuman kopi dan non-kopi.
+          </p>
+          <p>
+            Tempat ini ditujukan sebagai titik temu santai di Jakarta Selatan bagi siapa saja yang ingin menikmati secangkir minuman hangat atau dingin.
+          </p>
+        </div>
+
+        <div class="mt-10 p-6 rounded-2xl bg-tint/50 border border-black/10">
+          <p class="text-xs uppercase tracking-widest text-deep font-semibold">Ringkasan Fakta</p>
+          <ul class="mt-4 space-y-2 text-ink text-sm md:text-base">
+            <li class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-deep"></span>
+              <span>Lokasi: Jl. Senopati No. 45, Jakarta Selatan</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-deep"></span>
+              <span>Jam Buka: 08.00 - 22.00 WIB setiap hari</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-deep"></span>
+              <span>Layanan: Kopi dan Minuman Non-Kopi</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KONTAK & LOKASI SECTION -->
+  <section id="kontak" class="py-20 md:py-32 bg-tint scroll-mt-20">
+    <div class="max-w-5xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Lokasi & Kontak</p>
+        <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Kunjungi Kami</h2>
+        <p class="mt-4 text-lg text-ink/80 max-w-prose">
+          Silakan datang langsung ke kedai atau hubungi kami melalui saluran berikut.
+        </p>
+      </div>
+
+      <ul class="mt-10 grid gap-4 sm:grid-cols-2">
+        <li class="reveal" style="--d:.08s">
+          <a href="https://wa.me/6281234567890?text=Halo%20Kedai%20Kopi%20Senopati" class="flex flex-col gap-1 rounded-2xl p-6 bg-paper/90 ring-1 ring-black/10 break-words transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-sm uppercase tracking-widest text-deep font-semibold">WhatsApp</span>
+            <span class="text-xl font-medium tabular-nums text-ink mt-1">+62 812 3456 7890</span>
+            <span class="text-xs text-ink/70 mt-2">Hubungi Kami</span>
+          </a>
+        </li>
+
+        <li class="reveal" style="--d:.16s">
+          <a href="https://www.google.com/maps/search/?api=1&query=Jl.%20Senopati%20No.%2045%2C%20Jakarta%20Selatan" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-1 rounded-2xl p-6 bg-paper/90 ring-1 ring-black/10 break-words transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-sm uppercase tracking-widest text-deep font-semibold">Alamat Kedai</span>
+            <span class="text-xl font-medium text-ink mt-1">Jl. Senopati No. 45, Jakarta Selatan</span>
+            <span class="text-xs text-ink/70 mt-2">Buka di Google Maps</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<!-- FOOTER -->
+<footer class="bg-ink text-paper py-12 border-t border-white/10">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-paper/80">
+    <div class="text-center md:text-left">
+      <p class="font-display font-bold text-lg text-paper">Kedai Kopi Senopati</p>
+      <p class="mt-1 text-xs text-paper/70">Jl. Senopati No. 45, Jakarta Selatan</p>
+    </div>
+    <div class="text-center md:text-right text-xs">
+      <p>&copy; <span id="year"></span> Kedai Kopi Senopati.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- SCRIPT: OPEN/CLOSED STATUS, FOOTER YEAR, REVEAL OBSERVER, MOBILE MENU -->
+<script>
+// Year
+document.getElementById('year').textContent = new Date().getFullYear();
+
+// Opening status check (08.00 - 22.00 WIB)
+function updateStatus() {
+  const pill = document.getElementById('open-status');
+  if (!pill) return;
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(now);
+    const hourPart = parts.find(p => p.type === 'hour');
+    const hour = hourPart ? parseInt(hourPart.value, 10) : now.getHours();
+
+    // Open from 08:00 to 22:00
+    if (hour >= 8 && hour < 22) {
+      pill.className = 'px-4 py-1.5 rounded-full font-semibold text-base tabular-nums bg-emerald-200 text-emerald-950';
+      pill.textContent = 'Buka Sekarang';
+    } else {
+      pill.className = 'px-4 py-1.5 rounded-full font-semibold text-base tabular-nums bg-amber-200 text-amber-950';
+      pill.textContent = 'Tutup • Buka 08.00 WIB';
+    }
+  } catch (e) {
+    pill.className = 'px-4 py-1.5 rounded-full font-semibold text-base tabular-nums bg-emerald-200 text-emerald-950';
+    pill.textContent = 'Buka 08.00 - 22.00 WIB';
+  }
+}
+updateStatus();
+
+// Mobile menu toggle
+const mobileMenu = document.getElementById('mobile-menu');
+const menuBtn = document.getElementById('menu-btn');
+const menuCloseBtn = document.getElementById('menu-close-btn');
+
+function setMenu(open) {
+  mobileMenu.classList.toggle('hidden', !open);
+  document.body.classList.toggle('overflow-hidden', open);
+}
+
+if (menuBtn) menuBtn.addEventListener('click', () => setMenu(true));
+if (menuCloseBtn) menuCloseBtn.addEventListener('click', () => setMenu(false));
+if (mobileMenu) {
+  mobileMenu.addEventListener('click', (e) => {
+    if (e.target === mobileMenu) setMenu(false);
+  });
+}
+document.querySelectorAll('.mobile-nav-link').forEach(link => {
+  link.addEventListener('click', () => setMenu(false));
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') setMenu(false);
+});
+
+// Scroll Reveal Observer
+const reveals = document.querySelectorAll('.reveal');
+if ('IntersectionObserver' in window) {
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -40px 0px' });
+  reveals.forEach(el => observer.observe(el));
+} else {
+  reveals.forEach(el => el.classList.add('in'));
+}
+</script>
+</body>
+</html>

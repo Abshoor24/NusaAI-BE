@@ -1,0 +1,8 @@
+description: "Bengkel Motor Jaya adalah bengkel motor terdekat di daerah kami. Kami menyediakan perbaikan mesin, ganti oli, dan servis rutin untuk semua merk motor."
+website_type: "company_profile"
+business_name: "Bengkel Motor Jaya"
+style: "professional, clean"
+color_palette: "PRIMARY #10223F, ACCENT #E0A93B"
+language: "id"
+sections: ["kontak", "layanan"]
+images: []

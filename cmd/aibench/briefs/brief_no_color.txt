@@ -1,0 +1,7 @@
+description: "Toko Buku Cemerlang adalah toko buku independen yang menjual buku novel, buku pelajaran, dan alat tulis. Kami membuka setiap hari dari pagi sampai sore."
+website_type: "online_store"
+business_name: "Toko Buku Cemerlang"
+style: "sederhana, nyaman"
+language: "id"
+sections: ["menu", "kontak"]
+images: []
