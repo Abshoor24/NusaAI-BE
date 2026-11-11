@@ -521,6 +521,11 @@ func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending 
 	idleTimer := time.NewTimer(h.aiCfg.StreamIdleTimeout)
 	defer idleTimer.Stop()
 
+	var firstChunkAt, firstTextTokenAt time.Time
+	if h.aiCfg.PerfLog {
+		firstChunkAt = time.Now()
+	}
+
 loop:
 	for {
 		select {
@@ -537,6 +542,9 @@ loop:
 					"block_reason", pending.BlockReason,
 				}
 				attrs = appendStreamUsage(attrs, pending.Usage)
+				if h.aiCfg.PerfLog {
+					attrs = append(attrs, "ttft_ms", time.Since(firstChunkAt).Milliseconds(), "first_text_token_ms", time.Since(firstTextTokenAt).Milliseconds())
+				}
 				h.logger.Error("project stream timed out", attrs...)
 				h.svc.FailStream(streamCtx, pending)
 				sse.writeEvent("error", sseErrorPayload(streamTimeoutMessage, apperror.ReasonStreamTimeout))
@@ -566,6 +574,9 @@ loop:
 				"block_reason", pending.BlockReason,
 			}
 			attrs = appendStreamUsage(attrs, pending.Usage)
+			if h.aiCfg.PerfLog {
+				attrs = append(attrs, "ttft_ms", time.Since(firstChunkAt).Milliseconds(), "first_text_token_ms", time.Since(firstTextTokenAt).Milliseconds())
+			}
 			h.logger.Error("project stream stalled", attrs...)
 			h.svc.FailStream(streamCtx, pending)
 			sse.writeEvent("error", sseErrorPayload(streamStalledMessage, apperror.ReasonStreamStalled))
@@ -640,6 +651,14 @@ loop:
 			buf.WriteString(chunk.Token)
 			pending.TextBytes += len(chunk.Token)
 			sse.writeEvent("token", map[string]string{"token": chunk.Token})
+
+			// Track first chunk and first text token times
+			if h.aiCfg.PerfLog && firstChunkAt.IsZero() {
+				firstChunkAt = time.Now()
+			}
+			if h.aiCfg.PerfLog && firstTextTokenAt.IsZero() && chunk.Token != "" {
+				firstTextTokenAt = time.Now()
+			}
 		}
 	}
 

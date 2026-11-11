@@ -1,0 +1,5 @@
+run_number,first_chunk_ms,first_text_ms,total_ms,prompt_tokens,candidates_tokens,thoughts_tokens,total_tokens,finish_reason,html_file,attempt_count,error
+1,219553,219553,272370,10572,8186,0,18758,STOP,full_default_run1.html,1,
+2,0,0,300001,0,0,0,0,,.,1,"AI_PROVIDER_ERROR: The AI provider could not be reached: Post ""https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse"": http2: timeout awaiting response headers"
+1,43909,43909,72618,10572,6679,8546,25797,STOP,full_default_run1.html,1,
+2,267031,267031,436198,10572,6475,5357,22404,STOP,full_default_run2.html,3,

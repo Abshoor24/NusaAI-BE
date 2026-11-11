@@ -1,0 +1,52 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261111194440
+Username: IDEAPAD-MNA\absho
+RunAs User: IDEAPAD-MNA\absho
+Configuration Name: 
+Machine: IDEAPAD-MNA (Microsoft Windows NT 10.0.26300.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\absho\AppData\Local\Programs\Microsoft VS Code\c4453f8ea4\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 780
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is .\be-log.txt
+]633;D;0]633;A]633;P;Cwd=C:\x5cproject\x5cpakhir\x5cbe[38;2;154;52;142m[0m[48;2;154;52;142m[38;2;255;255;255mabsho [0m[48;2;218;98;125m[38;2;154;52;142m[0m[48;2;218;98;125m[38;2;255;255;255m be [0m[48;2;252;161;125m[38;2;218;98;125m[0m[48;2;252;161;125m[38;2;255;255;255m ➜ (feat/design-prompt) [0m[48;2;51;101;138m[38;2;252;161;125m[0m[48;2;51;101;138m[38;2;255;255;255m ♥ 19:44 [0m[38;2;51;101;138m[0m ]633;B
+PS>   Stop-Transcript
+   Select-String -Path .\be-log.txt -Pattern "ttft_ms|fallback_used|attempt_number|model="
+**********************
+Windows PowerShell transcript end
+End time: 20261111195028
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20261111195136
+Username: IDEAPAD-MNA\absho
+RunAs User: IDEAPAD-MNA\absho
+Configuration Name: 
+Machine: IDEAPAD-MNA (Microsoft Windows NT 10.0.26300.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\absho\AppData\Local\Programs\Microsoft VS Code\c4453f8ea4\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 780
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is .\be-log.txt
+]633;D;0]633;A]633;P;Cwd=C:\x5cproject\x5cpakhir\x5cbe[38;2;154;52;142m[0m[48;2;154;52;142m[38;2;255;255;255mabsho [0m[48;2;218;98;125m[38;2;154;52;142m[0m[48;2;218;98;125m[38;2;255;255;255m be [0m[48;2;252;161;125m[38;2;218;98;125m[0m[48;2;252;161;125m[38;2;255;255;255m ➜ (feat/design-prompt) [0m[48;2;51;101;138m[38;2;252;161;125m[0m[48;2;51;101;138m[38;2;255;255;255m ♥ 19:51 [0m[38;2;51;101;138m[0m ]633;B
+PS>   Stop-Transcript
+   Select-String -Path .\be-log.txt -Pattern "ttft_ms|fallback_used|attempt_number|model="
+**********************
+Windows PowerShell transcript end
+End time: 20261111195732
+**********************

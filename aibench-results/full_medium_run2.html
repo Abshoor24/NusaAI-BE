@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+Concept: Toko Kopi Harum — roastery dan kedai kopi lokal berbasis seduhan dan biji sangrai segar harian di Bandung.
+Widget: Jam operasional interaktif real-time WIB dengan indikator buka/tutup dinamis.
+Hero composition: Asimetris 12 kolom; 7 kolom kiri berisi eyebrow, headline tegas, subteks faktual, dan 2 CTA tombol; 5 kolom kanan berisi panel jam buka tabular dengan aksen offset layered card.
+Palette tokens: Hangat — ink: #2B1D14, paper: #F6EFE4, tint: #EADBC6, accent: #D9733A, deep: #9A4A1C. Font display: DM Serif Display, body: Inter.
+Sections: (1) Hero & Jam Operasional, (2) Daftar Biji & Seduhan, (3) Fasilitas & Catatan Roastery, (4) Tentang Toko Kopi Harum, (5) Kontak & Lokasi, (6) Footer ringkas.
+FACTS: Kopi Tubruk Rp 18.000, Americano Rp 22.000, Latte Rp 26.000, Biji Kopi Sangrai 200g Rp 65.000; WhatsApp +62 812 3456 7890; Jl. Ranggagading No. 8, Bandung; 08.00 - 22.00 WIB; PRIMARY: NONE, ACCENT: NONE.
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toko Kopi Harum — Kedai Kopi &amp; Biji Sangrai Bandung</title>
+<meta name="description" content="Toko Kopi Harum menyajikan kopi seduh dan biji kopi sangrai di Jl. Ranggagading No. 8, Bandung. Buka setiap hari pukul 08.00 hingga 22.00 WIB.">
+<meta name="theme-color" content="#2B1D14">
+<script>document.documentElement.classList.add('js')</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink: '#2B1D14',
+        paper: '#F6EFE4',
+        tint: '#EADBC6',
+        accent: '#D9733A',
+        deep: '#9A4A1C',
+      },
+      fontFamily: {
+        display: ['"DM Serif Display"', 'serif'],
+        sans: ['Inter', 'sans-serif'],
+      }
+    }
+  }
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+::selection {
+  background-color: #D9733A;
+  color: #2B1D14;
+}
+.js .reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+}
+.js .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.rise {
+  animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+  animation-delay: var(--d,0s);
+}
+.float {
+  animation: float 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal { opacity: 1; transform: none; transition: none; }
+  .rise, .float { animation: none; }
+}
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+<!-- FIXED HEADER -->
+<header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10 transition-all">
+  <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+    <a href="#beranda" class="font-display text-2xl tracking-tight text-ink font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep rounded">
+      Toko Kopi Harum
+    </a>
+    <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-ink/80">
+      <a href="#menu" class="hover:text-ink transition-colors">Menu</a>
+      <a href="#catatan" class="hover:text-ink transition-colors">Fasilitas</a>
+      <a href="#tentang" class="hover:text-ink transition-colors">Tentang</a>
+      <a href="#kontak" class="hover:text-ink transition-colors">Lokasi &amp; Kontak</a>
+    </nav>
+    <div class="hidden md:flex items-center">
+      <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm hover:-translate-y-0.5 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+        Pesan lewat WhatsApp
+      </a>
+    </div>
+    <button id="menu-btn" type="button" aria-label="Buka menu navigasi" class="md:hidden p-2 text-ink rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- MOBILE MENU -->
+<div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-ink/70">
+  <div class="fixed inset-y-0 right-0 w-full max-w-xs bg-paper p-6 shadow-xl flex flex-col justify-between">
+    <div>
+      <div class="flex items-center justify-between pb-6 border-b border-black/10">
+        <span class="font-display text-xl text-ink">Toko Kopi Harum</span>
+        <button id="close-btn" type="button" aria-label="Tutup menu navigasi" class="p-2 text-ink rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="mt-8 flex flex-col gap-4 text-base font-medium">
+        <a href="#menu" class="mobile-nav-link py-2 border-b border-black/5 text-ink">Menu</a>
+        <a href="#catatan" class="mobile-nav-link py-2 border-b border-black/5 text-ink">Fasilitas</a>
+        <a href="#tentang" class="mobile-nav-link py-2 border-b border-black/5 text-ink">Tentang</a>
+        <a href="#kontak" class="mobile-nav-link py-2 border-b border-black/5 text-ink">Lokasi &amp; Kontak</a>
+      </nav>
+    </div>
+    <div class="pt-6 border-t border-black/10">
+      <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="w-full text-center block rounded-full px-6 py-3 bg-accent text-ink font-semibold text-sm active:scale-95 transition">
+        Pesan lewat WhatsApp
+      </a>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- 1. HERO SECTION -->
+  <section id="beranda" class="pt-32 pb-20 md:pt-40 md:pb-28 relative overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,115,58,.22),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(154,74,28,.12),transparent 60%)">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+        <!-- Kolom Kiri -->
+        <div class="lg:col-span-7 flex flex-col items-start">
+          <span class="rise text-xs md:text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.05s">
+            Kedai Kopi &amp; Sangrai Bandung
+          </span>
+          <h1 class="rise mt-4 font-display text-[clamp(2.25rem,4.5vw,4.15rem)] leading-[1.12] text-ink font-normal text-balance" style="--d:.15s">
+            Kedai kopi dan biji sangrai di <span class="text-deep">Bandung</span>
+          </h1>
+          <p class="rise mt-6 text-lg md:text-xl text-ink/80 leading-relaxed max-w-prose" style="--d:.25s">
+            Menyajikan kopi seduhan dan menyediakan biji sangrai di jalan Ranggagading, buka setiap hari dari pagi hingga malam.
+          </p>
+          <div class="rise mt-8 flex flex-wrap items-center gap-4" style="--d:.35s">
+            <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="rounded-full px-8 py-3 bg-accent text-ink font-semibold text-base hover:-translate-y-0.5 active:scale-95 transition shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+              Pesan lewat WhatsApp
+            </a>
+            <a href="#menu" class="rounded-full px-8 py-3 border border-ink/20 text-ink font-semibold text-base hover:-translate-y-0.5 hover:bg-tint/40 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+              Lihat Menu
+            </a>
+          </div>
+        </div>
+
+        <!-- Kolom Kanan: Interactive Hours Widget -->
+        <div class="lg:col-span-5 relative">
+          <!-- Offset background card for depth -->
+          <div class="absolute -top-3 -right-3 w-full h-full rounded-3xl bg-tint/60 border border-ink/10 pointer-events-none" aria-hidden="true"></div>
+          
+          <div class="relative bg-ink text-paper rounded-3xl p-8 md:p-10 min-h-[22rem] flex flex-col items-center justify-center border border-white/10 shadow-lg">
+            <div class="relative text-center w-full">
+              <p class="text-xs uppercase tracking-widest text-paper/70 font-medium">Jam Buka Kedai</p>
+              <p class="mt-4 text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap text-paper">08.00</p>
+              <p class="my-3 text-xs uppercase tracking-widest text-paper/60 font-medium">sampai</p>
+              <p class="text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap text-paper">22.00</p>
+              
+              <div class="mt-6 flex flex-col items-center gap-2">
+                <span id="open-status" class="px-4 py-1.5 rounded-full font-semibold text-base">Memeriksa jam...</span>
+                <span id="current-clock" class="text-xs tracking-wider text-paper/60 tabular-nums">Waktu server WIB</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. MENU SECTION (Daftar Menu Faktis) -->
+  <section id="menu" class="py-20 md:py-32 bg-paper border-t border-black/5 scroll-mt-24">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Pilihan Seduhan &amp; Biji</p>
+        <h2 class="font-display text-3xl md:text-5xl text-ink font-normal mt-3">Daftar Menu</h2>
+        <p class="mt-4 text-lg text-ink/80 max-w-prose">Daftar seduhan minuman kopi dan paket biji kopi sangrai yang tersedia di kedai kami.</p>
+      </div>
+
+      <div class="mt-12 bg-tint/40 rounded-3xl p-6 md:p-10 border border-ink/10">
+        <div class="reveal" style="--d:.08s">
+          <h3 class="text-lg font-semibold uppercase tracking-wider text-deep pb-4 border-b border-ink/15">Minuman Kopi</h3>
+          <ul class="divide-y divide-ink/10 text-base md:text-lg">
+            <li class="flex items-baseline gap-3 py-4"><span class="font-medium text-ink">Kopi Tubruk</span><span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span><span class="tabular-nums font-semibold text-ink">Rp 18.000</span></li>
+            <li class="flex items-baseline gap-3 py-4"><span class="font-medium text-ink">Americano</span><span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span><span class="tabular-nums font-semibold text-ink">Rp 22.000</span></li>
+            <li class="flex items-baseline gap-3 py-4"><span class="font-medium text-ink">Latte</span><span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span><span class="tabular-nums font-semibold text-ink">Rp 26.000</span></li>
+          </ul>
+        </div>
+
+        <div class="reveal mt-10" style="--d:.16s">
+          <h3 class="text-lg font-semibold uppercase tracking-wider text-deep pb-4 border-b border-ink/15">Biji Kopi Sangrai</h3>
+          <ul class="divide-y divide-ink/10 text-base md:text-lg">
+            <li class="flex items-baseline gap-3 py-4"><span class="font-medium text-ink">Biji Kopi Sangrai 200g</span><span class="flex-1 border-b border-dotted border-current opacity-30" aria-hidden="true"></span><span class="tabular-nums font-semibold text-ink">Rp 65.000</span></li>
+          </ul>
+        </div>
+
+        <div class="reveal mt-8 pt-6 border-t border-ink/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style="--d:.24s">
+          <span class="text-sm text-ink/75">Pemesanan biji atau seduhan dapat langsung melalui WhatsApp.</span>
+          <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm hover:-translate-y-0.5 active:scale-95 transition">
+            Pesan lewat WhatsApp
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. FASILITAS & INFORMASI (Dark Full-Bleed Section) -->
+  <section id="catatan" class="py-20 md:py-32 bg-ink text-paper relative overflow-hidden scroll-mt-24" style="background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:48px 48px">
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-accent font-semibold">Informasi Kedai</p>
+        <h2 class="font-display text-3xl md:text-5xl font-normal mt-3 text-paper">Layanan di Lokasi</h2>
+        <p class="mt-4 text-lg text-paper/85 max-w-prose">Toko Kopi Harum beroperasi setiap hari dengan rincian jadwal dan layanan berikut.</p>
+      </div>
+
+      <div class="mt-14 grid gap-6 md:grid-cols-3">
+        <div class="reveal" style="--d:.08s">
+          <div class="rounded-2xl p-7 bg-white/[0.04] ring-1 ring-white/15 h-full transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-accent font-bold text-lg tabular-nums">01</span>
+            <h3 class="font-display text-xl text-paper mt-3 font-normal">Jam Buka Penuh</h3>
+            <p class="mt-3 text-base text-paper/80 leading-relaxed">
+              Buka setiap hari mulai pukul 08.00 pagi hingga 22.00 malam waktu Indonesia bagian barat.
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal" style="--d:.16s">
+          <div class="rounded-2xl p-7 bg-white/[0.04] ring-1 ring-white/15 h-full transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-accent font-bold text-lg tabular-nums">02</span>
+            <h3 class="font-display text-xl text-paper mt-3 font-normal">Biji Kopi Sangrai</h3>
+            <p class="mt-3 text-base text-paper/80 leading-relaxed">
+              Menyediakan kemasan biji kopi sangrai 200 gram untuk kebutuhan seduh di rumah maupun kantor.
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal" style="--d:.24s">
+          <div class="rounded-2xl p-7 bg-white/[0.04] ring-1 ring-white/15 h-full transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-accent font-bold text-lg tabular-nums">03</span>
+            <h3 class="font-display text-xl text-paper mt-3 font-normal">Seduhan di Tempat</h3>
+            <p class="mt-3 text-base text-paper/80 leading-relaxed">
+              Menyajikan kopi tubruk, americano dingin atau panas, serta latte langsung di kedai kami di Bandung.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. TENTANG SECTION -->
+  <section id="tentang" class="py-20 md:py-32 bg-tint/30 scroll-mt-24 border-b border-black/10">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Mengenal Kami</p>
+        <h2 class="font-display text-3xl md:text-5xl font-normal text-ink mt-3">Tentang Toko Kopi Harum</h2>
+        <div class="mt-6 space-y-4 text-lg text-ink/85 leading-relaxed">
+          <p>
+            Toko Kopi Harum adalah kedai kopi yang berlokasi di Jl. Ranggagading No. 8, Bandung. Kami menyediakan seduhan kopi harian seperti Kopi Tubruk, Americano, Latte, serta kemasan biji kopi sangrai ukuran 200g.
+          </p>
+          <p>
+            Kedai buka setiap hari dari jam 08.00 sampai 22.00 WIB untuk pengunjung yang ingin menikmati seduhan kopi atau membeli biji kopi sangrai langsung di tempat.
+          </p>
+        </div>
+
+        <div class="mt-10 p-6 rounded-2xl bg-paper border border-ink/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-wider text-deep font-semibold">Alamat Kedai</p>
+            <p class="text-base text-ink font-medium mt-1">Jl. Ranggagading No. 8, Bandung</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wider text-deep font-semibold">Jam Operasional</p>
+            <p class="text-base text-ink font-medium mt-1 tabular-nums">08.00 - 22.00 WIB</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. KONTAK & LOKASI (Merged Contact Section) -->
+  <section id="kontak" class="py-20 md:py-32 bg-paper scroll-mt-24">
+    <div class="max-w-5xl mx-auto px-6">
+      <div class="reveal" style="--d:0s">
+        <p class="text-sm uppercase tracking-widest text-deep font-semibold">Hubungi Kami</p>
+        <h2 class="font-display text-3xl md:text-5xl font-normal text-ink mt-3">Lokasi &amp; Kontak</h2>
+        <p class="mt-4 text-lg text-ink/80 max-w-prose">
+          Silakan datang langsung ke kedai kami atau hubungi nomor WhatsApp untuk menanyakan ketersediaan menu dan pemesanan.
+        </p>
+      </div>
+
+      <ul class="mt-10 grid gap-4 sm:grid-cols-2">
+        <li class="reveal" style="--d:.08s">
+          <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="flex flex-col gap-1 rounded-2xl p-6 bg-tint/30 ring-1 ring-black/10 transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-xs uppercase tracking-widest text-deep font-semibold">WhatsApp</span>
+            <span class="text-xl font-semibold tabular-nums text-ink mt-1">+62 812 3456 7890</span>
+            <span class="text-sm text-ink/70 mt-2">Kirim pesan WhatsApp</span>
+          </a>
+        </li>
+        <li class="reveal" style="--d:.16s">
+          <a href="https://www.google.com/maps/search/?api=1&query=Jl.+Ranggagading+No.+8%2C+Bandung" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-1 rounded-2xl p-6 bg-tint/30 ring-1 ring-black/10 transition-transform duration-300 hover:-translate-y-1">
+            <span class="text-xs uppercase tracking-widest text-deep font-semibold">Alamat Kedai</span>
+            <span class="text-xl font-semibold text-ink mt-1">Jl. Ranggagading No. 8, Bandung</span>
+            <span class="text-sm text-ink/70 mt-2">Buka di Google Maps</span>
+          </a>
+        </li>
+      </ul>
+
+      <div class="reveal mt-10 text-center sm:text-left" style="--d:.24s">
+        <a href="https://wa.me/6281234567890?text=Halo%20Toko%20Kopi%20Harum" class="inline-flex rounded-full px-8 py-3 bg-accent text-ink font-semibold text-base hover:-translate-y-0.5 active:scale-95 transition shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+          Pesan lewat WhatsApp
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- FOOTER -->
+<footer class="bg-ink text-paper py-12 border-t border-white/10">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+    <div>
+      <span class="font-display text-xl text-paper font-normal">Toko Kopi Harum</span>
+      <p class="text-sm text-paper/70 mt-1">Jl. Ranggagading No. 8, Bandung</p>
+    </div>
+    <div class="text-sm text-paper/60 text-center md:text-right">
+      <p>&copy; <span id="year"></span> Toko Kopi Harum. Hak cipta dilindungi.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- INTERACTIVE SCRIPTS -->
+<script>
+// Dynamic year
+document.getElementById('year').textContent = new Date().getFullYear();
+
+// Opening hours logic (08:00 - 22:00 WIB)
+function updateStoreStatus() {
+  const statusEl = document.getElementById('open-status');
+  const clockEl = document.getElementById('current-clock');
+  if (!statusEl) return;
+
+  const now = new Date();
+  const options = { timeZone: 'Asia/Jakarta', hour12: false, hour: '2-digit', minute: '2-digit' };
+  const formatter = new Intl.DateTimeFormat('id-ID', options);
+  const parts = formatter.formatToParts(now);
+  
+  let hour = 0;
+  let minute = 0;
+  parts.forEach(p => {
+    if (p.type === 'hour') hour = parseInt(p.value, 10);
+    if (p.type === 'minute') minute = parseInt(p.value, 10);
+  });
+
+  const timeMinutes = hour * 60 + minute;
+  const openMinutes = 8 * 60; // 08:00
+  const closeMinutes = 22 * 60; // 22:00
+
+  const isOpen = timeMinutes >= openMinutes && timeMinutes < closeMinutes;
+
+  if (isOpen) {
+    statusEl.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950';
+    statusEl.textContent = 'Kedai Sedang Buka';
+  } else {
+    statusEl.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-amber-200 text-amber-950';
+    statusEl.textContent = 'Kedai Sedang Tutup';
+  }
+
+  if (clockEl) {
+    const formattedHour = String(hour).padStart(2, '0');
+    const formattedMinute = String(minute).padStart(2, '0');
+    clockEl.textContent = 'Waktu saat ini: ' + formattedHour + '.' + formattedMinute + ' WIB';
+  }
+}
+
+updateStoreStatus();
+setInterval(updateStoreStatus, 30000);
+
+// Intersection Observer for .reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('in');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Mobile Navigation Drawer
+const mobileMenu = document.getElementById('mobile-menu');
+const menuBtn = document.getElementById('menu-btn');
+const closeBtn = document.getElementById('close-btn');
+
+function setMenu(open) {
+  mobileMenu.classList.toggle('hidden', !open);
+  document.body.classList.toggle('overflow-hidden', open);
+}
+
+menuBtn.addEventListener('click', () => setMenu(true));
+closeBtn.addEventListener('click', () => setMenu(false));
+
+mobileMenu.addEventListener('click', (e) => {
+  if (e.target === mobileMenu) setMenu(false);
+});
+
+document.querySelectorAll('.mobile-nav-link').forEach(link => {
+  link.addEventListener('click', () => setMenu(false));
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
+    setMenu(false);
+  }
+});
+</script>
+</body>
+</html>

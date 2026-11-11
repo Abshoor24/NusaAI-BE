@@ -95,6 +95,12 @@ type AIConfig struct {
 	RetryOnUnavailable int
 	// RetryBackoff is the pause between provider open attempts.
 	RetryBackoff time.Duration
+	// PerfLog enables structured per-stream timing diagnostics when true.
+	// Default true; set AI_PERF_LOG=false to disable.
+	PerfLog bool
+	// ThinkingLevel is the Gemini 3.x thinking level (MINIMAL/LOW/MEDIUM/HIGH).
+	// nil/empty means omit thinkingConfig from the payload entirely.
+	ThinkingLevel *string
 }
 
 type CORSConfig struct {
@@ -209,6 +215,8 @@ func Load() (*Config, error) {
 			// bounded by AI_STREAM_MAX_DURATION.
 			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 0),
 			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
+			PerfLog:            getBool("AI_PERF_LOG", true),
+			ThinkingLevel:      getOptionalString("AI_THINKING_LEVEL"),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", defaultCORSOrigins())),
@@ -435,6 +443,15 @@ func getOptionalInt(key string) (*int, error) {
 		return nil, fmt.Errorf("config: %s must be an integer, got %q", key, v)
 	}
 	return &n, nil
+}
+
+func getOptionalString(key string) *string {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	s := strings.TrimSpace(v)
+	return &s
 }
 
 func getDuration(key string, fallback time.Duration) time.Duration {
