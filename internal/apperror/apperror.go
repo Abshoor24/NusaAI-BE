@@ -20,6 +20,7 @@ const (
 	KindBadRequest       Kind = "BAD_REQUEST"
 	KindDatabase         Kind = "DATABASE_ERROR"
 	KindAIProvider       Kind = "AI_PROVIDER_ERROR"
+	KindAIBusy           Kind = "AI_BUSY"
 	KindUnavailable      Kind = "SERVICE_UNAVAILABLE"
 	KindRateLimited      Kind = "RATE_LIMITED"
 	KindInternal         Kind = "INTERNAL_SERVER_ERROR"
@@ -79,6 +80,8 @@ func (k Kind) httpStatus() int {
 		return http.StatusTooManyRequests
 	case KindAIProvider:
 		return http.StatusBadGateway
+	case KindAIBusy:
+		return http.StatusServiceUnavailable
 	case KindUnavailable:
 		return http.StatusServiceUnavailable
 	case KindDatabase:
@@ -120,6 +123,10 @@ func MethodNotAllowed(message string) *Error        { return new(KindMethodNotAl
 func Conflict(message string, err error) *Error     { return new(KindConflict, message, err) }
 func Database(message string, err error) *Error     { return new(KindDatabase, message, err) }
 func AIProvider(message string, err error) *Error   { return new(KindAIProvider, message, err) }
+
+// AIBusy reports that the provider open phase exhausted its budget or the
+// provider stayed overloaded. The stable code is AI_BUSY.
+func AIBusy(message string, err error) *Error { return new(KindAIBusy, message, err) }
 
 // AIProviderReason builds an AI provider error with a stable machine-readable
 // sub-code for the frontend. Kind, HTTP status and message semantics are

@@ -50,12 +50,21 @@ type fakeProvider struct {
 	doneReason string
 	doneBlock  string
 	doneUsage  *aiprovider.UsageMetadata
+	// openDelay simulates a slow provider open (headers never arrive in
+	// time); it respects ctx cancellation.
+	openDelay time.Duration
+	// rejectThinking makes the fake return ErrThinkingLevelRejected whenever
+	// a thinking level is sent, like a model that does not support it.
+	rejectThinking bool
+	// reqs records every request in call order.
+	reqs []aiprovider.Request
 }
 
-func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request) (<-chan aiprovider.StreamChunk, error) {
+func (f *fakeProvider) CompleteStream(ctx context.Context, req aiprovider.Request) (<-chan aiprovider.StreamChunk, error) {
 	f.mu.Lock()
 	f.lastReq = req
 	f.calls++
+	f.reqs = append(f.reqs, req)
 	if len(req.Messages) > 1 {
 		f.usedImgs = len(req.Messages[1].Images)
 	}
@@ -67,7 +76,19 @@ func (f *fakeProvider) CompleteStream(_ context.Context, req aiprovider.Request)
 	} else {
 		openErr = f.openErr
 	}
+	delay := f.openDelay
+	rejectThinking := f.rejectThinking
 	f.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	if rejectThinking && req.ThinkingLevel != nil && !req.DisableThinking {
+		return nil, aiprovider.ErrThinkingLevelRejected
+	}
 	if openErr != nil {
 		return nil, openErr
 	}
@@ -1202,8 +1223,12 @@ func TestOpenRetryExhaustedStaysBounded(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected provider error, got success")
 	}
-	if !aiprovider.IsOverloadedError(err) {
-		t.Errorf("error = %v, want an overloaded error", err)
+	var ae *apperror.Error
+	if !errors.As(err, &ae) || ae.Code() != "AI_BUSY" {
+		t.Errorf("error = %v, want AI_BUSY after exhausted retries", err)
+	}
+	if ae.Message != OpenBusyMessage {
+		t.Errorf("message = %q, want the busy message", ae.Message)
 	}
 	if fp.calls != 2 {
 		t.Errorf("provider calls = %d, want 2 (initial + 1 retry), never more", fp.calls)
@@ -1371,5 +1396,143 @@ func TestOpenFallbackAllModelsFailReturnsLastError(t *testing.T) {
 	}
 	if got.Status != model.StatusFailed || got.VersionCount != 0 {
 		t.Errorf("status=%q count=%d, want failed/0", got.Status, got.VersionCount)
+	}
+}
+
+func TestOpenHeaderTimeoutSkipsSameModelRetry(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{aiprovider.ErrOpenTimeout, nil}
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryOnUnavailable = 2
+	aiCfg.RetryBackoff = time.Millisecond
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (no same-model retry on header timeout)", fp.calls)
+	}
+	if fp.lastReq.Model != "fallback-model" {
+		t.Errorf("lastReq.Model = %q, want fallback-model", fp.lastReq.Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+}
+
+func TestOpenHeaderTimeoutAllModelsReturnsAIBusy(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErr = aiprovider.ErrOpenTimeout
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryOnUnavailable = 2
+	aiCfg.RetryBackoff = time.Millisecond
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+
+	p := createDraft(t, svc, "user-1")
+	_, err := svc.BeginGenerate(context.Background(), "user-1", p.ID, nil)
+	var ae *apperror.Error
+	if !errors.As(err, &ae) || ae.Code() != "AI_BUSY" {
+		t.Fatalf("error = %v, want AI_BUSY", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (one per model, no same-model retry)", fp.calls)
+	}
+}
+
+func TestOpenBudgetExhaustionStopsFallbackChain(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openDelay = 500 * time.Millisecond
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryOnUnavailable = 1
+	aiCfg.RetryBackoff = time.Millisecond
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+
+	p := createDraft(t, svc, "user-1")
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("open took %v, want bounded by the context budget", elapsed)
+	}
+	var ae *apperror.Error
+	if !errors.As(err, &ae) || ae.Code() != "AI_BUSY" {
+		t.Fatalf("error = %v, want AI_BUSY", err)
+	}
+	if fp.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (budget spent on first model, no fallback)", fp.calls)
+	}
+}
+
+func TestOpenThinkingLevelRejectedRetriesOnceWithoutIt(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.rejectThinking = true
+
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	level := "LOW"
+	aiCfg.ThinkingLevel = &level
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (rejected, then retried without thinking)", fp.calls)
+	}
+	if fp.reqs[0].ThinkingLevel == nil || *fp.reqs[0].ThinkingLevel != "LOW" {
+		t.Errorf("first request thinking = %v, want LOW", fp.reqs[0].ThinkingLevel)
+	}
+	if fp.reqs[1].ThinkingLevel != nil || !fp.reqs[1].DisableThinking {
+		t.Errorf("retry thinking = %v disable=%v, want omitted/disabled",
+			fp.reqs[1].ThinkingLevel, fp.reqs[1].DisableThinking)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+}
+
+func TestUnsupportedThinkingLevelIsNotSent(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "gemini-3.8-flash"
+	level := "MINIMAL"
+	aiCfg.ThinkingLevel = &level
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	ctx := context.Background()
+
+	p := createDraft(t, svc, "user-1")
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1", fp.calls)
+	}
+	if fp.reqs[0].ThinkingLevel != nil {
+		t.Errorf("thinking = %v, want omitted (MINIMAL unsupported on gemini-3.8-flash)", fp.reqs[0].ThinkingLevel)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
 	}
 }

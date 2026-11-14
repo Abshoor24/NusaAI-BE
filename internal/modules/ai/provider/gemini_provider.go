@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -34,13 +35,13 @@ type GeminiProvider struct {
 	// thinkingLevel is the Gemini 3.x thinking level (MINIMAL/LOW/MEDIUM/HIGH).
 	// nil means omit thinkingConfig from the payload entirely.
 	thinkingLevel *string
-	logger          *slog.Logger
+	logger        *slog.Logger
 }
 
 func NewGeminiProvider(cfg config.AIConfig, logger *slog.Logger) *GeminiProvider {
 	return &GeminiProvider{
-		baseURL:      strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:       cfg.APIKey,
+		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:  cfg.APIKey,
 		// Stream client: no Timeout so we don't kill a long-running stream body.
 		// ResponseHeaderTimeout protects against a server that accepts the TCP
 		// connection but never sends response headers.
@@ -66,6 +67,39 @@ const OverloadedMessage = "The AI provider is temporarily overloaded, please try
 // GenericProviderMessage is the client-safe message for all other provider
 // failures (bad key, bad request, decode errors, ...).
 const GenericProviderMessage = "The AI provider returned an error"
+
+// ErrOpenTimeout marks a provider that accepted the connection but did not
+// send response headers within AI_TIMEOUT. Such a wait is not retried on the
+// same model; the caller moves straight to the next fallback.
+var ErrOpenTimeout = errors.New("provider response header timeout")
+
+// ErrThinkingLevelRejected marks an HTTP 400 whose body mentions the thinking
+// configuration. The caller retries once with thinkingConfig omitted.
+var ErrThinkingLevelRejected = errors.New("provider rejected thinking level")
+
+// IsOpenTimeoutError reports whether err is a response-header timeout.
+func IsOpenTimeoutError(err error) bool {
+	return errors.Is(err, ErrOpenTimeout)
+}
+
+// IsThinkingLevelError reports whether err is a 400 caused by the thinking
+// configuration, so the caller can retry once without that field.
+func IsThinkingLevelError(err error) bool {
+	return errors.Is(err, ErrThinkingLevelRejected)
+}
+
+// isTimeoutError reports whether a transport error came from a timeout
+// (notably http.Transport.ResponseHeaderTimeout).
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
+}
 
 // IsOverloadedError reports whether err is a provider-overload failure and
 // therefore eligible for the limited pre-stream retry. It recognizes both
@@ -131,20 +165,43 @@ func providerStatusError(code int) error {
 	return apperror.AIProviderReason(apperror.ReasonProviderError, GenericProviderMessage, fmt.Errorf("status %d", code))
 }
 
+// thinkingLevelRejected reports whether a 400 body points at the thinking
+// configuration. Bodies are only inspected, never returned to the client.
+func thinkingLevelRejected(body []byte) bool {
+	lower := strings.ToLower(string(body))
+	if !strings.Contains(lower, "thinking") {
+		return false
+	}
+	return strings.Contains(lower, "level") || strings.Contains(lower, "config") || strings.Contains(lower, "budget")
+}
+
 // generationConfig returns the Gemini generationConfig payload, or nil when
-// neither knob is set so the request is byte-identical to before.
-func (p *GeminiProvider) generationConfig() map[string]interface{} {
-	if p.maxOutputTokens <= 0 && p.thinkingBudget == nil && p.thinkingLevel == nil {
+// no knob is set so the request is byte-identical to before. A per-request
+// thinking level overrides the provider-wide default; DisableThinking omits
+// thinkingConfig entirely.
+func (p *GeminiProvider) generationConfig(req Request) map[string]interface{} {
+	level := p.thinkingLevel
+	if req.ThinkingLevel != nil {
+		level = req.ThinkingLevel
+	}
+	if req.DisableThinking {
+		level = nil
+	}
+	budget := p.thinkingBudget
+	if req.DisableThinking {
+		budget = nil
+	}
+	if p.maxOutputTokens <= 0 && budget == nil && level == nil {
 		return nil
 	}
 	genCfg := map[string]interface{}{}
 	if p.maxOutputTokens > 0 {
 		genCfg["maxOutputTokens"] = p.maxOutputTokens
 	}
-	if p.thinkingLevel != nil {
-		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingLevel": *p.thinkingLevel}
-	} else if p.thinkingBudget != nil {
-		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingBudget": *p.thinkingBudget}
+	if level != nil {
+		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingLevel": *level}
+	} else if budget != nil {
+		genCfg["thinkingConfig"] = map[string]interface{}{"thinkingBudget": *budget}
 	}
 	return genCfg
 }
@@ -187,7 +244,7 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			"parts": []map[string]string{{"text": strings.Join(systemParts, "\n\n")}},
 		}
 	}
-	if genCfg := p.generationConfig(); genCfg != nil {
+	if genCfg := p.generationConfig(req); genCfg != nil {
 		payload["generationConfig"] = genCfg
 	}
 
@@ -212,6 +269,11 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 		if ctx.Err() != nil {
 			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
 		}
+		if isTimeoutError(err) {
+			p.logger.Error("ai provider stream headers timed out", "error", err)
+			return nil, apperror.AIProviderReason(apperror.ReasonProviderOverloaded, OverloadedMessage,
+				fmt.Errorf("%w: %v", ErrOpenTimeout, err))
+		}
 		p.logger.Error("ai provider stream request failed", "error", err)
 		return nil, apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider could not be reached", err)
 	}
@@ -223,6 +285,10 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			"status", resp.StatusCode,
 			"provider_body", string(errBody),
 		)
+		if resp.StatusCode == http.StatusBadRequest && thinkingLevelRejected(errBody) {
+			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, GenericProviderMessage,
+				fmt.Errorf("%w: status 400", ErrThinkingLevelRejected))
+		}
 		return nil, providerStatusError(resp.StatusCode)
 	}
 

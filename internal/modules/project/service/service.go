@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strings"
 	"time"
@@ -35,10 +36,20 @@ type Service interface {
 	// GetAttachment returns the attachment row plus an open file reader.
 	GetAttachment(ctx context.Context, userID, projectID, attachmentID string) (*model.ProjectAttachment, io.ReadCloser, error)
 
-	// BeginGenerate validates input, atomically claims the project
-	// (draft/failed -> generating), stores attachments, and opens the
-	// provider stream. A non-nil stream with nil error means the provider
-	// accepted; the caller may now commit to SSE headers.
+	// PrepareGenerate validates input, atomically claims the project
+	// (draft/failed -> generating), stores attachments, and builds the
+	// prompt without touching the provider. It is safe to open SSE headers
+	// after this returns; only OpenStream talks to the provider.
+	PrepareGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error)
+	// PrepareRevise is the ready -> generating counterpart.
+	PrepareRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error)
+	// OpenStream runs the provider open phase (retries + fallback models)
+	// and attaches the winning stream to pending. On failure it rolls the
+	// project status back and returns AI_BUSY when the open budget was
+	// exhausted or every model stayed overloaded/unresponsive.
+	OpenStream(ctx context.Context, pending *PendingStream, observe OpenObserver) error
+	// BeginGenerate is the combined prepare+open helper kept for callers
+	// that do not stream SSE (and for tests).
 	BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error)
 	// BeginRevise is the ready -> generating counterpart.
 	BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error)
@@ -60,16 +71,24 @@ type PendingStream struct {
 	StartedAt time.Time
 	MaxBytes  int64
 	// Model is the provider model that actually served the request
-	// (primary or fallback). Populated by openStream.
+	// (primary or fallback). Populated by OpenStream.
 	Model string
 	// FallbackUsed is true when a non-primary model served the request.
 	FallbackUsed bool
 	// AttemptNumber is the provider open attempt within the selected model.
 	AttemptNumber int
-	// firstChunkAt is the wall time when the first chunk of any kind arrived.
-	firstChunkAt time.Time
-	// firstTextTokenAt is the wall time when the first non-empty text token arrived.
-	firstTextTokenAt time.Time
+	// TotalAttempts counts every provider open call made (including retries
+	// and failed fallback attempts).
+	TotalAttempts int
+	// OpenDuration is the time spent in the provider open phase.
+	OpenDuration time.Duration
+	// ThinkingLevel is the level actually sent, or "default" when omitted.
+	ThinkingLevel string
+	// systemPrompt, userPrompt and providerImages are captured by
+	// PrepareGenerate/PrepareRevise and sent by OpenStream.
+	systemPrompt   string
+	userPrompt     string
+	providerImages []providerImage
 	// FinishReason is the provider's terminal reason observed on the stream
 	// (e.g. "STOP", "MAX_TOKENS"); empty when unknown. The handler records
 	// it while relaying chunks.
@@ -80,9 +99,32 @@ type PendingStream struct {
 	Usage *aiprovider.UsageMetadata
 	// Chunks and TextBytes count relayed provider chunks and text bytes for
 	// per-stream diagnostics (populated by the handler loop).
-	Chunks   int
+	Chunks    int
 	TextBytes int
 }
+
+// Open phase labels surfaced to the frontend as SSE status events.
+const (
+	OpenPhaseConnecting = "connecting"
+	OpenPhaseRetrying   = "retrying"
+	OpenPhaseFallback   = "fallback"
+)
+
+// OpenBusyMessage is the client-safe Indonesian message used when the open
+// budget is exhausted or the provider remains overloaded.
+const OpenBusyMessage = "Server AI sedang ramai. Silakan coba lagi sebentar lagi."
+
+// OpenPhaseEvent is one progress notification from the provider open phase.
+// Model names are intentionally excluded from the client contract.
+type OpenPhaseEvent struct {
+	Phase   string
+	Attempt int
+	Elapsed time.Duration
+}
+
+// OpenObserver receives open-phase progress notifications. It is called from
+// OpenStream's goroutine; implementations must not block.
+type OpenObserver func(OpenPhaseEvent)
 
 type service struct {
 	repo       repository.Repository
@@ -279,103 +321,227 @@ func (s *service) candidateModels() []string {
 	return models
 }
 
-func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, string, bool, int, error) {
-	if s.provider == nil {
-		return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
+// thinkingLevelFor resolves the per-model override, then the global level.
+// Levels that the model is documented not to support are omitted instead of
+// being sent (Gemini 3.8/3.7 Flash reject MINIMAL with HTTP 400).
+func (s *service) thinkingLevelFor(modelName string) *string {
+	level := ""
+	if configured, ok := s.aiCfg.ThinkingLevels[strings.ToLower(strings.TrimSpace(modelName))]; ok {
+		level = configured
+	} else if s.aiCfg.ThinkingLevel != nil {
+		level = *s.aiCfg.ThinkingLevel
 	}
-	converted := make([]aiprovider.ImageAttachment, 0, len(imgs))
-	for _, im := range imgs {
+	level = strings.ToUpper(strings.TrimSpace(level))
+	if level == "" {
+		return nil
+	}
+	if !thinkingLevelSupported(modelName, level) {
+		s.logger.Warn("ai thinking level not supported by model, omitting",
+			"model", modelName, "thinking_level", level)
+		return nil
+	}
+	return &level
+}
+
+func thinkingLevelSupported(modelName, level string) bool {
+	m := strings.ToLower(modelName)
+	if level == "MINIMAL" {
+		if strings.Contains(m, "gemini-3.8-flash") || strings.Contains(m, "gemini-3.7-flash") {
+			return false
+		}
+	}
+	return true
+}
+
+// smallJitter returns 0..20% of d (capped at 500ms) so retries do not
+// synchronize across concurrent requests.
+func smallJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return 0
+	}
+	window := d / 5
+	if window > 500*time.Millisecond {
+		window = 500 * time.Millisecond
+	}
+	if window <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int64N(int64(window) + 1))
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// OpenStream opens the provider stream for a prepared pending request. It
+// retries overloaded responses on the same model (up to AI_RETRY_ON_UNAVAILABLE
+// with jittered backoff), moves to the next fallback model for other failures,
+// and never retries a response-header timeout on the same model. The caller's
+// context is expected to carry the AI_OPEN_BUDGET deadline.
+func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observe OpenObserver) error {
+	if pending == nil || pending.Project == nil {
+		return apperror.AIProviderReason(apperror.ReasonProviderError, "AI request is not prepared", nil)
+	}
+	if s.provider == nil {
+		s.failDetached(ctx, pending)
+		return apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
+	}
+
+	converted := make([]aiprovider.ImageAttachment, 0, len(pending.providerImages))
+	for _, im := range pending.providerImages {
 		converted = append(converted, aiprovider.ImageAttachment{MimeType: im.MimeType, Data: im.Data})
 	}
 
 	models := s.candidateModels()
 	maxRetries := s.aiCfg.RetryOnUnavailable
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
 	if maxRetries > 2 {
 		maxRetries = 2
 	}
-
+	openStart := time.Now()
 	var lastErr error
+	totalAttempts := 0
+
 	for modelIdx, modelName := range models {
 		if ctx.Err() != nil {
-			if lastErr != nil {
-				return nil, "", false, 0, lastErr
-			}
-			return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+			break
 		}
-
+		level := s.thinkingLevelFor(modelName)
 		req := aiprovider.Request{
 			Model: modelName,
 			Messages: []aiprovider.ChatMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userPrompt, Images: converted},
+				{Role: "system", Content: pending.systemPrompt},
+				{Role: "user", Content: pending.userPrompt, Images: converted},
 			},
+			ThinkingLevel: level,
 		}
 
-		attempts := 1
-		if maxRetries > 0 {
-			attempts = maxRetries + 1
-		}
-
-		var stream <-chan aiprovider.StreamChunk
-		var err error
-
-		for attempt := 0; attempt < attempts; attempt++ {
+		attempts := maxRetries + 1
+		thinkingRetried := false
+		attempt := 0
+		for attempt < attempts {
 			if ctx.Err() != nil {
-				if err != nil {
-					return nil, "", false, 0, err
-				}
-				return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+				break
 			}
-
-			stream, err = s.provider.CompleteStream(ctx, req)
+			phase := OpenPhaseConnecting
+			if modelIdx > 0 {
+				phase = OpenPhaseFallback
+			} else if attempt > 0 {
+				phase = OpenPhaseRetrying
+			}
+			if observe != nil {
+				observe(OpenPhaseEvent{Phase: phase, Attempt: attempt + 1, Elapsed: time.Since(openStart)})
+			}
+			totalAttempts++
+			stream, err := s.provider.CompleteStream(ctx, req)
 			if err == nil {
-				if modelIdx > 0 {
-					s.logger.Info("ai stream opened using fallback model",
-						"model", modelName, "primary_model", models[0], "fallback_index", modelIdx)
-				} else if attempt > 0 {
-					s.logger.Info("ai stream open retry succeeded",
-						"model", modelName, "attempt", attempt+1, "max_attempts", attempts)
+				pending.Stream = stream
+				pending.Model = modelName
+				pending.FallbackUsed = modelIdx > 0
+				pending.AttemptNumber = attempt + 1
+				pending.TotalAttempts = totalAttempts
+				pending.OpenDuration = time.Since(openStart)
+				if level != nil {
+					pending.ThinkingLevel = *level
+				} else {
+					pending.ThinkingLevel = "default"
 				}
-				return stream, modelName, modelIdx > 0, attempt + 1, nil
+				attrs := []any{
+					"model", modelName,
+					"attempt", attempt + 1,
+					"attempts", totalAttempts,
+					"fallback_used", pending.FallbackUsed,
+					"thinking_level", pending.ThinkingLevel,
+					"open_ms", pending.OpenDuration.Milliseconds(),
+				}
+				if modelIdx > 0 {
+					s.logger.Info("ai stream opened using fallback model", append(attrs, "primary_model", models[0], "fallback_index", modelIdx)...)
+				} else if attempt > 0 {
+					s.logger.Info("ai stream open retry succeeded", attrs...)
+				} else {
+					s.logger.Info("ai stream opened", attrs...)
+				}
+				return nil
 			}
-
-			// Do not retry the same model if error is not temporary overload
-			if !aiprovider.IsOverloadedError(err) {
+			lastErr = err
+			if ctx.Err() != nil {
 				break
 			}
 
-			if attempt+1 < attempts {
+			// A provider that explicitly rejects the thinking level gets one
+			// chance with thinkingConfig omitted. This is not counted as an
+			// overload retry.
+			if aiprovider.IsThinkingLevelError(err) && !thinkingRetried {
+				thinking := "default"
+				if level != nil {
+					thinking = *level
+				}
+				s.logger.Warn("ai provider rejected thinking level, retrying without it",
+					"model", modelName, "thinking_level", thinking, "error", err)
+				thinkingRetried = true
+				req.DisableThinking = true
+				req.ThinkingLevel = nil
+				continue
+			}
+
+			// Header timeouts and non-overload errors skip the same-model
+			// retry and go straight to the next fallback model.
+			if aiprovider.IsOpenTimeoutError(err) || !aiprovider.IsOverloadedError(err) {
+				break
+			}
+
+			attempt++
+			if attempt < attempts {
+				delay := s.aiCfg.RetryBackoff
+				if delay > 0 {
+					delay += smallJitter(delay)
+				}
 				s.logger.Warn("ai stream open overloaded, retrying",
-					"model", modelName, "attempt", attempt+1, "max_attempts", attempts, "error", err)
-				if backoff := s.aiCfg.RetryBackoff; backoff > 0 {
-					timer := time.NewTimer(backoff)
-					select {
-					case <-ctx.Done():
-						timer.Stop()
-						return nil, "", false, 0, err
-					case <-timer.C:
-					}
-				} else if ctx.Err() != nil {
-					return nil, "", false, 0, err
+					"model", modelName, "attempt", attempt, "max_attempts", attempts,
+					"backoff_ms", delay.Milliseconds(), "error", err)
+				if !sleepCtx(ctx, delay) {
+					break
 				}
 			} else {
 				s.logger.Warn("ai stream open retries exhausted",
-					"model", modelName, "attempts", attempts, "max_attempts", attempts, "error", err)
+					"model", modelName, "attempts", attempts, "error", err)
 			}
 		}
-
-		lastErr = err
-		// If another model is available in the fallback chain, log and continue
+		if ctx.Err() != nil {
+			break
+		}
 		if modelIdx+1 < len(models) {
 			s.logger.Warn("ai stream failed on model, attempting fallback",
-				"failed_model", modelName, "next_model", models[modelIdx+1], "error", err)
+				"failed_model", modelName, "next_model", models[modelIdx+1], "error", lastErr)
 		}
 	}
 
-	return nil, "", false, 0, lastErr
+	s.failDetached(ctx, pending)
+	if ctx.Err() != nil {
+		return apperror.AIBusy(OpenBusyMessage, ctx.Err())
+	}
+	if lastErr == nil {
+		lastErr = apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned an error", nil)
+	}
+	if aiprovider.IsOverloadedError(lastErr) || aiprovider.IsOpenTimeoutError(lastErr) {
+		return apperror.AIBusy(OpenBusyMessage, lastErr)
+	}
+	return lastErr
 }
 
-func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
+func (s *service) PrepareGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
 	if _, err := uuid.Parse(projectID); err != nil {
 		return nil, apperror.Validation("Invalid project ID")
 	}
@@ -399,15 +565,14 @@ func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, i
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildGeneratePrompt(briefText), provImgs)
-	if err != nil {
-		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindGenerate})
-		return nil, err
-	}
-	return &PendingStream{Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
+	return &PendingStream{
+		Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description,
+		StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes,
+		systemPrompt: SystemPrompt, userPrompt: BuildGeneratePrompt(briefText), providerImages: provImgs,
+	}, nil
 }
 
-func (s *service) BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
+func (s *service) PrepareRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
 	if _, err := uuid.Parse(projectID); err != nil {
 		return nil, apperror.Validation("Invalid project ID")
 	}
@@ -452,12 +617,33 @@ func (s *service) BeginRevise(ctx context.Context, userID, projectID, instructio
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildRevisePrompt(briefText, base.HTML, instruction), provImgs)
+	return &PendingStream{
+		Project: p, Kind: model.KindRevise, Prompt: instruction,
+		StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes,
+		systemPrompt: SystemPrompt, userPrompt: BuildRevisePrompt(briefText, base.HTML, instruction), providerImages: provImgs,
+	}, nil
+}
+
+func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
+	pending, err := s.PrepareGenerate(ctx, userID, projectID, imgs)
 	if err != nil {
-		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindRevise})
 		return nil, err
 	}
-	return &PendingStream{Project: p, Kind: model.KindRevise, Prompt: instruction, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
+
+func (s *service) BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
+	pending, err := s.PrepareRevise(ctx, userID, projectID, instruction, baseVersion, imgs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
 }
 
 func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawBuffer string) (*model.Version, error) {
