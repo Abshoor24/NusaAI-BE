@@ -14,7 +14,11 @@ import (
 // Tests override these (same package) to avoid waiting real time.
 var (
 	sseHeartbeatInterval = 15 * time.Second
-	sseWriteTimeout      = 60 * time.Second
+	// sseOpenHeartbeatInterval is used while the provider stream is opening;
+	// the frontend must see activity within a few seconds, not after a
+	// multi-attempt open phase.
+	sseOpenHeartbeatInterval = 5 * time.Second
+	sseWriteTimeout          = 60 * time.Second
 )
 
 // sseWriter wraps an http.ResponseWriter with automatic flushing for SSE.
@@ -84,8 +88,15 @@ func (s *sseWriter) flush() {
 // shapes stay byte-identical to before. Technical details go to server
 // logs only.
 func sseErrorPayload(message, reason string) map[string]interface{} {
+	return sseErrorPayloadWithCode("AI_PROVIDER_ERROR", message, reason)
+}
+
+// sseErrorPayloadWithCode is the same envelope with an explicit stable code.
+// The open phase uses AI_BUSY so the frontend never receives a JSON 502 after
+// SSE headers have already been committed.
+func sseErrorPayloadWithCode(code, message, reason string) map[string]interface{} {
 	errObj := map[string]interface{}{
-		"code":    "AI_PROVIDER_ERROR",
+		"code":    code,
 		"message": message,
 	}
 	if reason != "" {
