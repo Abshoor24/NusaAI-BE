@@ -27,3 +27,5 @@ uploads/
 .DS_Store
 Thumbs.db
 .upload/
+
+be-log.txt
