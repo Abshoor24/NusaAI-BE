@@ -88,6 +88,7 @@ type Handler struct {
 	aiCfg      config.AIConfig
 	uploadCfg  config.UploadConfig
 	projectCfg config.ProjectConfig
+	trace      *requestTracker
 }
 
 // New creates a project Handler.
@@ -107,7 +108,7 @@ func New(svc service.Service, logger *slog.Logger, aiCfg config.AIConfig, upload
 	if aiCfg.OpenBudget <= 0 {
 		aiCfg.OpenBudget = 60 * time.Second
 	}
-	return &Handler{svc: svc, logger: logger, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg}
+	return &Handler{svc: svc, logger: logger, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg, trace: newRequestTracker()}
 }
 
 func userID(w http.ResponseWriter, r *http.Request, h *Handler) (string, bool) {
@@ -277,7 +278,7 @@ func (h *Handler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	response.RespondSuccess(w, http.StatusOK, "Request successful", model.ToVersionResponse(v, true))
 }
 
-// Export handles GET /api/v1/projects/{id}/export â€” raw HTML download.
+// Export handles GET /api/v1/projects/{id}/export Ã¢â‚¬â€ raw HTML download.
 func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 	uid, ok := userID(w, r, h)
 	if !ok {
@@ -390,21 +391,28 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectID := strings.TrimSpace(chi.URLParam(r, "id"))
+	tr := h.beginRequestTrace(r, "generate", projectID)
+	outcome := "error"
+	defer func() { h.finishRequestTrace(tr, outcome) }()
+
 	var images []model.ImagePayload
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			outcome = "error:VALIDATION_ERROR"
 			response.RespondError(w, h.logger, apperror.Validation("Failed to parse multipart form: "+err.Error()))
 			return
 		}
 		var err error
 		images, err = h.multipartImages(r)
 		if err != nil {
+			outcome = errorOutcome(err)
 			response.RespondError(w, h.logger, err)
 			return
 		}
 	} else {
 		var req model.GenerateRequest
 		if err := decodeStrict(w, r, &req, h.aiCfg.MaxGenerateBodyBytes); err != nil {
+			outcome = errorOutcome(err)
 			response.RespondError(w, h.logger, err)
 			return
 		}
@@ -416,10 +424,11 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	// (and everything after it) is streamed.
 	pending, err := h.svc.PrepareGenerate(r.Context(), uid, projectID, images)
 	if err != nil {
+		outcome = errorOutcome(err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
-	h.streamPending(w, r, pending)
+	outcome = h.streamPending(w, r, pending)
 }
 
 // Revise handles POST /api/v1/projects/{id}/revise (SSE).
@@ -429,11 +438,16 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectID := strings.TrimSpace(chi.URLParam(r, "id"))
+	tr := h.beginRequestTrace(r, "revise", projectID)
+	outcome := "error"
+	defer func() { h.finishRequestTrace(tr, outcome) }()
+
 	var instruction string
 	var baseVersion *int
 	var images []model.ImagePayload
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			outcome = "error:VALIDATION_ERROR"
 			response.RespondError(w, h.logger, apperror.Validation("Failed to parse multipart form: "+err.Error()))
 			return
 		}
@@ -441,6 +455,7 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 		if v := strings.TrimSpace(r.FormValue("base_version")); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 1 {
+				outcome = "error:VALIDATION_ERROR"
 				response.RespondError(w, h.logger, apperror.Validation("Invalid base version"))
 				return
 			}
@@ -449,20 +464,24 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 		var err error
 		images, err = h.multipartImages(r)
 		if err != nil {
+			outcome = errorOutcome(err)
 			response.RespondError(w, h.logger, err)
 			return
 		}
 		if instruction == "" {
+			outcome = "error:VALIDATION_ERROR"
 			response.RespondError(w, h.logger, apperror.ValidationFields(map[string]string{"instruction": "is required"}))
 			return
 		}
 		if len(instruction) > 4000 {
+			outcome = "error:VALIDATION_ERROR"
 			response.RespondError(w, h.logger, apperror.ValidationFields(map[string]string{"instruction": "must be at most 4000 characters"}))
 			return
 		}
 	} else {
 		var req model.ReviseRequest
 		if err := decodeStrict(w, r, &req, h.aiCfg.MaxGenerateBodyBytes); err != nil {
+			outcome = errorOutcome(err)
 			response.RespondError(w, h.logger, err)
 			return
 		}
@@ -473,10 +492,11 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 
 	pending, err := h.svc.PrepareRevise(r.Context(), uid, projectID, instruction, baseVersion, images)
 	if err != nil {
+		outcome = errorOutcome(err)
 		response.RespondError(w, h.logger, err)
 		return
 	}
-	h.streamPending(w, r, pending)
+	outcome = h.streamPending(w, r, pending)
 }
 
 // streamPending relays one generate/revise request as SSE. SSE headers are
@@ -485,7 +505,7 @@ func (h *Handler) Revise(w http.ResponseWriter, r *http.Request) {
 // is never silent for minutes. The stream deadline starts only after the
 // provider has opened, and AI_STREAM_IDLE_TIMEOUT bounds silence between
 // chunks.
-func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending *service.PendingStream) {
+func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending *service.PendingStream) string {
 	sse := newSSEWriter(w)
 	ctx := newPhaseContext(r.Context())
 	defer ctx.Cancel(context.Canceled)
@@ -540,7 +560,7 @@ func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending 
 
 	if openErr != nil || ctx.Err() != nil {
 		if ctx.Err() == context.Canceled && openErr == nil {
-			return
+			return "cancelled"
 		}
 		if waitedPastDeadline {
 			h.svc.FailStream(ctx, pending)
@@ -555,10 +575,10 @@ func (h *Handler) streamPending(w http.ResponseWriter, r *http.Request, pending 
 			"thinking_level", pending.ThinkingLevel,
 			"error", openErr)
 		if ctx.Err() == context.Canceled {
-			return // client disconnected; nothing to send
+			return "cancelled" // client disconnected; nothing to send
 		}
 		h.writeOpenError(sse, openErr, ctx.Err())
-		return
+		return "open_error"
 	}
 
 	// The provider stream is open: only now does the streaming deadline start.
@@ -602,7 +622,7 @@ loop:
 				h.logger.Error("project stream timed out", attrs...)
 				h.svc.FailStream(ctx, pending)
 				sse.writeEvent("error", sseErrorPayload(streamTimeoutMessage, apperror.ReasonStreamTimeout))
-				return
+				return "timeout"
 			}
 			// Client gone: roll back on a detached context and stop silently
 			// for the client, but still log the per-stream diagnosis.
@@ -614,7 +634,7 @@ loop:
 				"finish_reason", pending.FinishReason,
 				"block_reason", pending.BlockReason)
 			h.svc.FailStream(ctx, pending)
-			return
+			return "cancelled"
 		case <-idleTimer.C:
 			// No provider chunk within the idle window: the stream is
 			// open but silent. Abort Gemini, roll back, report stalled.
@@ -636,7 +656,7 @@ loop:
 			h.logger.Error("project stream stalled", attrs...)
 			h.svc.FailStream(ctx, pending)
 			sse.writeEvent("error", sseErrorPayload(streamStalledMessage, apperror.ReasonStreamStalled))
-			return
+			return "stalled"
 		case <-tickCh:
 			sse.writeHeartbeat()
 			continue
@@ -687,7 +707,7 @@ loop:
 				h.svc.FailStream(ctx, pending)
 				chunkMsg, chunkReason := providerChunkMessage(chunk.Err)
 				sse.writeEvent("error", sseErrorPayload(chunkMsg, chunkReason))
-				return
+				return "chunk_error"
 			}
 			if chunk.Done {
 				break loop
@@ -712,7 +732,7 @@ loop:
 				h.logger.Error("project stream exceeded buffer cap", attrs...)
 				h.svc.FailStream(ctx, pending)
 				sse.writeEvent("error", sseErrorPayload(genericStreamError, apperror.ReasonProviderError))
-				return
+				return "buffer_cap"
 			}
 			buf.WriteString(chunk.Token)
 			pending.TextBytes += len(chunk.Token)
@@ -743,7 +763,7 @@ loop:
 		}
 		h.logger.Error("project stream finalize failed", attrs...)
 		sse.writeEvent("error", sseErrorPayload(genericStreamError, reasonOf(err)))
-		return
+		return "finalize_error"
 	}
 	attrs := []any{
 		"project_id", pending.Project.ID, "version_number", ver.VersionNumber,
@@ -765,6 +785,7 @@ loop:
 		"version_id":     ver.ID,
 		"version_number": ver.VersionNumber,
 	})
+	return "done"
 }
 
 // writeOpenError emits the open-phase failure without ever falling back to a

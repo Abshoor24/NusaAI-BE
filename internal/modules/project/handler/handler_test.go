@@ -1160,3 +1160,29 @@ func TestGenerateSSEEmitsStatusDuringOpen(t *testing.T) {
 		t.Errorf("stream should still finish:\n%s", body)
 	}
 }
+
+func TestRequestTrackerDuplicateGenerateDetection(t *testing.T) {
+	tr := newRequestTracker()
+	t0 := time.Now()
+
+	if active, dup, _, gap := tr.begin("r1", "generate", "p1", t0); active != 0 || dup || gap != 0 {
+		t.Fatalf("first begin = active %d dup %v gap %v, want 0/false/0", active, dup, gap)
+	}
+	active, dup, prev, gap := tr.begin("r2", "generate", "p1", t0.Add(2*time.Millisecond))
+	if !dup || prev != "r1" || active != 1 || gap != 2*time.Millisecond {
+		t.Fatalf("overlap = active %d dup %v prev %q gap %v, want 1/true/r1/2ms", active, dup, prev, gap)
+	}
+
+	tr.finish("r1", "generate", "p1", t0.Add(300*time.Millisecond))
+	tr.finish("r2", "generate", "p1", t0.Add(300*time.Millisecond))
+	if _, dup, _, _ := tr.begin("r3", "generate", "p1", t0.Add(time.Second)); !dup {
+		t.Error("generate starting <2s after the previous ended must be flagged")
+	}
+	tr.finish("r3", "generate", "p1", t0.Add(time.Second))
+	if _, dup, _, _ := tr.begin("r4", "generate", "p1", t0.Add(5*time.Second)); dup {
+		t.Error("generate starting >2s after the previous ended must not be flagged")
+	}
+	if active, dup, _, _ := tr.begin("v1", "revise", "p1", t0.Add(5*time.Second)); dup || active != 1 {
+		t.Errorf("revise = active %d dup %v, want active generate count 1 and no duplicate flag", active, dup)
+	}
+}
