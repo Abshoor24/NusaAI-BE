@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -2136,4 +2137,49 @@ func TestDailyQuotaDoesNotDoubleHedge(t *testing.T) {
 	}
 	collectTokens(t, pending.Stream)
 	svc.FailStream(ctx, pending)
+}
+
+func TestDailyQuotaLogsOncePerModelPerHour(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), newFakeProvider(testHTML), aiCfg, uploadCfg, projectCfg, logger)
+	impl := svc.(*service)
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	impl.quota.now = func() time.Time { return now }
+
+	err := apperror.AIProviderReason(apperror.ReasonProviderOverloaded, aiprovider.OverloadedMessage,
+		fmt.Errorf("status 429: %w", aiprovider.NewQuotaError(aiprovider.QuotaInfo{
+			Daily:      true,
+			QuotaID:    "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+			QuotaValue: "20",
+			QuotaModel: "gemini-3.6-flash",
+			RetryDelay: 60369 * time.Second,
+		})))
+
+	if !impl.recordDailyQuota(err, "gemini-3.5-flash") {
+		t.Fatal("recordDailyQuota = false, want true")
+	}
+	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 1 {
+		t.Fatalf("quota ERROR logs = %d, want 1 within one hour:\n%s", got, logs.String())
+	}
+	for _, want := range []string{
+		"model=gemini-3.5-flash",
+		"quota_model=gemini-3.6-flash",
+		"quota_id=GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+		"quota_value=20",
+		"retry_delay=",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("quota log missing %q:\n%s", want, logs.String())
+		}
+	}
+
+	now = now.Add(quotaLogInterval + time.Second)
+	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 2 {
+		t.Errorf("quota ERROR logs = %d, want 2 after the log interval", got)
+	}
 }
