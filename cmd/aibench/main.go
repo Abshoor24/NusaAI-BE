@@ -47,7 +47,7 @@ func runCLI(args []string) int {
 		return 1
 	}
 	if cfg.LintDir != "" {
-		return runLintDirectory(cfg.LintDir, briefs)
+		return runLintDirectory(cfg.LintDir, cfg.OutFolder, briefs)
 	}
 
 	selected, err := selectBriefs(briefs, cfg.Brief)
@@ -270,7 +270,7 @@ func finishLint(outFolder string, results []lintFileResult) int {
 	return 0
 }
 
-func runLintDirectory(dir string, briefs []Brief) int {
+func runLintDirectory(dir, outFolder string, briefs []Brief) int {
 	results, hasFailure, err := lintDirectory(dir, briefs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Lint directory gagal: %v\n", err)
@@ -279,7 +279,7 @@ func runLintDirectory(dir string, briefs []Brief) int {
 	for _, result := range results {
 		printLintResult(os.Stdout, result)
 	}
-	path, err := writeLintReport(dir, results)
+	path, err := writeLintReport(outFolder, results)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Gagal menulis lint report: %v\n", err)
 		return 1

@@ -1,4 +1,4 @@
-# AIBench
+﻿# AIBench
 
 Alat ukur manual untuk generate website lewat provider AI. Semua fixture brief memakai bentuk yang sama dengan `service.FormatBrief`, memakai data fiktif, dan tidak memanggil API pada mode `--lint-dir`.
 
@@ -60,13 +60,14 @@ go run ./cmd/aibench --brief full --parallel 3 --out ./aibench-results/parallel
 Lint hasil yang sudah ada tanpa API:
 
 ```bash
-go run ./cmd/aibench --lint-dir ./aibench-results/lint-all
+go run ./cmd/aibench --lint-dir ./aibench-results/lint-all --out ./aibench-results/lint-all
 ```
 
 ## Lint
 
-Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. Exit code non-nol bila ada `FAIL`.
+Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. `lint_report.md` selalu ditulis ke folder `--out`. Exit code non-nol bila ada `FAIL`.
 
 Aturan `FAIL`: email di luar brief; nomor telepon/`wa.me` di luar WhatsApp brief; jam/hari di luar brief; klaim terlarang V7-3/V9-1; pill buka permanen saat brief tanpa jam; CTA "Hubungi Kami" saat brief tanpa saluran kontak; DESIGN PLAN tanpa baris `FACTS ... EMAIL:` atau lebih dari 100 kata di luar baris FACTS; italic; script eksternal selain `cdn.tailwindcss.com` atau stylesheet selain Google Fonts; hex di luar palet brief/V8-4.
 
 Aturan `WARN` (heuristik): `text-accent` di luar section `bg-ink`; dua section `bg-paper` berurutan; jumlah section di luar 5-7.
+

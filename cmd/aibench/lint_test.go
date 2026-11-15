@@ -261,3 +261,22 @@ func TestLintDirectoryWritesReportAndFails(t *testing.T) {
 		t.Error("report missing markdown table header")
 	}
 }
+
+func TestRunLintDirectoryWritesReportToOutFolder(t *testing.T) {
+	briefs, err := loadBriefs("")
+	if err != nil {
+		t.Fatalf("loadBriefs: %v", err)
+	}
+	input := t.TempDir()
+	out := t.TempDir()
+	bad := strings.Replace(cleanLintHTML, "</body>", `<a href="#kontak">Hubungi Kami</a></body>`, 1)
+	if err := os.WriteFile(filepath.Join(input, "minimal_model_default_run1.html"), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := runLintDirectory(input, out, briefs); code == 0 {
+		t.Fatal("runLintDirectory exit = 0, want non-zero for FAIL")
+	}
+	if _, err := os.Stat(filepath.Join(out, "lint_report.md")); err != nil {
+		t.Fatalf("report not written to --out: %v", err)
+	}
+}
