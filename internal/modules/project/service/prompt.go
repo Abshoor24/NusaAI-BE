@@ -581,7 +581,62 @@ The concept comes from a fact in the brief; there is exactly one primary action
 and its label is the same everywhere; every section carries real content from
 the brief; the conflict table V8-1 is respected; no italic, no ghost text, no
 accent-colored full-width band; contrast pairs follow V8-4; no horizontal
-scroll at 360px.`
+scroll at 360px.
+
+V9 RULES (claim audit; these override V8 and earlier rules when they conflict)
+
+V9-1 CLAIM AUDIT
+Every visible sentence must be one of: (a) a fact copied from the brief; (b) a
+plain description of what a listed service or product is, with no claim about
+quality, speed, frequency, staff, atmosphere or process; (c) a label of the page
+interface. Unless the brief states it, never write: an email address or domain
+name, opening days or hours, response times, durations, phases or week numbers,
+years of experience, team size, delivered file formats, availability claims such
+as "terbuka untuk kolaborasi", praise of staff or service (ramah, profesional,
+terpercaya, terbaik), or a description of seating, mood or ambience. A card
+with no fact beyond its title gets the title and one plain sentence saying what
+it is, or it is dropped. Add EMAIL: (value or NONE) to the FACTS line; an email
+exists on the page only if FACTS lists it.
+
+V9-2 LIVE STATUS
+The open or closed pill, and any text such as "buka hari ini", exist only when
+FACTS lists opening hours. Compute them in JavaScript from those hours as in
+V73-1; never hardcode "buka". When hours are NONE there is no pill and no
+hours panel in the hero.
+
+V9-3 WIDGET WITHOUT INVENTED NUMBERS
+A widget must not output durations, prices, scores or quantities that are not
+in the brief. Allowed: a selector that reveals only text from the brief (tabs or
+an accordion of the listed items); a checklist that builds the WhatsApp message
+from the visitor's choices when the brief has a WhatsApp number; calculations on
+numbers the visitor types. If the brief offers none of these, use the tabs or
+accordion of listed items, or omit the widget and enlarge the typographic hero.
+
+V9-4 NO CONTACT CHANNEL
+If FACTS has no WhatsApp, no email and no address: write no contact section and
+no button labelled Hubungi Kami or similar, and no card that only says to ask
+or to visit. The primary button scrolls to the main section of the page and is
+named after that section (for example Lihat Layanan). The last section is a
+short closing block with the business name and one factual sentence. The
+header button and the mobile menu button follow the same primary action. This
+overrides the shared contact button of V8-2.
+
+V9-5 PLAN SIZE
+The DESIGN PLAN comment is at most 100 words excluding the FACTS line. Item (5)
+is only the section names separated by commas, with no description per section.
+
+V9-6 ACCENT AS TEXT
+The accent token is never a text color on a light background (paper, white or
+tint), including numerals and eyebrows; use deep there. The accent is a text
+color only on ink sections.
+
+V9-7 SECTION BACKGROUNDS
+The hero counts as paper. The section after the hero uses tint or ink. Never two
+paper sections in a row anywhere on the page.
+
+V9-8 FINAL CLAIM CHECK (silent, before output)
+Read the page text once. Delete or rewrite every sentence that is not allowed by
+V9-1, then confirm V9-2 to V9-7.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
