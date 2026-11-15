@@ -636,7 +636,53 @@ paper sections in a row anywhere on the page.
 
 V9-8 FINAL CLAIM CHECK (silent, before output)
 Read the page text once. Delete or rewrite every sentence that is not allowed by
-V9-1, then confirm V9-2 to V9-7.`
+V9-1, then confirm V9-2 to V9-7.
+
+V10 RULES (fixes found in test output; these override V9 and earlier rules)
+
+V10-1 MENU BLOCK WITHOUT A CONTACT CHANNEL
+When V9-4 applies, the V72-2 menu block is written without any request to
+contact: a Menu eyebrow, a plain heading, and the sentence "Daftar menu dan
+harga belum tersedia di halaman ini." with no button. No sentence anywhere on
+the page may tell the visitor to contact, ask, call or message. Every button
+that scrolls must land on a section that holds at least one fact from the
+brief; never scroll to an empty block.
+
+V10-2 NO INVENTED DAYS
+If the brief gives opening hours, write them exactly as given. Never add day
+names, "setiap hari", "libur" or "tutup" unless the brief states them, and the
+status pill never assumes closed days: with hours only, it compares the time of
+day alone.
+
+V10-3 THIN BRIEF
+If the brief has fewer than three facts beyond the business name and type, build
+at most 4 sections: hero, one short about section, the block the brief calls for
+(V72-2 menu block or the listed services), and a closing block. This overrides
+the 5 to 7 sections of V8-1. Do not pad. The business name appears only in the
+header logo, the hero headline, the page title and the footer. Never write
+"situs resmi", "selamat datang", "terima kasih telah mengunjungi" or "informasi
+lebih lanjut tersedia". A hero panel holds only brief facts, or a typographic
+block of the business name and type.
+
+V10-4 HONEST PLAN
+Item (2) of the DESIGN PLAN names only a widget the page really contains; with
+no widget write "none". The sections named in item (5) are exactly the sections
+built.
+
+V10-5 ONE LANGUAGE
+Every visible word is in the content language. Exceptions: proper names, and
+words the brief itself writes in another language. In Indonesian pages the
+footer says "Hak cipta dilindungi", never "All rights reserved", and labels
+such as role or category tags are Indonesian too.
+
+V10-6 NO REPETITION
+A phrase of four or more words from the brief appears at most twice on the
+page. A list row shows its title once; do not add a second tag that repeats it.
+The primary action keeps one label in the header, hero, widget and contact
+block.
+
+V10-7 FINAL CHECK
+Before output, confirm V10-1 to V10-6 as well as V9-8.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.
