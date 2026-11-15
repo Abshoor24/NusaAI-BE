@@ -56,25 +56,66 @@ const (
 	ruleAccentText  = "accent-outside-ink"
 	rulePaperRepeat = "consecutive-paper"
 	ruleSectionCnt  = "section-count"
+	ruleNoChannel   = "no-channel-text"
+	ruleInventedDay = "invented-days"
+	ruleRepetition  = "repetition"
+	ruleEnglishUI   = "english-ui"
+	rulePlanPage    = "plan-vs-page"
+	ruleDeadLink    = "dead-link-target"
 )
 
 var (
-	commentRE   = regexp.MustCompile(`(?s)<!--(.*?)-->`)
-	scriptRE    = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
-	styleRE     = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
-	tagRE       = regexp.MustCompile(`(?s)<[^>]+>`)
-	scriptSrcRE = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']`)
-	linkTagRE   = regexp.MustCompile(`(?is)<link\b[^>]*>`)
-	attrRE      = regexp.MustCompile(`(?is)\b([a-z0-9:_-]+)\s*=\s*["']([^"']*)["']`)
-	anchorRE    = regexp.MustCompile(`(?is)<(?:a|button)\b[^>]*>(.*?)</(?:a|button)>`)
-	ariaLabelRE = regexp.MustCompile(`(?is)\baria-label\s*=\s*["']([^"']+)["']`)
-	sectionRE   = regexp.MustCompile(`(?is)<section\b[^>]*>.*?</section>`)
-	sectionTag  = regexp.MustCompile(`(?is)<section\b[^>]*>`)
-	waLinkRE    = regexp.MustCompile(`(?i)(?:wa\.me/|api\.whatsapp\.com/send\?[^"'\s]*phone=)([0-9]+)`)
-	telLinkRE   = regexp.MustCompile(`(?i)tel:([+0-9()\-.\s]{7,})`)
-	cssURLRE    = regexp.MustCompile(`(?is)@import\s+(?:url\()?\s*["']?([^"')\s]+)`)
-	openNowRE   = regexp.MustCompile(`(?is)\b(buka|open)\b[^.!?\n]{0,20}\b(sekarang|hari ini|now)\b`)
+	commentRE     = regexp.MustCompile(`(?s)<!--(.*?)-->`)
+	scriptRE      = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
+	styleRE       = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
+	tagRE         = regexp.MustCompile(`(?s)<[^>]+>`)
+	scriptSrcRE   = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']`)
+	linkTagRE     = regexp.MustCompile(`(?is)<link\b[^>]*>`)
+	attrRE        = regexp.MustCompile(`(?is)\b([a-z0-9:_-]+)\s*=\s*["']([^"']*)["']`)
+	anchorRE      = regexp.MustCompile(`(?is)<(?:a|button)\b[^>]*>(.*?)</(?:a|button)>`)
+	ariaLabelRE   = regexp.MustCompile(`(?is)\baria-label\s*=\s*["']([^"']+)["']`)
+	sectionRE     = regexp.MustCompile(`(?is)<section\b[^>]*>.*?</section>`)
+	sectionTag    = regexp.MustCompile(`(?is)<section\b[^>]*>`)
+	classAttrRE   = regexp.MustCompile(`(?is)\bclass\s*=\s*["']([^"']*)["']`)
+	cssPropertyRE = regexp.MustCompile(`(?is)([a-z-]+)\s*:\s*[^;{}<>]*$`)
+	tagScanRE     = regexp.MustCompile(`(?is)<(/?)\s*([a-zA-Z][a-zA-Z0-9:-]*)([^>]*)>`)
+	waLinkRE      = regexp.MustCompile(`(?i)(?:wa\.me/|api\.whatsapp\.com/send\?[^"'\s]*phone=)([0-9]+)`)
+	telLinkRE     = regexp.MustCompile(`(?i)tel:([+0-9()\-.\s]{7,})`)
+	cssURLRE      = regexp.MustCompile(`(?is)@import\s+(?:url\()?\s*["']?([^"')\s]+)`)
+	openNowRE     = regexp.MustCompile(`(?is)\b(buka|open)\b[^.!?\n]{0,20}\b(sekarang|hari ini|now)\b`)
 )
+
+type htmlTag struct {
+	start       int
+	end         int
+	name        string
+	closing     bool
+	selfClosing bool
+	attrs       map[string]string
+}
+
+var voidTags = map[string]bool{
+	"area": true, "base": true, "br": true, "col": true, "embed": true,
+	"hr": true, "img": true, "input": true, "link": true, "meta": true,
+	"param": true, "source": true, "track": true, "wbr": true,
+}
+
+func scanTags(doc string) []htmlTag {
+	var tags []htmlTag
+	for _, m := range tagScanRE.FindAllStringSubmatchIndex(doc, -1) {
+		raw := doc[m[0]:m[1]]
+		tag := htmlTag{
+			start:   m[0],
+			end:     m[1],
+			name:    doc[m[4]:m[5]],
+			closing: doc[m[2]:m[3]] == "/",
+			attrs:   parseAttrs(raw),
+		}
+		tag.selfClosing = strings.HasSuffix(strings.TrimSpace(doc[m[6]:m[7]]), "/")
+		tags = append(tags, tag)
+	}
+	return tags
+}
 
 var forbiddenClaims = []string{
 	"terbaik", "berkualitas tinggi", "premium", "otentik", "istimewa",
@@ -96,7 +137,7 @@ var contactCTAPhrases = []string{
 func lintHTML(doc string, brief Brief) []lintFinding {
 	ignored := stripIgnored(doc)
 	visible := visibleText(ignored)
-	return []lintFinding{
+	findings := []lintFinding{
 		checkEmail(ignored, brief.Facts),
 		checkPhone(ignored, visible, brief.Facts),
 		checkHours(visible, brief.Facts),
@@ -106,11 +147,12 @@ func lintHTML(doc string, brief Brief) []lintFinding {
 		checkDesignPlan(doc),
 		checkItalic(ignored),
 		checkExternalAssets(doc),
-		checkPalette(doc, brief.Facts),
 		warnAccentText(ignored),
 		warnConsecutivePaper(ignored),
 		warnSectionCount(ignored),
 	}
+	findings = append(findings, checkPalette(doc, brief.Facts)...)
+	return findings
 }
 
 func stripIgnored(doc string) string {
@@ -405,43 +447,163 @@ func allowedHost(raw string, hosts ...string) bool {
 	return false
 }
 
-func checkPalette(doc string, facts BriefFacts) lintFinding {
+func checkPalette(doc string, facts BriefFacts) []lintFinding {
 	allowed := allowedPalette(facts)
-	for _, color := range hexPattern.FindAllString(stripComments(doc), -1) {
-		if !allowed[strings.ToLower(color)] {
-			return finding(rulePalette, lintFail, color)
+	partialPalette := facts.HasPalette && len(facts.Palette) < 5
+	stripped := stripComments(doc)
+	var findings []lintFinding
+	for _, loc := range hexPattern.FindAllStringIndex(stripped, -1) {
+		color := stripped[loc[0]:loc[1]]
+		if allowed[strings.ToLower(color)] {
+			continue
 		}
+		context := hexUsageContext(stripped, loc[0], loc[1])
+		if partialPalette {
+			if palette, ok := fallbackPaletteFor(color); ok {
+				evidence := fmt.Sprintf("%s [%s] palet cadangan dicampur dengan warna brief (%s)",
+					context, color, palette.Name)
+				findings = append(findings, finding(rulePalette, lintWarn, evidence))
+				continue
+			}
+		}
+		findings = append(findings, finding(rulePalette, lintFail, fmt.Sprintf("%s [%s] di luar palet brief", context, color)))
 	}
-	return finding(rulePalette, lintPass, "semua hex adalah token palet")
+	if len(findings) == 0 {
+		return []lintFinding{finding(rulePalette, lintPass, "semua hex adalah token palet")}
+	}
+	return findings
+}
+
+func hexUsageContext(doc string, start, end int) string {
+	for _, m := range classAttrRE.FindAllStringSubmatchIndex(doc, -1) {
+		valueStart, valueEnd := m[2], m[3]
+		if start < valueStart || end > valueEnd {
+			continue
+		}
+		value := doc[valueStart:valueEnd]
+		relativeStart := start - valueStart
+		relativeEnd := end - valueStart
+		return `class="` + windowAround(value, relativeStart, relativeEnd) + `"`
+	}
+	prefix := doc[:start]
+	if loc := cssPropertyRE.FindStringSubmatchIndex(prefix); loc != nil {
+		property := strings.TrimSpace(prefix[loc[2]:loc[3]])
+		valueStart := loc[1]
+		value := strings.TrimSpace(doc[valueStart:end])
+		return windowAround(property+": "+value, 0, len(property)+len(value))
+	}
+	return contextWindow(doc, start, end, 40)
+}
+
+func windowAround(value string, start, end int) string {
+	const limit = 40
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	startRune := len([]rune(value[:start]))
+	endRune := len([]rune(value[:end]))
+	begin := startRune - (limit-(endRune-startRune))/2
+	if begin < 0 {
+		begin = 0
+	}
+	if begin+limit > len(runes) {
+		begin = len(runes) - limit
+	}
+	if endRune-begin > limit {
+		begin = endRune - limit
+	}
+	if begin < 0 {
+		begin = 0
+	}
+	return string(runes[begin : begin+limit])
+}
+
+func contextWindow(value string, start, end, limit int) string {
+	runes := []rune(value)
+	startRune := len([]rune(value[:start]))
+	endRune := len([]rune(value[:end]))
+	begin := startRune - (limit-(endRune-startRune))/2
+	if begin < 0 {
+		begin = 0
+	}
+	if begin+limit > len(runes) {
+		begin = len(runes) - limit
+	}
+	if begin < 0 {
+		begin = 0
+	}
+	finish := begin + limit
+	if finish > len(runes) {
+		finish = len(runes)
+	}
+	return strings.Join(strings.Fields(string(runes[begin:finish])), " ")
 }
 
 func warnAccentText(doc string) lintFinding {
-	type sectionSpan struct {
-		start, end int
-		ink        bool
-	}
-	var spans []sectionSpan
-	for _, loc := range sectionRE.FindAllStringIndex(doc, -1) {
-		block := doc[loc[0]:loc[1]]
-		open := sectionTag.FindString(block)
-		attrs := parseAttrs(open)
-		spans = append(spans, sectionSpan{start: loc[0], end: loc[1], ink: hasClass(attrs["class"], "bg-ink")})
-	}
-	for _, loc := range regexp.MustCompile(`(?i)text-accent`).FindAllStringIndex(doc, -1) {
-		insideInk := false
-		for _, span := range spans {
-			if loc[0] >= span.start && loc[0] < span.end {
-				if span.ink {
-					insideInk = true
-				}
-				break
+	var stack []htmlTag
+	for _, tag := range scanTags(doc) {
+		if tag.closing {
+			popTag(&stack, tag.name)
+			continue
+		}
+		if hasTextAccentClass(tag.attrs["class"]) {
+			if backgroundClass(tag.attrs["class"], stack) != "bg-ink" {
+				return finding(ruleAccentText, lintWarn, excerptAt(doc, tag.start, tag.end-tag.start))
 			}
 		}
-		if !insideInk {
-			return finding(ruleAccentText, lintWarn, excerptAt(doc, loc[0], loc[1]-loc[0]))
+		if !tag.selfClosing && !voidTags[strings.ToLower(tag.name)] {
+			stack = append(stack, tag)
 		}
 	}
-	return finding(ruleAccentText, lintPass, "text-accent hanya di section bg-ink")
+	return finding(ruleAccentText, lintPass, "text-accent hanya di dalam elemen bg-ink")
+}
+
+func popTag(stack *[]htmlTag, name string) {
+	for len(*stack) > 0 {
+		top := (*stack)[len(*stack)-1]
+		*stack = (*stack)[:len(*stack)-1]
+		if strings.EqualFold(top.name, name) {
+			return
+		}
+	}
+}
+
+func hasTextAccentClass(classes string) bool {
+	for _, class := range strings.Fields(classes) {
+		if strings.Contains(strings.ToLower(class), "text-accent") {
+			return true
+		}
+	}
+	return false
+}
+
+func backgroundClass(classes string, stack []htmlTag) string {
+	for _, class := range strings.Fields(classes) {
+		lower := strings.ToLower(class)
+		if lower == "bg-ink" || strings.HasPrefix(lower, "bg-ink/") {
+			return "bg-ink"
+		}
+		if strings.HasPrefix(lower, "bg-") {
+			return lower
+		}
+	}
+	return nearestBackgroundClass(stack)
+}
+
+func nearestBackgroundClass(stack []htmlTag) string {
+	for i := len(stack) - 1; i >= 0; i-- {
+		for _, class := range strings.Fields(stack[i].attrs["class"]) {
+			lower := strings.ToLower(class)
+			if lower == "bg-ink" || strings.HasPrefix(lower, "bg-ink/") {
+				return "bg-ink"
+			}
+			if strings.HasPrefix(lower, "bg-") {
+				return lower
+			}
+		}
+	}
+	return ""
 }
 
 func warnConsecutivePaper(doc string) lintFinding {
