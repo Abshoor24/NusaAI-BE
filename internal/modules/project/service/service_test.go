@@ -69,6 +69,15 @@ type fakeProvider struct {
 	firstChunkDelayByModel map[string]time.Duration
 }
 
+func (f *fakeProvider) contextAt(i int) context.Context {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if i < 0 || i >= len(f.ctxs) {
+		return nil
+	}
+	return f.ctxs[i]
+}
+
 func (f *fakeProvider) CompleteStream(ctx context.Context, req aiprovider.Request) (<-chan aiprovider.StreamChunk, error) {
 	f.mu.Lock()
 	f.lastReq = req
@@ -1646,7 +1655,7 @@ func TestHedgeFallbackWinsWhenPrimaryIsSlow(t *testing.T) {
 	}
 	svc.FailStream(ctx, pending)
 
-	waitFor(t, time.Second, func() bool { return fp.ctxs[0].Err() == context.Canceled })
+	waitFor(t, time.Second, func() bool { return fp.contextAt(0).Err() == context.Canceled })
 }
 
 func TestHedgeNotStartedWhenPrimaryIsFast(t *testing.T) {
@@ -1756,8 +1765,8 @@ func TestHedgeDoesNotLeakLoserGoroutine(t *testing.T) {
 	if after > before+2 {
 		t.Errorf("goroutines before=%d after=%d, want no leaked hedge workers", before, after)
 	}
-	if fp.ctxs[0].Err() != context.Canceled {
-		t.Errorf("loser ctx err = %v, want context.Canceled", fp.ctxs[0].Err())
+	if fp.contextAt(0).Err() != context.Canceled {
+		t.Errorf("loser ctx err = %v, want context.Canceled", fp.contextAt(0).Err())
 	}
 }
 
@@ -1820,7 +1829,7 @@ func TestHedgePrimaryWinsAfterHedgeFires(t *testing.T) {
 		t.Errorf("tokens = %v, want [P1]", got)
 	}
 	svc.FailStream(ctx, pending)
-	waitFor(t, time.Second, func() bool { return fp.ctxs[1].Err() == context.Canceled })
+	waitFor(t, time.Second, func() bool { return fp.contextAt(1).Err() == context.Canceled })
 }
 
 func TestHedgeWorksWithThinkingLevelRetry(t *testing.T) {
@@ -1883,4 +1892,31 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition not met before timeout")
+}
+
+func TestHedgeRemainingFallbackAfterBothCandidatesFail(t *testing.T) {
+	fp := newFakeProvider("F2")
+	fp.openErrSeq = []error{overloadedOpenErr(), overloadedOpenErr(), nil}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.FallbackModels = []string{"fallback-model", "fallback-model-2"}
+		c.HedgeAfter = 10 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3", fp.calls)
+	}
+	if fp.reqs[2].Model != "fallback-model-2" {
+		t.Errorf("third call model = %q, want fallback-model-2", fp.reqs[2].Model)
+	}
+	if pending.Model != "fallback-model-2" || !pending.FallbackUsed {
+		t.Errorf("model=%q fallback_used=%v, want fallback-model-2/true", pending.Model, pending.FallbackUsed)
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
 }

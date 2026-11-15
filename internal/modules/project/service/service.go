@@ -423,7 +423,7 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 		// Both hedge candidates failed. The remaining fallbacks (if any)
 		// still run sequentially, never re-running the hedged fallback.
 		if len(models) > 2 {
-			seqErr, seqAttempts := s.openSequential(ctx, pending, observe, models[2:], models[0], converted, maxRetries, openStart)
+			seqErr, seqAttempts := s.openSequential(ctx, pending, observe, models[2:], 2, models[0], converted, maxRetries, openStart)
 			pending.TotalAttempts = attempts + seqAttempts
 			if seqErr == nil {
 				return nil
@@ -436,7 +436,7 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 		return s.openFailure(ctx, lastErr)
 	}
 
-	lastErr, attempts := s.openSequential(ctx, pending, observe, models, models[0], converted, maxRetries, openStart)
+	lastErr, attempts := s.openSequential(ctx, pending, observe, models, 0, models[0], converted, maxRetries, openStart)
 	pending.TotalAttempts = attempts
 	if lastErr == nil && ctx.Err() == nil {
 		return nil
@@ -465,6 +465,7 @@ func (s *service) openSequential(
 	pending *PendingStream,
 	observe OpenObserver,
 	models []string,
+	modelStart int,
 	primaryModel string,
 	converted []aiprovider.ImageAttachment,
 	maxRetries int,
@@ -473,10 +474,12 @@ func (s *service) openSequential(
 	var lastErr error
 	totalAttempts := 0
 
-	for modelIdx, modelName := range models {
+	for localIdx, modelName := range models {
 		if ctx.Err() != nil {
 			break
 		}
+		modelIdx := modelStart + localIdx
+		fallback := modelIdx > 0
 		level := s.thinkingLevelFor(modelName)
 		req := s.providerRequest(pending, modelName, level, converted)
 
@@ -488,7 +491,7 @@ func (s *service) openSequential(
 				break
 			}
 			phase := OpenPhaseConnecting
-			if modelIdx > 0 {
+			if fallback {
 				phase = OpenPhaseFallback
 			} else if attempt > 0 {
 				phase = OpenPhaseRetrying
@@ -499,10 +502,10 @@ func (s *service) openSequential(
 			totalAttempts++
 			stream, err := s.provider.CompleteStream(ctx, req)
 			if err == nil {
-				s.setOpenWinner(pending, modelName, level, modelIdx > 0, attempt+1, time.Since(openStart))
+				s.setOpenWinner(pending, modelName, level, fallback, attempt+1, time.Since(openStart))
 				pending.Stream = stream
 				attrs := s.openLogAttrs(pending, totalAttempts)
-				if modelIdx > 0 {
+				if fallback {
 					s.logger.Info("ai stream opened using fallback model", append(attrs, "primary_model", primaryModel, "fallback_index", modelIdx)...)
 				} else if attempt > 0 {
 					s.logger.Info("ai stream open retry succeeded", attrs...)
@@ -538,9 +541,9 @@ func (s *service) openSequential(
 		if ctx.Err() != nil {
 			break
 		}
-		if modelIdx+1 < len(models) {
+		if localIdx+1 < len(models) {
 			s.logger.Warn("ai stream failed on model, attempting fallback",
-				"failed_model", modelName, "next_model", models[modelIdx+1], "error", lastErr)
+				"failed_model", modelName, "next_model", models[localIdx+1], "error", lastErr)
 		}
 	}
 	return lastErr, totalAttempts
