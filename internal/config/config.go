@@ -571,3 +571,78 @@ func splitCSV(s string) []string {
 	}
 	return out
 }
+
+// ThinkingLevelFor resolves the effective thinking level for a model: a
+// per-model override wins, then the global level. The bool is false when a
+// configured level is documented as unsupported by that model and must be
+// omitted instead of sent.
+func (c AIConfig) ThinkingLevelFor(model string) (string, bool, bool) {
+	level := ""
+	if configured, ok := c.ThinkingLevels[strings.ToLower(strings.TrimSpace(model))]; ok {
+		level = configured
+	} else if c.ThinkingLevel != nil {
+		level = *c.ThinkingLevel
+	}
+	level = strings.ToUpper(strings.TrimSpace(level))
+	if level == "" {
+		return "", false, false
+	}
+	if !ThinkingLevelSupported(model, level) {
+		return level, true, false
+	}
+	return level, true, true
+}
+
+// ThinkingLevelSupported reports whether a model documents support for the
+// level. Gemini 3.8/3.7 Flash reject MINIMAL with HTTP 400.
+func ThinkingLevelSupported(model, level string) bool {
+	m := strings.ToLower(model)
+	if level == "MINIMAL" {
+		if strings.Contains(m, "gemini-3.8-flash") || strings.Contains(m, "gemini-3.7-flash") {
+			return false
+		}
+	}
+	return true
+}
+
+// EffectiveThinkingLevels returns the level that will actually be sent for
+// every candidate model ("default" when omitted, "unsupported:<LEVEL>" when
+// filtered because the model documents no support).
+func (c AIConfig) EffectiveThinkingLevels() map[string]string {
+	models := make([]string, 0, 1+len(c.FallbackModels))
+	models = append(models, c.Model)
+	models = append(models, c.FallbackModels...)
+	out := make(map[string]string, len(models))
+	for _, model := range models {
+		if strings.TrimSpace(model) == "" {
+			continue
+		}
+		level, configured, supported := c.ThinkingLevelFor(model)
+		switch {
+		case !configured:
+			out[model] = "default"
+		case !supported:
+			out[model] = "omitted:" + level
+		default:
+			out[model] = level
+		}
+	}
+	return out
+}
+
+// RiskWarnings returns human-readable warnings about AI settings that are
+// valid but likely to behave badly at runtime.
+func (c AIConfig) RiskWarnings() []string {
+	var warnings []string
+	if len(c.FallbackModels) > 0 && c.OpenBudget < 2*c.Timeout {
+		warnings = append(warnings,
+			"AI_OPEN_BUDGET is less than 2 x AI_TIMEOUT with fallback models configured; the fallback may never be attempted")
+	}
+	if c.HedgeAfter > 0 && len(c.FallbackModels) == 0 {
+		warnings = append(warnings, "AI_HEDGE_AFTER is set but no AI_FALLBACK_MODELS are configured; hedging will never run")
+	}
+	if c.HedgeAfter > 0 && c.HedgeAfter >= c.OpenBudget {
+		warnings = append(warnings, "AI_HEDGE_AFTER is greater than or equal to AI_OPEN_BUDGET; hedging will never fire")
+	}
+	return warnings
+}

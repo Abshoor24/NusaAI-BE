@@ -370,3 +370,39 @@ func TestLoadThinkingLevelsPerModel(t *testing.T) {
 		t.Errorf("3.8 level = %q, want HIGH", got)
 	}
 }
+
+func TestEffectiveThinkingLevelsAndRiskWarnings(t *testing.T) {
+	level := "MINIMAL"
+	cfg := AIConfig{
+		Model:          "gemini-3.5-flash",
+		FallbackModels: []string{"gemini-3.8-flash"},
+		ThinkingLevel:  &level,
+		OpenBudget:     40 * time.Second,
+		Timeout:        25 * time.Second,
+		HedgeAfter:     45 * time.Second,
+	}
+	levels := cfg.EffectiveThinkingLevels()
+	if levels["gemini-3.5-flash"] != "MINIMAL" {
+		t.Errorf("3.5 level = %q, want MINIMAL", levels["gemini-3.5-flash"])
+	}
+	if levels["gemini-3.8-flash"] != "omitted:MINIMAL" {
+		t.Errorf("3.8 level = %q, want omitted:MINIMAL", levels["gemini-3.8-flash"])
+	}
+	warnings := cfg.RiskWarnings()
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %v, want 2 (open budget vs fallback, hedge >= budget)", warnings)
+	}
+
+	cfg.FallbackModels = nil
+	cfg.HedgeAfter = time.Second
+	warnings = cfg.RiskWarnings()
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "no AI_FALLBACK_MODELS") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want no-fallback warning", warnings)
+	}
+}

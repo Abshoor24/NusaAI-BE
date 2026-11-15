@@ -325,32 +325,16 @@ func (s *service) candidateModels() []string {
 // Levels that the model is documented not to support are omitted instead of
 // being sent (Gemini 3.8/3.7 Flash reject MINIMAL with HTTP 400).
 func (s *service) thinkingLevelFor(modelName string) *string {
-	level := ""
-	if configured, ok := s.aiCfg.ThinkingLevels[strings.ToLower(strings.TrimSpace(modelName))]; ok {
-		level = configured
-	} else if s.aiCfg.ThinkingLevel != nil {
-		level = *s.aiCfg.ThinkingLevel
-	}
-	level = strings.ToUpper(strings.TrimSpace(level))
-	if level == "" {
+	level, configured, supported := s.aiCfg.ThinkingLevelFor(modelName)
+	if !configured {
 		return nil
 	}
-	if !thinkingLevelSupported(modelName, level) {
+	if !supported {
 		s.logger.Warn("ai thinking level not supported by model, omitting",
 			"model", modelName, "thinking_level", level)
 		return nil
 	}
 	return &level
-}
-
-func thinkingLevelSupported(modelName, level string) bool {
-	m := strings.ToLower(modelName)
-	if level == "MINIMAL" {
-		if strings.Contains(m, "gemini-3.8-flash") || strings.Contains(m, "gemini-3.7-flash") {
-			return false
-		}
-	}
-	return true
 }
 
 // smallJitter returns 0..20% of d (capped at 500ms) so retries do not
