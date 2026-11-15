@@ -52,6 +52,8 @@ type BenchmarkResult struct {
 	Error              string
 	HTMLPath           string
 	RawJSONPath        string
+	DailyQuota         bool
+	Quota              provider.QuotaInfo
 }
 
 type runOptions struct {
@@ -107,6 +109,14 @@ func runBenchmark(p provider.Provider, brief Brief, opt runOptions) BenchmarkRes
 			break
 		}
 		countError(streamErr, &err429, &err503)
+		if info, ok := dailyQuotaInfo(streamErr); ok {
+			log.Printf("Kuota harian habis; run dihentikan tanpa retry: %v", streamErr)
+			return BenchmarkResult{
+				Total: time.Since(start).Milliseconds(), Error: streamErr.Error(),
+				AttemptCount: attemptCount, Error429: err429, Error503: err503,
+				Status: "error", DailyQuota: true, Quota: info,
+			}
+		}
 		if !isOverloadError(streamErr) {
 			break
 		}
@@ -218,9 +228,15 @@ streamFinished:
 
 	status := "ok"
 	errorText := ""
+	dailyQuota := false
+	var quota provider.QuotaInfo
 	if streamFailure != nil {
 		status = "error"
 		errorText = streamFailure.Error()
+		if info, ok := dailyQuotaInfo(streamFailure); ok {
+			dailyQuota = true
+			quota = info
+		}
 	} else if !validHTML {
 		status = "invalid_html"
 		errorText = "output is not a complete HTML document"
@@ -244,7 +260,17 @@ streamFinished:
 		Error503:           err503,
 		Status:             status,
 		Error:              errorText,
+		DailyQuota:         dailyQuota,
+		Quota:              quota,
 	}
+}
+
+func dailyQuotaInfo(err error) (provider.QuotaInfo, bool) {
+	info, ok := provider.QuotaErrorInfo(err)
+	if !ok || !info.Daily {
+		return provider.QuotaInfo{}, false
+	}
+	return info, true
 }
 
 func countError(err error, err429, err503 *int) {
@@ -316,12 +342,6 @@ func persistResult(result *BenchmarkResult, opt runOptions) error {
 		return err
 	}
 	base := outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, opt.RunNumber)
-	htmlPath := uniquePath(filepath.Join(opt.OutFolder, base+".html"))
-	if err := os.WriteFile(htmlPath, []byte(result.HTML), 0o644); err != nil {
-		return err
-	}
-	result.HTMLPath = htmlPath
-
 	raw := RawRunData{
 		RunNumber:    opt.RunNumber,
 		FirstChunkMs: result.FirstChunkMs,
@@ -335,12 +355,30 @@ func persistResult(result *BenchmarkResult, opt runOptions) error {
 		},
 		FinishReason: result.FinishReason,
 		Status:       result.Status,
-		HTMLFile:     filepath.Base(htmlPath),
 		AttemptCount: result.AttemptCount,
 		Error429:     result.Error429,
 		Error503:     result.Error503,
 		Error:        result.Error,
 	}
+
+	if result.Status == "error" {
+		rawPath := uniquePath(filepath.Join(opt.OutFolder, base+"_raw.json"))
+		rawBytes, _ := json.MarshalIndent(raw, "", "  ")
+		if err := os.WriteFile(rawPath, rawBytes, 0o644); err != nil {
+			return err
+		}
+		result.RawJSONPath = rawPath
+		appendRunCSV(csvPathFor(opt), raw)
+		return nil
+	}
+
+	htmlPath := uniquePath(filepath.Join(opt.OutFolder, base+".html"))
+	if err := os.WriteFile(htmlPath, []byte(result.HTML), 0o644); err != nil {
+		return err
+	}
+	result.HTMLPath = htmlPath
+	raw.HTMLFile = filepath.Base(htmlPath)
+
 	rawPath := uniquePath(strings.TrimSuffix(htmlPath, ".html") + "_raw.json")
 	rawBytes, _ := json.MarshalIndent(raw, "", "  ")
 	if err := os.WriteFile(rawPath, rawBytes, 0o644); err != nil {
@@ -348,10 +386,13 @@ func persistResult(result *BenchmarkResult, opt runOptions) error {
 	}
 	result.RawJSONPath = rawPath
 
-	csvPath := filepath.Join(opt.OutFolder, fmt.Sprintf("%s_%s_%s_runs.csv",
-		sanitizeFilename(opt.BriefName), sanitizeFilename(opt.Model), thinkingLabel(opt.ThinkingLevel)))
-	appendRunCSV(csvPath, raw)
+	appendRunCSV(csvPathFor(opt), raw)
 	return nil
+}
+
+func csvPathFor(opt runOptions) string {
+	return filepath.Join(opt.OutFolder, fmt.Sprintf("%s_%s_%s_runs.csv",
+		sanitizeFilename(opt.BriefName), sanitizeFilename(opt.Model), thinkingLabel(opt.ThinkingLevel)))
 }
 
 func appendRunCSV(path string, raw RawRunData) {
@@ -394,14 +435,20 @@ func appendRunCSV(path string, raw RawRunData) {
 
 func runParallel(p provider.Provider, brief Brief, opt runOptions, n int) []BenchmarkResult {
 	results := make([]BenchmarkResult, n)
+	ctx, cancel := context.WithCancel(opt.Context)
+	defer cancel()
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
 			opts := opt
+			opts.Context = ctx
 			opts.RunNumber = idx + 1
 			results[idx] = runBenchmark(p, brief, opts)
+			if results[idx].DailyQuota {
+				cancel()
+			}
 		}(i)
 	}
 	wg.Wait()

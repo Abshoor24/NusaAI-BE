@@ -143,14 +143,22 @@ func runCLI(args []string) int {
 				return 1
 			}
 			printRunLine(run, result)
+			if result.DailyQuota {
+				printDailyQuotaStop(cfg.Model, result.Quota)
+				return 1
+			}
 			if cfg.Lint {
-				lintResult := lintFileResult{
-					File:     filepath.Base(result.HTMLPath),
-					Brief:    brief.Name,
-					Findings: lintHTML(result.HTML, brief),
+				if result.Status == "error" {
+					fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, run)+".html")
+				} else {
+					lintResult := lintFileResult{
+						File:     filepath.Base(result.HTMLPath),
+						Brief:    brief.Name,
+						Findings: lintHTML(result.HTML, brief),
+					}
+					printLintResult(os.Stdout, lintResult)
+					lintResults = append(lintResults, lintResult)
 				}
-				printLintResult(os.Stdout, lintResult)
-				lintResults = append(lintResults, lintResult)
 			}
 
 			firstChunkSum += float64(result.FirstChunkMs) / 1000.0
@@ -205,6 +213,12 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 
 	fmt.Printf("Brief: %s chars=%d hash=%s\n", brief.Name, len(brief.Text), briefDigest(brief.Text))
 	results := runParallel(p, brief, opt, cfg.Parallel)
+	for _, result := range results {
+		if result.DailyQuota {
+			printDailyQuotaStop(cfg.Model, result.Quota)
+			return 1
+		}
+	}
 	failures := 0
 	for i, result := range results {
 		runOpt := opt
@@ -220,13 +234,17 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 			fmt.Printf("  ERROR: %s\n", result.Error)
 		}
 		if cfg.Lint {
-			lintResult := lintFileResult{
-				File:     filepath.Base(result.HTMLPath),
-				Brief:    brief.Name,
-				Findings: lintHTML(result.HTML, brief),
+			if result.Status == "error" {
+				fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, i+1)+".html")
+			} else {
+				lintResult := lintFileResult{
+					File:     filepath.Base(result.HTMLPath),
+					Brief:    brief.Name,
+					Findings: lintHTML(result.HTML, brief),
+				}
+				printLintResult(os.Stdout, lintResult)
+				*lintResults = append(*lintResults, lintResult)
 			}
-			printLintResult(os.Stdout, lintResult)
-			*lintResults = append(*lintResults, lintResult)
 		}
 	}
 	if cfg.Lint {
@@ -236,6 +254,38 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 		return 1
 	}
 	return 0
+}
+
+func printDailyQuotaStop(requestedModel string, info provider.QuotaInfo) {
+	bodyModel := info.QuotaModel
+	if bodyModel == "" {
+		bodyModel = info.RequestedModel
+	}
+	retryDelay := "tidak disebut body 429"
+	if info.RetryDelay > 0 {
+		retryDelay = info.RetryDelay.String()
+	}
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "KUOTA HARIAN HABIS: run dihentikan, tidak ada retry.")
+	fmt.Fprintf(os.Stderr, "Model --model: %s\n", requestedModel)
+	if bodyModel != "" && bodyModel != requestedModel {
+		fmt.Fprintf(os.Stderr, "Model pada body 429: %s\n", bodyModel)
+	}
+	quotaID := info.QuotaID
+	if quotaID == "" {
+		quotaID = "tidak disebut body 429"
+	}
+	fmt.Fprintf(os.Stderr, "quotaId: %s\n", quotaID)
+	fmt.Fprintf(os.Stderr, "retryDelay: %s\n", retryDelay)
+	fmt.Fprintf(os.Stderr, "Perkiraan reset: %s\n", estimateQuotaReset(info, time.Now()))
+}
+
+func estimateQuotaReset(info provider.QuotaInfo, now time.Time) string {
+	if info.RetryDelay > 0 {
+		return now.Add(info.RetryDelay).Format(time.RFC3339)
+	}
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	return nextMidnight.Format(time.RFC3339) + " (perkiraan tengah malam lokal)"
 }
 
 func printRunLine(run int, result BenchmarkResult) {
