@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"runtime"
@@ -1919,4 +1921,265 @@ func TestHedgeRemainingFallbackAfterBothCandidatesFail(t *testing.T) {
 	}
 	collectTokens(t, pending.Stream)
 	svc.FailStream(ctx, pending)
+}
+
+// --- daily quota handling ---
+
+func quotaOpenErr(daily bool, quotaModel string, retryDelay time.Duration) error {
+	return apperror.AIProviderReason(apperror.ReasonProviderOverloaded, aiprovider.OverloadedMessage,
+		fmt.Errorf("status 429: %w", aiprovider.NewQuotaError(aiprovider.QuotaInfo{
+			Daily:      daily,
+			QuotaID:    "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+			QuotaValue: "20",
+			QuotaModel: quotaModel,
+			RetryDelay: retryDelay,
+		})))
+}
+
+func newQuotaService(t *testing.T, fp *fakeProvider, mutate func(*config.AIConfig)) (Service, *service) {
+	t.Helper()
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryBackoff = time.Millisecond
+	if mutate != nil {
+		mutate(&aiCfg)
+	}
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+	return svc, svc.(*service)
+}
+
+func TestDailyQuotaPrimaryFallsBackWithoutSameModelRetry(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{quotaOpenErr(true, "primary-model", time.Hour), nil}
+	svc, _ := newQuotaService(t, fp, func(c *config.AIConfig) {
+		c.RetryOnUnavailable = 2
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (primary once, fallback once)", fp.calls)
+	}
+	if fp.reqs[0].Model != "primary-model" || fp.reqs[1].Model != "fallback-model" {
+		t.Errorf("model order = [%s %s], want primary then fallback", fp.reqs[0].Model, fp.reqs[1].Model)
+	}
+	if pending.Model != "fallback-model" || !pending.FallbackUsed {
+		t.Errorf("model=%q fallback_used=%v, want fallback-model/true", pending.Model, pending.FallbackUsed)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+}
+
+func TestDailyQuotaAllModelsReturnsQuotaBusyAndRollsBack(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{
+		quotaOpenErr(true, "primary-model", time.Hour),
+		quotaOpenErr(true, "fallback-model", time.Hour),
+	}
+	svc, _ := newQuotaService(t, fp, func(c *config.AIConfig) {
+		c.RetryOnUnavailable = 2
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	_, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	var ae *apperror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("error = %v, want *apperror.Error", err)
+	}
+	if ae.Code() != "AI_BUSY" {
+		t.Errorf("code = %q, want AI_BUSY", ae.Code())
+	}
+	if ae.Reason != apperror.ReasonQuota {
+		t.Errorf("reason = %q, want %q", ae.Reason, apperror.ReasonQuota)
+	}
+	if ae.Message != QuotaExhaustedMessage {
+		t.Errorf("message = %q, want quota message", ae.Message)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (no same-model retries for daily quota)", fp.calls)
+	}
+	got, _, getErr := svc.Get(ctx, "user-1", p.ID)
+	if getErr != nil {
+		t.Fatalf("get: %v", getErr)
+	}
+	if got.Status != model.StatusFailed {
+		t.Errorf("project status = %q, want failed after rollback", got.Status)
+	}
+}
+
+func TestDailyQuotaExhaustedModelSkippedOnNextRequest(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{quotaOpenErr(true, "primary-model", time.Hour), nil}
+	svc, _ := newQuotaService(t, fp, nil)
+	ctx := context.Background()
+
+	first := createDraft(t, svc, "user-1")
+	firstPending, err := svc.BeginGenerate(ctx, "user-1", first.ID, nil)
+	if err != nil {
+		t.Fatalf("first BeginGenerate: %v", err)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, firstPending); ae != nil {
+		t.Fatalf("first finish: %v", ae)
+	}
+
+	fp.openErrSeq = []error{nil}
+	second := createDraft(t, svc, "user-1")
+	secondPending, err := svc.BeginGenerate(ctx, "user-1", second.ID, nil)
+	if err != nil {
+		t.Fatalf("second BeginGenerate: %v", err)
+	}
+	if fp.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3 (2 first request + 1 fallback only)", fp.calls)
+	}
+	if fp.reqs[2].Model != "fallback-model" {
+		t.Errorf("second request called %q, want exhausted primary skipped", fp.reqs[2].Model)
+	}
+	if secondPending.Model != "fallback-model" {
+		t.Errorf("second model = %q, want fallback-model", secondPending.Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, secondPending); ae != nil {
+		t.Fatalf("second finish: %v", ae)
+	}
+}
+
+func TestDailyQuotaMarkerExpiresAfterRetryDelay(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{
+		quotaOpenErr(true, "primary-model", 60*time.Second),
+		quotaOpenErr(true, "fallback-model", 60*time.Second),
+	}
+	svc, impl := newQuotaService(t, fp, nil)
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	impl.quota.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	first := createDraft(t, svc, "user-1")
+	if _, err := svc.BeginGenerate(ctx, "user-1", first.ID, nil); err == nil {
+		t.Fatal("expected all-models daily quota failure")
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider calls after first = %d, want 2", fp.calls)
+	}
+
+	now = now.Add(61 * time.Second)
+	fp.openErrSeq = []error{nil}
+	second := createDraft(t, svc, "user-1")
+	secondPending, err := svc.BeginGenerate(ctx, "user-1", second.ID, nil)
+	if err != nil {
+		t.Fatalf("second BeginGenerate: %v", err)
+	}
+	if fp.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3 (both models retried after expiry)", fp.calls)
+	}
+	if fp.reqs[2].Model != "primary-model" {
+		t.Errorf("first call after expiry = %q, want primary-model", fp.reqs[2].Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, secondPending); ae != nil {
+		t.Fatalf("second finish: %v", ae)
+	}
+}
+
+func TestTemporaryQuotaSmallRetryDelayRetriedOnce(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{quotaOpenErr(false, "primary-model", 5*time.Millisecond), nil}
+	svc, _ := newQuotaService(t, fp, func(c *config.AIConfig) {
+		c.RetryOnUnavailable = 0
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (one retry after RetryInfo delay)", fp.calls)
+	}
+	if fp.reqs[0].Model != "primary-model" || fp.reqs[1].Model != "primary-model" {
+		t.Errorf("model order = [%s %s], want both primary-model", fp.reqs[0].Model, fp.reqs[1].Model)
+	}
+	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
+		t.Fatalf("finish: %v", ae)
+	}
+}
+
+func TestDailyQuotaDoesNotDoubleHedge(t *testing.T) {
+	fp := newFakeProvider(testHTML)
+	fp.openErrSeq = []error{quotaOpenErr(true, "primary-model", time.Hour), nil}
+	svc, _ := newQuotaService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = time.Millisecond
+		c.RetryOnUnavailable = 2
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (one primary, one fallback)", fp.calls)
+	}
+	perModel := map[string]int{}
+	for _, req := range fp.reqs {
+		perModel[req.Model]++
+	}
+	if perModel["primary-model"] != 1 || perModel["fallback-model"] != 1 {
+		t.Errorf("calls per model = %v, want exactly one each", perModel)
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
+}
+
+func TestDailyQuotaLogsOncePerModelPerHour(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	uploadCfg.Dir = t.TempDir()
+	svc := New(newFakeRepo(), newFakeProvider(testHTML), aiCfg, uploadCfg, projectCfg, logger)
+	impl := svc.(*service)
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	impl.quota.now = func() time.Time { return now }
+
+	err := apperror.AIProviderReason(apperror.ReasonProviderOverloaded, aiprovider.OverloadedMessage,
+		fmt.Errorf("status 429: %w", aiprovider.NewQuotaError(aiprovider.QuotaInfo{
+			Daily:      true,
+			QuotaID:    "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+			QuotaValue: "20",
+			QuotaModel: "gemini-3.6-flash",
+			RetryDelay: 60369 * time.Second,
+		})))
+
+	if !impl.recordDailyQuota(err, "gemini-3.5-flash") {
+		t.Fatal("recordDailyQuota = false, want true")
+	}
+	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 1 {
+		t.Fatalf("quota ERROR logs = %d, want 1 within one hour:\n%s", got, logs.String())
+	}
+	for _, want := range []string{
+		"model=gemini-3.5-flash",
+		"quota_model=gemini-3.6-flash",
+		"quota_id=GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+		"quota_value=20",
+		"retry_delay=",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("quota log missing %q:\n%s", want, logs.String())
+		}
+	}
+
+	now = now.Add(quotaLogInterval + time.Second)
+	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 2 {
+		t.Errorf("quota ERROR logs = %d, want 2 after the log interval", got)
+	}
 }

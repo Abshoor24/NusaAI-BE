@@ -142,6 +142,7 @@ type service struct {
 	uploadCfg  config.UploadConfig
 	projectCfg config.ProjectConfig
 	logger     *slog.Logger
+	quota      *quotaState
 }
 
 // New wires the project service. provider may be nil in tests that never stream.
@@ -158,7 +159,10 @@ func New(repo repository.Repository, provider aiprovider.Provider, aiCfg config.
 	if projectCfg.MaxHTMLBytes <= 0 {
 		projectCfg.MaxHTMLBytes = 524288
 	}
-	return &service{repo: repo, provider: provider, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg, logger: logger}
+	return &service{
+		repo: repo, provider: provider, aiCfg: aiCfg, uploadCfg: uploadCfg,
+		projectCfg: projectCfg, logger: logger, quota: newQuotaState(time.Now),
+	}
 }
 
 func (s *service) Create(ctx context.Context, userID string, req model.CreateProjectRequest) (*model.Project, error) {
@@ -409,7 +413,10 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 	}
 	openStart := time.Now()
 
-	if s.aiCfg.HedgeAfter > 0 && len(models) > 1 {
+	// Skip the initial hedge when either candidate is already known to be out
+	// of daily quota; openSequential below will bypass exhausted models.
+	if s.aiCfg.HedgeAfter > 0 && len(models) > 1 &&
+		!s.quota.isExhausted(models[0]) && !s.quota.isExhausted(models[1]) {
 		lastErr, attempts := s.openHedged(ctx, pending, observe, models[0], models[1], converted, maxRetries, openStart)
 		if lastErr == nil {
 			pending.TotalAttempts = attempts
@@ -433,7 +440,7 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 			pending.TotalAttempts = attempts
 		}
 		s.failDetached(ctx, pending)
-		return s.openFailure(ctx, lastErr)
+		return s.openFailure(ctx, lastErr, models)
 	}
 
 	lastErr, attempts := s.openSequential(ctx, pending, observe, models, 0, models[0], converted, maxRetries, openStart)
@@ -442,12 +449,15 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 		return nil
 	}
 	s.failDetached(ctx, pending)
-	return s.openFailure(ctx, lastErr)
+	return s.openFailure(ctx, lastErr, models)
 }
 
-func (s *service) openFailure(ctx context.Context, lastErr error) error {
+func (s *service) openFailure(ctx context.Context, lastErr error, models []string) error {
 	if ctx.Err() != nil {
 		return apperror.AIBusy(OpenBusyMessage, ctx.Err())
+	}
+	if s.quota.allExhausted(models) {
+		return quotaBusyError(lastErr)
 	}
 	if lastErr == nil {
 		lastErr = apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned an error", nil)
@@ -478,6 +488,10 @@ func (s *service) openSequential(
 		if ctx.Err() != nil {
 			break
 		}
+		if s.quota.isExhausted(modelName) {
+			s.logger.Info("ai stream skipping model with exhausted daily quota", "model", modelName)
+			continue
+		}
 		modelIdx := modelStart + localIdx
 		fallback := modelIdx > 0
 		level := s.thinkingLevelFor(modelName)
@@ -485,6 +499,7 @@ func (s *service) openSequential(
 
 		attempts := maxRetries + 1
 		thinkingRetried := false
+		quotaRetried := false
 		attempt := 0
 		for attempt < attempts {
 			if ctx.Err() != nil {
@@ -519,6 +534,20 @@ func (s *service) openSequential(
 				break
 			}
 			if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
+				continue
+			}
+			if s.recordDailyQuota(err, modelName) {
+				// Daily quota does not recover within a normal retry: move on
+				// to the next model immediately.
+				break
+			}
+			if delay, ok := temporaryQuotaRetry(err); ok && !quotaRetried {
+				quotaRetried = true
+				s.logger.Warn("ai stream open temporary quota, retrying after retry delay",
+					"model", modelName, "retry_delay", delay.String(), "error", err)
+				if !sleepCtx(ctx, delay) {
+					break
+				}
 				continue
 			}
 			if aiprovider.IsOpenTimeoutError(err) || !aiprovider.IsOverloadedError(err) {
@@ -707,6 +736,7 @@ func (s *service) openHedgeCandidate(
 	req := s.providerRequest(pending, modelName, level, converted)
 	allowed := maxRetries + 1
 	thinkingRetried := false
+	quotaRetried := false
 	attempt := 0
 	var lastErr error
 
@@ -765,6 +795,20 @@ func (s *service) openHedgeCandidate(
 			return
 		}
 		if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
+			continue
+		}
+		if s.recordDailyQuota(err, modelName) {
+			fail(err)
+			return
+		}
+		if delay, ok := temporaryQuotaRetry(err); ok && !quotaRetried {
+			quotaRetried = true
+			s.logger.Warn("ai stream open temporary quota, retrying after retry delay",
+				"model", modelName, "retry_delay", delay.String(), "error", err)
+			if !sleepCtx(ctx, delay) {
+				fail(ctx.Err())
+				return
+			}
 			continue
 		}
 		if aiprovider.IsOpenTimeoutError(err) || !aiprovider.IsOverloadedError(err) {

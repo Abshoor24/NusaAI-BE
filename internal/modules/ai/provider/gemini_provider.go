@@ -156,9 +156,16 @@ func overloadedObjectStatus(status string, code int) bool {
 
 // providerStatusError builds the pre-stream provider error for a non-200
 // response: overloaded message + reason for 429/503, generic message with
-// PROVIDER_ERROR otherwise. The raw provider body is never included: it
+// PROVIDER_ERROR otherwise. A 429 also carries QuotaInfo parsed from
+// error.details so the service can distinguish an exhausted daily quota from a
+// short-lived per-minute limit. The raw provider body is never included: it
 // stays in server logs only.
-func providerStatusError(code int) error {
+func providerStatusError(code int, body []byte, requestedModel string) error {
+	if code == http.StatusTooManyRequests {
+		info := parseQuotaInfo(body, requestedModel)
+		cause := fmt.Errorf("status %d: %w", code, NewQuotaError(info))
+		return apperror.AIProviderReason(apperror.ReasonProviderOverloaded, OverloadedMessage, cause)
+	}
 	if overloadedStatus(code) {
 		return apperror.AIProviderReason(apperror.ReasonProviderOverloaded, OverloadedMessage, fmt.Errorf("status %d", code))
 	}
@@ -289,7 +296,7 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 			return nil, apperror.AIProviderReason(apperror.ReasonProviderError, GenericProviderMessage,
 				fmt.Errorf("%w: status 400", ErrThinkingLevelRejected))
 		}
-		return nil, providerStatusError(resp.StatusCode)
+		return nil, providerStatusError(resp.StatusCode, errBody, req.Model)
 	}
 
 	ch := make(chan StreamChunk, 32)

@@ -790,9 +790,15 @@ loop:
 
 // writeOpenError emits the open-phase failure without ever falling back to a
 // JSON HTTP error (SSE headers are already committed). Busy conditions use
-// the stable AI_BUSY code; other provider failures keep the existing shape.
+// the stable AI_BUSY code; an exhausted daily quota keeps AI_BUSY but adds the
+// quota reason and a distinct message. Other provider failures keep the
+// existing shape.
 func (h *Handler) writeOpenError(sse *sseWriter, err error, ctxErr error) {
 	var ae *apperror.Error
+	if errors.As(err, &ae) && ae.Code() == "AI_BUSY" && ae.Reason == apperror.ReasonQuota {
+		sse.writeEvent("error", sseErrorPayloadWithCode("AI_BUSY", service.QuotaExhaustedMessage, apperror.ReasonQuota))
+		return
+	}
 	busy := errors.Is(ctxErr, context.DeadlineExceeded) ||
 		aiprovider.IsOpenTimeoutError(err) ||
 		aiprovider.IsOverloadedError(err) ||
