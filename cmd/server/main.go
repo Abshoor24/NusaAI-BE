@@ -40,6 +40,22 @@ func run() error {
 	log := logger.New(cfg.App.Env)
 	slog.SetDefault(log)
 
+	log.Info("ai config effective",
+		"model", cfg.AI.Model,
+		"fallback_models", cfg.AI.FallbackModels,
+		"timeout", cfg.AI.Timeout.String(),
+		"retry_on_unavailable", cfg.AI.RetryOnUnavailable,
+		"retry_backoff", cfg.AI.RetryBackoff.String(),
+		"open_budget", cfg.AI.OpenBudget.String(),
+		"stream_max_duration", cfg.AI.StreamMaxDuration.String(),
+		"stream_idle_timeout", cfg.AI.StreamIdleTimeout.String(),
+		"thinking_levels", cfg.AI.EffectiveThinkingLevels(),
+		"hedge_after", cfg.AI.HedgeAfter.String(),
+	)
+	for _, warning := range cfg.AI.RiskWarnings() {
+		log.Warn("ai config risk", "warning", warning)
+	}
+
 	// Context cancelled by SIGINT (Ctrl+C) or SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

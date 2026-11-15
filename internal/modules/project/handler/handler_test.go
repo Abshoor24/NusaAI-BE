@@ -120,17 +120,46 @@ func (s *stubService) waitOpen(ctx context.Context) error {
 	}
 	return nil
 }
-func (s *stubService) BeginGenerate(ctx context.Context, _ string, _ string, _ []model.ImagePayload) (*service.PendingStream, error) {
-	if err := s.waitOpen(ctx); err != nil {
-		return nil, err
+func (s *stubService) PrepareGenerate(_ context.Context, _ string, _ string, _ []model.ImagePayload) (*service.PendingStream, error) {
+	if s.beginErr != nil {
+		return nil, s.beginErr
 	}
-	return s.beginPending, s.beginErr
+	return s.beginPending, nil
 }
-func (s *stubService) BeginRevise(ctx context.Context, _ string, _ string, _ string, _ *int, _ []model.ImagePayload) (*service.PendingStream, error) {
+func (s *stubService) PrepareRevise(_ context.Context, _ string, _ string, _ string, _ *int, _ []model.ImagePayload) (*service.PendingStream, error) {
+	if s.beginErr != nil {
+		return nil, s.beginErr
+	}
+	return s.beginPending, nil
+}
+func (s *stubService) OpenStream(ctx context.Context, pending *service.PendingStream, observe service.OpenObserver) error {
+	if observe != nil {
+		observe(service.OpenPhaseEvent{Phase: service.OpenPhaseConnecting, Attempt: 1})
+	}
 	if err := s.waitOpen(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+func (s *stubService) BeginGenerate(ctx context.Context, uid string, projectID string, images []model.ImagePayload) (*service.PendingStream, error) {
+	pending, err := s.PrepareGenerate(ctx, uid, projectID, images)
+	if err != nil {
 		return nil, err
 	}
-	return s.beginPending, s.beginErr
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
+func (s *stubService) BeginRevise(ctx context.Context, uid string, projectID string, instruction string, baseVersion *int, images []model.ImagePayload) (*service.PendingStream, error) {
+	pending, err := s.PrepareRevise(ctx, uid, projectID, instruction, baseVersion, images)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
 }
 func (s *stubService) FinishStream(_ context.Context, _ *service.PendingStream, _ string) (*model.Version, error) {
 	s.finishCalls++
@@ -263,7 +292,8 @@ func pendingFor(projectID string, stream <-chan aiprovider.StreamChunk) *service
 	}
 }
 
-func TestGenerateSSESuccess(t *testing.T) {	stub := &stubService{
+func TestGenerateSSESuccess(t *testing.T) {
+	stub := &stubService{
 		finishVer: &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html><html></html>"},
 	}
 	stub.beginPending = pendingFor("p1", scriptedStream([]string{"<!DOCTYPE html>", "<html></html>"}, false))
@@ -909,37 +939,43 @@ func generateReq() (*httptest.ResponseRecorder, *http.Request) {
 	return httptest.NewRecorder(), req
 }
 
-func TestGenerateSSEPreStreamTimeoutIsJSON502(t *testing.T) {
-	// A provider open slower than AI_STREAM_MAX_DURATION fails before SSE
-	// headers are committed: JSON 502 with the timeout message, no version.
+func TestGenerateSSEOpenBudgetExceededIsAIBusy(t *testing.T) {
+	// SSE headers are committed before the provider opens, so a slow open
+	// cannot fall back to a JSON 502. It ends with an SSE AI_BUSY error and
+	// no version.
 	stub := &stubService{beginDelay: 5 * time.Second}
+	stub.beginPending = pendingFor("p1", scriptedStream(nil, false))
 	h := newTestHandlerWithAI(stub, config.AIConfig{
 		MaxBytes: 1 << 20, MaxGenerateBodyBytes: 32 << 20,
-		StreamMaxDuration: 100 * time.Millisecond, StreamIdleTimeout: time.Minute,
+		OpenBudget: 100 * time.Millisecond, StreamMaxDuration: time.Minute,
+		StreamIdleTimeout: time.Minute,
 	})
 
 	rec, req := generateReq()
+	start := time.Now()
 	h.Generate(rec, req)
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("Generate blocked %v, want return near the open budget", elapsed)
+	}
 
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("status=%d, want 502", rec.Code)
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
+		t.Fatalf("want error without done:\n%s", body)
 	}
-	var body map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
+	errObj := errorEventData(t, body)
+	if errObj["code"] != "AI_BUSY" {
+		t.Errorf("code=%v, want AI_BUSY", errObj["code"])
 	}
-	errObj, _ := body["error"].(map[string]any)
-	if errObj["code"] != "AI_PROVIDER_ERROR" {
-		t.Fatalf("code=%v, want AI_PROVIDER_ERROR", errObj["code"])
-	}
-	msg, _ := errObj["message"].(string)
-	if !strings.Contains(msg, "AI stream timed out") {
-		t.Errorf("message = %q, want the timeout message", msg)
+	if errObj["message"] != service.OpenBusyMessage {
+		t.Errorf("message=%v, want the busy message", errObj["message"])
 	}
 	if stub.failCalls != 0 {
 		// Rollback for a failed open is the service's job (failDetached);
 		// the handler must not double-rollback.
 		t.Errorf("failCalls = %d, want 0 (service already rolled back the open)", stub.failCalls)
+	}
+	if stub.beginCtx == nil || stub.beginCtx.Err() != context.DeadlineExceeded {
+		t.Errorf("provider ctx err = %v, want DeadlineExceeded (open budget)", stub.beginCtx.Err())
 	}
 }
 
@@ -1062,5 +1098,91 @@ func TestGenerateSSEOverloadedMidStreamMessage(t *testing.T) {
 	}
 	if stub.finishCalls != 0 || stub.failCalls != 1 {
 		t.Errorf("finish=%d fail=%d, want 0/1", stub.finishCalls, stub.failCalls)
+	}
+}
+
+func TestGenerateSSEStreamDeadlineStartsAfterOpen(t *testing.T) {
+	// The open phase is bounded by OpenBudget, not by StreamMaxDuration: a
+	// slow open must not eat the streaming budget. Here the open takes
+	// 200ms while StreamMaxDuration is only 100ms, yet the stream still
+	// completes because its deadline starts after headers arrive.
+	ch := make(chan aiprovider.StreamChunk, 4)
+	stub := &stubService{beginDelay: 200 * time.Millisecond}
+	stub.beginPending = pendingFor("p1", ch)
+	stub.finishVer = &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html><html></html>"}
+	go func() {
+		ch <- aiprovider.StreamChunk{Token: "<!DOCTYPE html>"}
+		time.Sleep(50 * time.Millisecond)
+		ch <- aiprovider.StreamChunk{Token: "<html></html>"}
+		ch <- aiprovider.StreamChunk{Done: true}
+	}()
+	h := newTestHandlerWithAI(stub, config.AIConfig{
+		MaxBytes: 1 << 20, MaxGenerateBodyBytes: 32 << 20,
+		OpenBudget: time.Second, StreamMaxDuration: 100 * time.Millisecond,
+		StreamIdleTimeout: time.Second,
+	})
+
+	rec, req := generateReq()
+	h.Generate(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: done") {
+		t.Errorf("stream must survive an open longer than StreamMaxDuration:\n%s", body)
+	}
+	if strings.Contains(body, "AI stream timed out") {
+		t.Errorf("stream deadline must start after open, not before:\n%s", body)
+	}
+	if stub.finishCalls != 1 || stub.failCalls != 0 {
+		t.Errorf("finish=%d fail=%d, want 1/0", stub.finishCalls, stub.failCalls)
+	}
+}
+
+func TestGenerateSSEEmitsStatusDuringOpen(t *testing.T) {
+	stub := &stubService{beginDelay: 50 * time.Millisecond}
+	stub.beginPending = pendingFor("p1", scriptedStream([]string{"<!DOCTYPE html>"}, false))
+	stub.finishVer = &model.Version{ID: "v1", ProjectID: "p1", VersionNumber: 1, Kind: "generate", HTML: "<!DOCTYPE html>"}
+	h := newTestHandlerWithAI(stub, config.AIConfig{
+		MaxBytes: 1 << 20, MaxGenerateBodyBytes: 32 << 20,
+		OpenBudget: time.Second, StreamMaxDuration: time.Second, StreamIdleTimeout: time.Second,
+	})
+
+	rec, req := generateReq()
+	h.Generate(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: status") {
+		t.Fatalf("open phase must emit a status event:\n%s", body)
+	}
+	if !strings.Contains(body, `"phase":"connecting"`) {
+		t.Errorf("status event missing phase:\n%s", body)
+	}
+	if !strings.Contains(body, "event: done") {
+		t.Errorf("stream should still finish:\n%s", body)
+	}
+}
+
+func TestRequestTrackerDuplicateGenerateDetection(t *testing.T) {
+	tr := newRequestTracker()
+	t0 := time.Now()
+
+	if active, dup, _, gap := tr.begin("r1", "generate", "p1", t0); active != 0 || dup || gap != 0 {
+		t.Fatalf("first begin = active %d dup %v gap %v, want 0/false/0", active, dup, gap)
+	}
+	active, dup, prev, gap := tr.begin("r2", "generate", "p1", t0.Add(2*time.Millisecond))
+	if !dup || prev != "r1" || active != 1 || gap != 2*time.Millisecond {
+		t.Fatalf("overlap = active %d dup %v prev %q gap %v, want 1/true/r1/2ms", active, dup, prev, gap)
+	}
+
+	tr.finish("r1", "generate", "p1", t0.Add(300*time.Millisecond))
+	tr.finish("r2", "generate", "p1", t0.Add(300*time.Millisecond))
+	if _, dup, _, _ := tr.begin("r3", "generate", "p1", t0.Add(time.Second)); !dup {
+		t.Error("generate starting <2s after the previous ended must be flagged")
+	}
+	tr.finish("r3", "generate", "p1", t0.Add(time.Second))
+	if _, dup, _, _ := tr.begin("r4", "generate", "p1", t0.Add(5*time.Second)); dup {
+		t.Error("generate starting >2s after the previous ended must not be flagged")
+	}
+	if active, dup, _, _ := tr.begin("v1", "revise", "p1", t0.Add(5*time.Second)); dup || active != 1 {
+		t.Errorf("revise = active %d dup %v, want active generate count 1 and no duplicate flag", active, dup)
 	}
 }

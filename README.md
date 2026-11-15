@@ -116,8 +116,10 @@ Variabel penting lainnya:
 - `AI_MAX_OUTPUT_TOKENS` (opsional, > 0; kosong = default model), `AI_THINKING_BUDGET` (opsional, ≥ 0, 0 mematikan thinking bila didukung model; kosong = default model). Berguna bila output sering terpotong atau untuk membatasi biaya. Dikosongkan = `generationConfig` tidak dikirim.
 - `AI_DEBUG_LOG_OUTPUT_EDGES` (default false; hanya development) — mencatat 200 karakter awal/akhir output gagal ke log. Output bisa berisi data pengguna, jangan aktifkan di luar development.
 - `AI_STREAM_MAX_DURATION` (default 180s, wajib > 0) — batas total satu stream generate/revise; lewat batas → request ke Gemini dibatalkan, rollback, klien menerima `AI_PROVIDER_ERROR` "AI stream timed out".
-- `AI_STREAM_IDLE_TIMEOUT` (default 60s, wajib > 0) — batas diam antar chunk provider; lewat batas → `AI_PROVIDER_ERROR` "AI stream stalled", rollback sama.
-- `AI_RETRY_ON_UNAVAILABLE` (default 0, maks 2) + `AI_RETRY_BACKOFF` (default 2s) — ulangi pembukaan stream HANYA untuk 429/503 sebelum chunk pertama; default 0 = perilaku lama persis. Tiap retry bisa menambah puluhan detik karena Gemini kadang baru menjawab 503 setelah menunggu lama; total tetap dibatasi `AI_STREAM_MAX_DURATION`.
+- `AI_STREAM_IDLE_TIMEOUT` (default 30s, wajib > 0) — batas diam antar chunk provider; lewat batas → `AI_PROVIDER_ERROR` "AI stream stalled", rollback sama.
+- `AI_RETRY_ON_UNAVAILABLE` (default 1, maks 2) + `AI_RETRY_BACKOFF` (default 2s) — ulangi pembukaan stream HANYA untuk 429/503 sebelum chunk pertama; default 1, maks 2. Tiap retry bisa menambah puluhan detik karena Gemini kadang baru menjawab 503 setelah menunggu lama; total tetap dibatasi `AI_OPEN_BUDGET`.
+- `AI_OPEN_BUDGET` (default 60s) — batas total fase membuka stream, dipakai bersama semua retry dan fallback; habis → SSE `AI_BUSY` dan rollback.
+- `AI_HEDGE_AFTER` (default 0 = nonaktif) — bila > 0 dan ada `AI_FALLBACK_MODELS`, model cadangan pertama mulai paralel setelah model utama tidak menghasilkan chunk pertama dalam waktu ini. Pemenang adalah yang pertama menghasilkan chunk; yang kalah dibatalkan. Dapat menggandakan biaya provider; rekomendasi opt-in: `8s` dengan `gemini-3.5-flash` dan `AI_THINKING_LEVEL=LOW`.
 - `UPLOAD_DIR`, `UPLOAD_MAX_BYTES`
 - `CORS_ALLOWED_ORIGINS` (CSV; default development `http://localhost:3000,http://localhost:5173`, di luar development default kosong), `RATE_LIMIT_*`
 - `GENERATE_RATE_LIMIT_PER_MINUTE` (default 5), `PROJECT_MAX_IMAGES` (default 4), `PROJECT_MAX_HTML_BYTES` (default 524288 = 512 KiB)

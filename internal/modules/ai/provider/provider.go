@@ -27,6 +27,12 @@ type ChatMessage struct {
 type Request struct {
 	Model    string
 	Messages []ChatMessage
+	// ThinkingLevel overrides the provider-wide thinking level for this
+	// request (nil = use the provider default).
+	ThinkingLevel *string
+	// DisableThinking omits thinkingConfig entirely. Used for the one-shot
+	// retry after a provider rejects the configured thinking level.
+	DisableThinking bool
 }
 
 // StreamChunk is one incremental piece delivered by CompleteStream.

@@ -237,6 +237,9 @@ func TestLoadStreamLimitDefaults(t *testing.T) {
 	t.Setenv("AI_STREAM_IDLE_TIMEOUT", "")
 	t.Setenv("AI_RETRY_ON_UNAVAILABLE", "")
 	t.Setenv("AI_RETRY_BACKOFF", "")
+	t.Setenv("AI_OPEN_BUDGET", "")
+	t.Setenv("AI_HEDGE_AFTER", "")
+	t.Setenv("AI_THINKING_LEVELS", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -244,14 +247,23 @@ func TestLoadStreamLimitDefaults(t *testing.T) {
 	if cfg.AI.StreamMaxDuration != 180*time.Second {
 		t.Errorf("StreamMaxDuration = %v, want 180s", cfg.AI.StreamMaxDuration)
 	}
-	if cfg.AI.StreamIdleTimeout != 60*time.Second {
-		t.Errorf("StreamIdleTimeout = %v, want 60s", cfg.AI.StreamIdleTimeout)
+	if cfg.AI.StreamIdleTimeout != 30*time.Second {
+		t.Errorf("StreamIdleTimeout = %v, want 30s", cfg.AI.StreamIdleTimeout)
 	}
-	if cfg.AI.RetryOnUnavailable != 0 {
-		t.Errorf("RetryOnUnavailable = %d, want 0 (disabled)", cfg.AI.RetryOnUnavailable)
+	if cfg.AI.RetryOnUnavailable != 1 {
+		t.Errorf("RetryOnUnavailable = %d, want 1", cfg.AI.RetryOnUnavailable)
 	}
 	if cfg.AI.RetryBackoff != 2*time.Second {
 		t.Errorf("RetryBackoff = %v, want 2s", cfg.AI.RetryBackoff)
+	}
+	if cfg.AI.OpenBudget != 60*time.Second {
+		t.Errorf("OpenBudget = %v, want 60s", cfg.AI.OpenBudget)
+	}
+	if cfg.AI.HedgeAfter != 0 {
+		t.Errorf("HedgeAfter = %v, want 0 (disabled)", cfg.AI.HedgeAfter)
+	}
+	if cfg.AI.ThinkingLevel == nil || *cfg.AI.ThinkingLevel != "LOW" {
+		t.Errorf("ThinkingLevel = %v, want LOW", cfg.AI.ThinkingLevel)
 	}
 }
 
@@ -313,5 +325,84 @@ func TestLoadFallbackModels(t *testing.T) {
 	}
 	if len(cfg.AI.FallbackModels) != 2 || cfg.AI.FallbackModels[0] != "gemini-3.5-flash" || cfg.AI.FallbackModels[1] != "gemini-flash-latest" {
 		t.Errorf("AI.FallbackModels = %v, want [gemini-3.5-flash gemini-flash-latest]", cfg.AI.FallbackModels)
+	}
+}
+
+func TestLoadRejectsBadOpenPhaseSettings(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_OPEN_BUDGET", "0s")
+	if _, err := Load(); err == nil {
+		t.Error("AI_OPEN_BUDGET=0s: want error, got nil")
+	}
+	t.Setenv("AI_OPEN_BUDGET", "60s")
+	t.Setenv("AI_HEDGE_AFTER", "-1s")
+	if _, err := Load(); err == nil {
+		t.Error("negative AI_HEDGE_AFTER: want error, got nil")
+	}
+	t.Setenv("AI_HEDGE_AFTER", "0s")
+	t.Setenv("AI_THINKING_LEVEL", "TURBO")
+	if _, err := Load(); err == nil {
+		t.Error("AI_THINKING_LEVEL=TURBO: want error, got nil")
+	}
+	t.Setenv("AI_THINKING_LEVEL", "")
+	t.Setenv("AI_THINKING_LEVELS", "gemini-3.8-flash=TURBO")
+	if _, err := Load(); err == nil {
+		t.Error("AI_THINKING_LEVELS with bad level: want error, got nil")
+	}
+	t.Setenv("AI_THINKING_LEVELS", "not-a-pair")
+	if _, err := Load(); err == nil {
+		t.Error("malformed AI_THINKING_LEVELS: want error, got nil")
+	}
+}
+
+func TestLoadThinkingLevelsPerModel(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_THINKING_LEVEL", "LOW")
+	t.Setenv("AI_THINKING_LEVELS", " Gemini-3.5-Flash = minimal , gemini-3.8-flash=High ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.AI.ThinkingLevels["gemini-3.5-flash"]; got != "MINIMAL" {
+		t.Errorf("3.5 level = %q, want MINIMAL", got)
+	}
+	if got := cfg.AI.ThinkingLevels["gemini-3.8-flash"]; got != "HIGH" {
+		t.Errorf("3.8 level = %q, want HIGH", got)
+	}
+}
+
+func TestEffectiveThinkingLevelsAndRiskWarnings(t *testing.T) {
+	level := "MINIMAL"
+	cfg := AIConfig{
+		Model:          "gemini-3.5-flash",
+		FallbackModels: []string{"gemini-3.8-flash"},
+		ThinkingLevel:  &level,
+		OpenBudget:     40 * time.Second,
+		Timeout:        25 * time.Second,
+		HedgeAfter:     45 * time.Second,
+	}
+	levels := cfg.EffectiveThinkingLevels()
+	if levels["gemini-3.5-flash"] != "MINIMAL" {
+		t.Errorf("3.5 level = %q, want MINIMAL", levels["gemini-3.5-flash"])
+	}
+	if levels["gemini-3.8-flash"] != "omitted:MINIMAL" {
+		t.Errorf("3.8 level = %q, want omitted:MINIMAL", levels["gemini-3.8-flash"])
+	}
+	warnings := cfg.RiskWarnings()
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %v, want 2 (open budget vs fallback, hedge >= budget)", warnings)
+	}
+
+	cfg.FallbackModels = nil
+	cfg.HedgeAfter = time.Second
+	warnings = cfg.RiskWarnings()
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "no AI_FALLBACK_MODELS") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want no-fallback warning", warnings)
 	}
 }

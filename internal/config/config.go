@@ -95,12 +95,21 @@ type AIConfig struct {
 	RetryOnUnavailable int
 	// RetryBackoff is the pause between provider open attempts.
 	RetryBackoff time.Duration
+	// OpenBudget bounds the whole provider open phase (every retry and every
+	// fallback model) before the stream is handed to the SSE relay.
+	OpenBudget time.Duration
+	// HedgeAfter starts the next fallback model in parallel when the current
+	// model has not opened within this duration. 0 disables hedging.
+	HedgeAfter time.Duration
 	// PerfLog enables structured per-stream timing diagnostics when true.
 	// Default true; set AI_PERF_LOG=false to disable.
 	PerfLog bool
 	// ThinkingLevel is the Gemini 3.x thinking level (MINIMAL/LOW/MEDIUM/HIGH).
 	// nil/empty means omit thinkingConfig from the payload entirely.
 	ThinkingLevel *string
+	// ThinkingLevels overrides ThinkingLevel per model. Keys are lowercased
+	// model names (e.g. "gemini-3.8-flash") and values are uppercase levels.
+	ThinkingLevels map[string]string
 }
 
 type CORSConfig struct {
@@ -156,6 +165,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	thinkingLevels, err := parseThinkingLevels(getEnv("AI_THINKING_LEVELS", ""))
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &Config{
 		App: AppConfig{
@@ -194,7 +207,7 @@ func Load() (*Config, error) {
 			Model:          getEnv("AI_MODEL", "gemini-3.8-flash"),
 			FallbackModels: splitCSV(getEnv("AI_FALLBACK_MODELS", "gemini-3.5-flash")),
 			BaseURL:        getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
-			Timeout:        getDuration("AI_TIMEOUT", 30*time.Second),
+			Timeout:        getDuration("AI_TIMEOUT", 25*time.Second),
 			MaxBytes:       getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
 			// Separate JSON body cap for generate/revise: base64 images inflate
 			// ~33%, so these endpoints allow up to the 32 MB multipart buffer.
@@ -204,19 +217,25 @@ func Load() (*Config, error) {
 			MaxOutputTokens:     getInt64("AI_MAX_OUTPUT_TOKENS", 0),
 			ThinkingBudget:      thinkingBudget,
 			DebugLogOutputEdges: getBool("AI_DEBUG_LOG_OUTPUT_EDGES", false),
-			// Total stream lifetime bound (provider wait + relay). Without
-			// it a stalled provider holds the project in "generating".
+			// Token-relay lifetime bound, starting after the provider opens.
+			// Without it a stalled provider holds the project in "generating".
 			StreamMaxDuration: getDuration("AI_STREAM_MAX_DURATION", 180*time.Second),
 			// Silence bound between provider chunks.
-			StreamIdleTimeout: getDuration("AI_STREAM_IDLE_TIMEOUT", 60*time.Second),
+			StreamIdleTimeout: getDuration("AI_STREAM_IDLE_TIMEOUT", 30*time.Second),
 			// Limited pre-stream retry on 503/429 only; 0 = disabled.
 			// Each retry can add tens of seconds because Gemini sometimes
 			// answers 503 only after a long wait; the total is still
-			// bounded by AI_STREAM_MAX_DURATION.
-			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 0),
+			// bounded by AI_OPEN_BUDGET.
+			RetryOnUnavailable: getInt("AI_RETRY_ON_UNAVAILABLE", 1),
 			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
-			PerfLog:            getBool("AI_PERF_LOG", true),
-			ThinkingLevel:      getOptionalString("AI_THINKING_LEVEL"),
+			// Total budget for the provider open phase across every retry
+			// and fallback model. Exhausting it fails fast with AI_BUSY.
+			OpenBudget: getDuration("AI_OPEN_BUDGET", 60*time.Second),
+			// 0 keeps model fallback sequential.
+			HedgeAfter:     getDuration("AI_HEDGE_AFTER", 0),
+			PerfLog:        getBool("AI_PERF_LOG", true),
+			ThinkingLevel:  getOptionalUpperString("AI_THINKING_LEVEL", "LOW"),
+			ThinkingLevels: thinkingLevels,
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", defaultCORSOrigins())),
@@ -297,6 +316,22 @@ func (c *Config) validate() error {
 	}
 	if c.AI.RetryBackoff < 0 {
 		return fmt.Errorf("config: AI_RETRY_BACKOFF must not be negative")
+	}
+	if c.AI.OpenBudget <= 0 {
+		return fmt.Errorf("config: AI_OPEN_BUDGET must be greater than 0")
+	}
+	if c.AI.HedgeAfter < 0 {
+		return fmt.Errorf("config: AI_HEDGE_AFTER must not be negative")
+	}
+	if c.AI.ThinkingLevel != nil {
+		if _, ok := normalizeThinkingLevel(*c.AI.ThinkingLevel); !ok {
+			return fmt.Errorf("config: AI_THINKING_LEVEL must be one of MINIMAL|LOW|MEDIUM|HIGH")
+		}
+	}
+	for model, level := range c.AI.ThinkingLevels {
+		if _, ok := normalizeThinkingLevel(level); !ok {
+			return fmt.Errorf("config: AI_THINKING_LEVELS value for %q must be one of MINIMAL|LOW|MEDIUM|HIGH", model)
+		}
 	}
 	if c.Project.MaxImages <= 0 {
 		return fmt.Errorf("config: PROJECT_MAX_IMAGES must be greater than 0")
@@ -454,6 +489,57 @@ func getOptionalString(key string) *string {
 	return &s
 }
 
+// getOptionalUpperString reads an optional enum-like string, uppercasing it.
+// An unset variable uses fallback; an explicitly empty value disables it.
+func getOptionalUpperString(key, fallback string) *string {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		v = fallback
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	s := strings.ToUpper(v)
+	return &s
+}
+
+func normalizeThinkingLevel(level string) (string, bool) {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "MINIMAL", "LOW", "MEDIUM", "HIGH":
+		return strings.ToUpper(strings.TrimSpace(level)), true
+	default:
+		return "", false
+	}
+}
+
+// parseThinkingLevels parses AI_THINKING_LEVELS in the form
+// "model=LEVEL,model=LEVEL". Model keys are lowercased; levels are uppercased.
+func parseThinkingLevels(raw string) (map[string]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	out := make(map[string]string)
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		model, level, ok := strings.Cut(entry, "=")
+		model = strings.ToLower(strings.TrimSpace(model))
+		level = strings.TrimSpace(level)
+		if !ok || model == "" || level == "" {
+			return nil, fmt.Errorf("config: AI_THINKING_LEVELS entry %q must be model=LEVEL", entry)
+		}
+		normalized, valid := normalizeThinkingLevel(level)
+		if !valid {
+			return nil, fmt.Errorf("config: AI_THINKING_LEVELS level %q for model %q must be one of MINIMAL|LOW|MEDIUM|HIGH", level, model)
+		}
+		out[model] = normalized
+	}
+	return out, nil
+}
+
 func getDuration(key string, fallback time.Duration) time.Duration {
 	if v, ok := os.LookupEnv(key); ok {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -484,4 +570,79 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+// ThinkingLevelFor resolves the effective thinking level for a model: a
+// per-model override wins, then the global level. The bool is false when a
+// configured level is documented as unsupported by that model and must be
+// omitted instead of sent.
+func (c AIConfig) ThinkingLevelFor(model string) (string, bool, bool) {
+	level := ""
+	if configured, ok := c.ThinkingLevels[strings.ToLower(strings.TrimSpace(model))]; ok {
+		level = configured
+	} else if c.ThinkingLevel != nil {
+		level = *c.ThinkingLevel
+	}
+	level = strings.ToUpper(strings.TrimSpace(level))
+	if level == "" {
+		return "", false, false
+	}
+	if !ThinkingLevelSupported(model, level) {
+		return level, true, false
+	}
+	return level, true, true
+}
+
+// ThinkingLevelSupported reports whether a model documents support for the
+// level. Gemini 3.8/3.7 Flash reject MINIMAL with HTTP 400.
+func ThinkingLevelSupported(model, level string) bool {
+	m := strings.ToLower(model)
+	if level == "MINIMAL" {
+		if strings.Contains(m, "gemini-3.8-flash") || strings.Contains(m, "gemini-3.7-flash") {
+			return false
+		}
+	}
+	return true
+}
+
+// EffectiveThinkingLevels returns the level that will actually be sent for
+// every candidate model ("default" when omitted, "unsupported:<LEVEL>" when
+// filtered because the model documents no support).
+func (c AIConfig) EffectiveThinkingLevels() map[string]string {
+	models := make([]string, 0, 1+len(c.FallbackModels))
+	models = append(models, c.Model)
+	models = append(models, c.FallbackModels...)
+	out := make(map[string]string, len(models))
+	for _, model := range models {
+		if strings.TrimSpace(model) == "" {
+			continue
+		}
+		level, configured, supported := c.ThinkingLevelFor(model)
+		switch {
+		case !configured:
+			out[model] = "default"
+		case !supported:
+			out[model] = "omitted:" + level
+		default:
+			out[model] = level
+		}
+	}
+	return out
+}
+
+// RiskWarnings returns human-readable warnings about AI settings that are
+// valid but likely to behave badly at runtime.
+func (c AIConfig) RiskWarnings() []string {
+	var warnings []string
+	if len(c.FallbackModels) > 0 && c.OpenBudget < 2*c.Timeout {
+		warnings = append(warnings,
+			"AI_OPEN_BUDGET is less than 2 x AI_TIMEOUT with fallback models configured; the fallback may never be attempted")
+	}
+	if c.HedgeAfter > 0 && len(c.FallbackModels) == 0 {
+		warnings = append(warnings, "AI_HEDGE_AFTER is set but no AI_FALLBACK_MODELS are configured; hedging will never run")
+	}
+	if c.HedgeAfter > 0 && c.HedgeAfter >= c.OpenBudget {
+		warnings = append(warnings, "AI_HEDGE_AFTER is greater than or equal to AI_OPEN_BUDGET; hedging will never fire")
+	}
+	return warnings
 }

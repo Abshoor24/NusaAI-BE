@@ -81,6 +81,15 @@ func (d *dummyProjectService) pending() *projectservice.PendingStream {
 		MaxBytes:  1 << 20,
 	}
 }
+func (d *dummyProjectService) PrepareGenerate(_ context.Context, _ string, _ string, _ []projectmodel.ImagePayload) (*projectservice.PendingStream, error) {
+	return d.pending(), nil
+}
+func (d *dummyProjectService) PrepareRevise(_ context.Context, _ string, _ string, _ string, _ *int, _ []projectmodel.ImagePayload) (*projectservice.PendingStream, error) {
+	return d.pending(), nil
+}
+func (d *dummyProjectService) OpenStream(_ context.Context, _ *projectservice.PendingStream, _ projectservice.OpenObserver) error {
+	return nil
+}
 func (d *dummyProjectService) BeginGenerate(_ context.Context, _ string, _ string, _ []projectmodel.ImagePayload) (*projectservice.PendingStream, error) {
 	return d.pending(), nil
 }

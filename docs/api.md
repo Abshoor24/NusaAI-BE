@@ -887,7 +887,25 @@ X-Accel-Buffering: no
 > [!NOTE]
 > Server mengirim HTTP 200 dan membuka koneksi SSE segera setelah semua validasi awal lolos. Error yang terjadi **sebelum** itu (token invalid, project tidak ditemukan, `409 CONFLICT`, validasi gagal) dikembalikan sebagai JSON error biasa dengan HTTP 4xx/5xx.
 
-**1. `event: token`** — dikirim berulang selama HTML ditulis
+**1. `event: status`** — dikirim selama fase membuka koneksi ke provider (sebelum `token` pertama)
+
+```
+event: status
+data: {"phase":"connecting","attempt":1,"elapsed_ms":0}
+```
+
+| Field | Tipe | Deskripsi |
+| --- | --- | --- |
+| `phase` | `string` | `connecting` (model utama), `retrying` (mengulang model yang sama setelah 429/503), atau `fallback` (mencoba model cadangan) |
+| `attempt` | `integer` | Nomor percobaan pada model saat ini (mulai 1) |
+| `elapsed_ms` | `integer` | Waktu sejak fase open dimulai, dalam milidetik |
+
+> `status` tidak menyebut nama model dan bukan progres HTML; gunakan untuk teks progres seperti "Menyiapkan AI…" / "Mencoba lagi…".
+
+> [!NOTE]
+> **Hedging (opsional, `AI_HEDGE_AFTER`).** Jika `AI_HEDGE_AFTER > 0` dan ada model cadangan, server boleh memulai model cadangan pertama secara paralel ketika model utama belum menghasilkan potongan pertama dalam batas waktu tersebut. Model pertama yang menghasilkan potongan pertama menjadi pemenang; model lain dibatalkan. Karena ini dapat menggandakan biaya provider, default `0` (nonaktif). Rekomendasi bila dibutuhkan: `AI_HEDGE_AFTER=8s` dengan `gemini-3.5-flash` dan `AI_THINKING_LEVEL=LOW`. Event `status` tetap tidak menyebut nama model, dan pemenang dilaporkan lewat log server (`hedge_winner`, `loser_cancelled`), bukan payload SSE.
+
+**2. `event: token`** — dikirim berulang selama HTML ditulis
 
 ```
 event: token
@@ -898,7 +916,7 @@ data: {"token":"<!DOCTYPE html>\n<html lang=\"id\">"}
 | --- | --- | --- |
 | `token` | `string` | Potongan teks (bisa satu kata, satu baris, atau beberapa baris) |
 
-**2. `event: done`** — dikirim **setelah** HTML lolos validasi dan versi baru tersimpan di database
+**3. `event: done`** — dikirim **setelah** HTML lolos validasi dan versi baru tersimpan di database
 
 ```
 event: done
@@ -911,7 +929,7 @@ data: {"project_id":"5e2b7a10-9c34-4f0e-8d55-2a1c6b7e9f01","version_id":"b3c1d2e
 | `version_id` | `string` (UUID) | ID versi baru |
 | `version_number` | `integer` | Nomor versi baru (mulai dari 1) |
 
-**3. `event: error`** — dikirim jika terjadi kegagalan **di tengah streaming** (bentuk envelope sama seperti semua JSON error, termasuk `reason` opsional; lihat §9.3.1)
+**4. `event: error`** — dikirim jika terjadi kegagalan setelah header SSE dikirim: saat membuka provider, di tengah streaming, timeout, stall, atau validasi hasil (bentuk envelope sama seperti semua JSON error, termasuk `reason` opsional; lihat §9.3.1)
 
 ```
 event: error
@@ -920,11 +938,11 @@ data: {"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"The AI pro
 
 | Field | Tipe | Deskripsi |
 | --- | --- | --- |
-| `error.code` | `string` | Selalu `"AI_PROVIDER_ERROR"` untuk error tengah stream |
-| `error.message` | `string` | Pesan error generic (detail teknis disembunyikan) |
+| `error.code` | `string` | `"AI_PROVIDER_ERROR"` untuk kegagalan provider/stream; `"AI_BUSY"` untuk open phase yang kehabisan `AI_OPEN_BUDGET` atau tetap 429/503/timeout |
+| `error.message` | `string` | Pesan generic (detail teknis disembunyikan). Untuk `AI_BUSY`: `"Server AI sedang ramai. Silakan coba lagi sebentar lagi."` |
 | `error.reason` | `string` (opsional) | Sub-kode stabil (`PROVIDER_OVERLOADED`, `STREAM_TIMEOUT`, `STREAM_STALLED`, `OUTPUT_TRUNCATED`, `OUTPUT_BLOCKED`, `STREAM_INTERRUPTED`, `INVALID_OUTPUT`, `PROVIDER_ERROR`); dihilangkan bila kosong |
 
-Penyebab `error` di tengah stream: provider Gemini error/timeout, stream melewati `AI_STREAM_MAX_DURATION` ("AI stream timed out") atau diam melewati `AI_STREAM_IDLE_TIMEOUT` ("AI stream stalled"), koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Pesan `error` untuk provider sibuk (429/503) adalah `"The AI provider is temporarily overloaded, please try again"`. Pada semua kasus ini **tidak ada versi baru yang disimpan**.
+Penyebab `error` setelah header SSE: provider Gemini error/timeout/sibuk saat **membuka** stream, stream melewati `AI_STREAM_MAX_DURATION` ("AI stream timed out") atau diam melewati `AI_STREAM_IDLE_TIMEOUT` ("AI stream stalled"), koneksi client terputus, atau hasil AI **tidak lolos validasi** (bukan dokumen HTML, atau melebihi `PROJECT_MAX_HTML_BYTES`). Kegagalan open phase memakai `code: "AI_BUSY"` setelah `AI_OPEN_BUDGET` habis; kegagalan tengah stream memakai `"AI_PROVIDER_ERROR"` dengan pesan overload `"The AI provider is temporarily overloaded, please try again"`. Pada semua kasus ini **tidak ada versi baru yang disimpan**.
 
 > [!IMPORTANT]
 > **Jangan render stream `token` langsung sebagai website.** Stream hanya untuk indikator progres (mis. menampilkan kode yang sedang ditulis). Model kadang membungkus output dengan pagar kode Markdown; server membersihkannya sebelum menyimpan. Sumber HTML final yang valid adalah `GET /projects/{id}/versions/{number}` setelah event `done`.
@@ -994,7 +1012,7 @@ Body boleh berupa objek kosong `{}`.
 | 404 | `NOT_FOUND` | Project tidak ditemukan atau bukan milik user |
 | 409 | `CONFLICT` | Project sedang `generating`, **atau** project sudah punya versi (gunakan `revise`) |
 | 429 | `RATE_LIMITED` | Limit Generate atau General API terlampaui |
-| 502 | `AI_PROVIDER_ERROR` | Provider gagal memulai stream (sebelum HTTP 200 dikirim) |
+| 200 (event `error`) | `AI_BUSY` | Provider gagal/sibuk/timeout saat membuka stream setelah `AI_OPEN_BUDGET`; tidak ada versi tersimpan |
 
 **Contoh 409 (sudah punya versi):**
 ```json
@@ -1065,7 +1083,7 @@ Event SSE identik dengan generate. Event `done` berisi `version_number` baru (ve
 | 404 | `NOT_FOUND` | Project atau `base_version` tidak ditemukan / bukan milik user |
 | 409 | `CONFLICT` | Project sedang `generating`, **atau** belum punya versi (gunakan `generate`) |
 | 429 | `RATE_LIMITED` | Limit Generate atau General API terlampaui |
-| 502 | `AI_PROVIDER_ERROR` | Provider gagal memulai stream |
+| 200 (event `error`) | `AI_BUSY` | Provider gagal/sibuk/timeout saat membuka stream setelah `AI_OPEN_BUDGET` |
 
 ---
 
@@ -1084,7 +1102,7 @@ async function streamGenerate(projectId, onToken) {
     body: JSON.stringify({}),
   });
 
-  // Error sebelum stream dimulai (401, 404, 409, 429, 502, dsb.)
+  // Error sebelum stream dimulai (401, 404, 409, 429, dsb.)
   if (!response.ok) {
     const errData = await response.json();
     throw new Error(errData.error?.message || 'Generate request failed');
@@ -1423,13 +1441,14 @@ Header respons: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `C
 
 | Event | Payload `data` (JSON) | Arti |
 | --- | --- | --- |
+| `status` | `{"phase":"connecting","attempt":1,"elapsed_ms":0}` | Fase membuka provider (`connecting`/`retrying`/`fallback`); tidak menyebut nama model |
 | `token` | `{"token":"<potongan HTML>"}` | Progres saja, **jangan** dirender sebagai website |
 | `done` | `{"project_id":"<uuid>","version_id":"<uuid>","version_number":2}` | Selesai; ambil HTML final via `GET /versions/{version_number}` |
-| `error` | `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"<pesan Inggris>","reason":"PROVIDER_OVERLOADED"}}` | Gagal; tidak ada versi tersimpan; status project pulih otomatis. `reason` adalah sub-kode stabil untuk switch di frontend (lihat tabel `reason` di §9.3); `message` tetap Inggris dan tidak untuk di-switch |
+| `error` | `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"<pesan Inggris>","reason":"PROVIDER_OVERLOADED"}}` | Gagal; tidak ada versi tersimpan; status project pulih otomatis. `code` bisa `AI_BUSY` saat open phase gagal. `reason` adalah sub-kode stabil untuk switch di frontend (lihat tabel `reason` di §9.3); `message` untuk `AI_PROVIDER_ERROR` tetap Inggris dan tidak untuk di-switch |
 
-Urutan: nol atau lebih `token`, lalu **tepat satu** event terminal (`done` **atau** `error`). Setelah terminal, koneksi ditutup server.
+Urutan: nol atau lebih `status`, nol atau lebih `token`, lalu **tepat satu** event terminal (`done` **atau** `error`). Setelah terminal, koneksi ditutup server.
 
-**Heartbeat.** Saat menunggu model (~tiap 15 detik) server mengirim baris komentar SSE:
+**Heartbeat.** Selama fase open (menunggu provider) server mengirim komentar `: ping` kira-kira tiap 5 detik; setelah stream terbuka heartbeat kembali ke ~15 detik. Baris komentar SSE:
 
 ```
 : ping
@@ -1440,9 +1459,9 @@ Baris komentar tidak punya `event:`/`data:` — parser harus mengabaikannya (jan
 
 **Menutup dari klien.** Batalkan `fetch` (`AbortController.abort()`); server mendeteksi koneksi putus dan mengembalikan status project (`failed` untuk generate, `ready` untuk revise) tanpa menyimpan versi.
 
-**Dua bentuk kegagalan generate/revise (frontend wajib menangani keduanya sama).**
-Kegagalan bisa datang sebagai **HTTP 502 JSON** (mis. provider sibuk/timeout sebelum stream dibuka — Gemini kadang baru menjawab 503 setelah menunggu hingga puluhan detik) **atau** sebagai **event `error` di dalam stream HTTP 200** (provider sibuk/error di tengah jalan, timeout total, stall, validasi gagal). Keduanya memakai `code: "AI_PROVIDER_ERROR"`, tidak ada versi tersimpan, dan status project pulih otomatis (`failed` untuk generate, `ready` untuk revise; versi sebelumnya tetap utuh).
-Selama menunggu respons pertama (sebelum `token` pertama tiba) tampilkan pesan progres (mis. "Menyiapkan AI…"), bukan spinner tanpa teks — penantian puluhan detik adalah perilaku normal saat provider sibuk.
+**Dua bentuk kegagalan generate/revise (frontend wajib menangani keduanya).**
+Error **sebelum** header SSE (token invalid, project tidak ditemukan, `409 CONFLICT`, validasi request) tetap berupa **JSON HTTP 4xx/5xx**. Setelah SSE dibuka, semua kegagalan — termasuk provider sibuk/timeout saat membuka — datang sebagai **event `error` di dalam HTTP 200**: `AI_BUSY` bila open phase kehabisan budget/sibuk, `AI_PROVIDER_ERROR` bila gagal di tengah stream. Tidak ada versi tersimpan, dan status project pulih otomatis (`failed` untuk generate, `ready` untuk revise; versi sebelumnya tetap utuh).
+Selama fase open, gunakan event `status` + heartbeat untuk menampilkan progres (mis. "Menyiapkan AI…" / "Mencoba lagi…"), bukan spinner tanpa teks.
 
 **Contoh parser** (`EventSource` tidak bisa dipakai: endpoint ini `POST` dan butuh header `Authorization`):
 
@@ -1456,7 +1475,7 @@ async function streamGenerate(projectId, token, onToken) {
     signal: ctrl.signal,
   });
 
-  // Error SEBELUM stream (401/404/409/429/502): JSON envelope biasa.
+  // Error SEBELUM stream (401/404/409/429): JSON envelope biasa.
   if (!res.ok) {
     const err = await res.json();
     throw Object.assign(new Error(err.error?.message), { code: err.error?.code, status: res.status });
@@ -1502,15 +1521,16 @@ async function streamGenerate(projectId, token, onToken) {
 | `CONFLICT` | 409 | `"Project already has a version, use revise instead"` | Alihkan ke revise |
 | `CONFLICT` | 409 | Email sudah terdaftar (register) | Minta login |
 | `RATE_LIMITED` | 429 | Selalu dengan `Retry-After: 60` | Tunggu lalu retry otomatis |
-| `AI_PROVIDER_ERROR` | 502 | Gemini gagal/timeout; status project pulih otomatis | Tampilkan kegagalan generik + tombol "Coba lagi" |
-| `AI_PROVIDER_ERROR` | 502 | `"The AI provider is temporarily overloaded, please try again"` (Gemini 429/503, pra-stream sebagai JSON atau tengah stream sebagai event `error`) | Tampilkan "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
-| `AI_PROVIDER_ERROR` | 502 | `"AI stream timed out"` / `"AI stream stalled"` (melewati `AI_STREAM_MAX_DURATION` / `AI_STREAM_IDLE_TIMEOUT`) | Tampilkan kegagalan generik + tombol "Coba lagi"; tidak perlu mengubah input |
+| `AI_PROVIDER_ERROR` | 200 (event `error`) | Gemini gagal/timeout setelah stream dibuka; status project pulih otomatis | Tampilkan kegagalan generik + tombol "Coba lagi" |
+| `AI_BUSY` | 200 (event `error`) | Open phase kehabisan `AI_OPEN_BUDGET`, tetap 429/503, atau header timeout; tidak ada versi tersimpan | Tampilkan `error.message` ("Server AI sedang ramai…") + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 200 (event `error`) | `"The AI provider is temporarily overloaded, please try again"` (429/503 di tengah stream) | Tampilkan "Layanan AI sedang sibuk, coba lagi beberapa saat" + tombol "Coba lagi" |
+| `AI_PROVIDER_ERROR` | 200 (event `error`) | `"AI stream timed out"` / `"AI stream stalled"` (melewati `AI_STREAM_MAX_DURATION` / `AI_STREAM_IDLE_TIMEOUT`) | Tampilkan kegagalan generik + tombol "Coba lagi"; tidak perlu mengubah input |
 | `DATABASE_ERROR` / `INTERNAL_SERVER_ERROR` | 500 | Selalu envelope generik tanpa detail internal | Tampilkan kegagalan generik |
 | `SERVICE_UNAVAILABLE` | 503 | Database tidak terjangkau (`/health/db`) | Tampilkan status layanan |
 
 ### 9.3.1. Tabel `reason` untuk `AI_PROVIDER_ERROR` (frontend switch)
 
-`reason` muncul di JSON 502 pra-stream maupun event `error` tengah stream (contoh: `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"...","reason":"STREAM_TIMEOUT"}}`). Error non-AI tidak memiliki field ini. Pesan (`message`) selalu Inggris — terjemahkan di frontend berdasarkan `reason`, jangan berdasarkan teks pesan.
+`reason` muncul pada event `error` dengan `code: "AI_PROVIDER_ERROR"` (contoh: `{"success":false,"error":{"code":"AI_PROVIDER_ERROR","message":"...","reason":"STREAM_TIMEOUT"}}`). `AI_BUSY` dan error non-AI tidak memiliki field ini. Pesan (`message`) selalu Inggris untuk `AI_PROVIDER_ERROR` — terjemahkan di frontend berdasarkan `reason`, jangan berdasarkan teks pesan.
 
 | `reason` | Arti | Saran UI (Bahasa Indonesia) |
 | --- | --- | --- |

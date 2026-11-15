@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,10 +37,20 @@ type Service interface {
 	// GetAttachment returns the attachment row plus an open file reader.
 	GetAttachment(ctx context.Context, userID, projectID, attachmentID string) (*model.ProjectAttachment, io.ReadCloser, error)
 
-	// BeginGenerate validates input, atomically claims the project
-	// (draft/failed -> generating), stores attachments, and opens the
-	// provider stream. A non-nil stream with nil error means the provider
-	// accepted; the caller may now commit to SSE headers.
+	// PrepareGenerate validates input, atomically claims the project
+	// (draft/failed -> generating), stores attachments, and builds the
+	// prompt without touching the provider. It is safe to open SSE headers
+	// after this returns; only OpenStream talks to the provider.
+	PrepareGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error)
+	// PrepareRevise is the ready -> generating counterpart.
+	PrepareRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error)
+	// OpenStream runs the provider open phase (retries + fallback models)
+	// and attaches the winning stream to pending. On failure it rolls the
+	// project status back and returns AI_BUSY when the open budget was
+	// exhausted or every model stayed overloaded/unresponsive.
+	OpenStream(ctx context.Context, pending *PendingStream, observe OpenObserver) error
+	// BeginGenerate is the combined prepare+open helper kept for callers
+	// that do not stream SSE (and for tests).
 	BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error)
 	// BeginRevise is the ready -> generating counterpart.
 	BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error)
@@ -60,16 +72,32 @@ type PendingStream struct {
 	StartedAt time.Time
 	MaxBytes  int64
 	// Model is the provider model that actually served the request
-	// (primary or fallback). Populated by openStream.
+	// (primary or fallback). Populated by OpenStream.
 	Model string
 	// FallbackUsed is true when a non-primary model served the request.
 	FallbackUsed bool
 	// AttemptNumber is the provider open attempt within the selected model.
 	AttemptNumber int
-	// firstChunkAt is the wall time when the first chunk of any kind arrived.
-	firstChunkAt time.Time
-	// firstTextTokenAt is the wall time when the first non-empty text token arrived.
-	firstTextTokenAt time.Time
+	// TotalAttempts counts every provider open call made (including retries
+	// and failed fallback attempts).
+	TotalAttempts int
+	// OpenDuration is the time spent in the provider open phase.
+	OpenDuration time.Duration
+	// ThinkingLevel is the level actually sent, or "default" when omitted.
+	ThinkingLevel string
+	// HedgeStarted is the delay before the hedge fallback was started; zero
+	// when hedging never fired.
+	HedgeStarted time.Duration
+	// HedgeWinner is "primary" or "fallback" when hedging fired.
+	HedgeWinner string
+	// LoserCancelled is true when the losing hedge candidate was still
+	// running and had to be cancelled.
+	LoserCancelled bool
+	// systemPrompt, userPrompt and providerImages are captured by
+	// PrepareGenerate/PrepareRevise and sent by OpenStream.
+	systemPrompt   string
+	userPrompt     string
+	providerImages []providerImage
 	// FinishReason is the provider's terminal reason observed on the stream
 	// (e.g. "STOP", "MAX_TOKENS"); empty when unknown. The handler records
 	// it while relaying chunks.
@@ -80,9 +108,32 @@ type PendingStream struct {
 	Usage *aiprovider.UsageMetadata
 	// Chunks and TextBytes count relayed provider chunks and text bytes for
 	// per-stream diagnostics (populated by the handler loop).
-	Chunks   int
+	Chunks    int
 	TextBytes int
 }
+
+// Open phase labels surfaced to the frontend as SSE status events.
+const (
+	OpenPhaseConnecting = "connecting"
+	OpenPhaseRetrying   = "retrying"
+	OpenPhaseFallback   = "fallback"
+)
+
+// OpenBusyMessage is the client-safe Indonesian message used when the open
+// budget is exhausted or the provider remains overloaded.
+const OpenBusyMessage = "Server AI sedang ramai. Silakan coba lagi sebentar lagi."
+
+// OpenPhaseEvent is one progress notification from the provider open phase.
+// Model names are intentionally excluded from the client contract.
+type OpenPhaseEvent struct {
+	Phase   string
+	Attempt int
+	Elapsed time.Duration
+}
+
+// OpenObserver receives open-phase progress notifications. It is called from
+// OpenStream's goroutine; implementations must not block.
+type OpenObserver func(OpenPhaseEvent)
 
 type service struct {
 	repo       repository.Repository
@@ -279,103 +330,562 @@ func (s *service) candidateModels() []string {
 	return models
 }
 
-func (s *service) openStream(ctx context.Context, systemPrompt, userPrompt string, imgs []providerImage) (<-chan aiprovider.StreamChunk, string, bool, int, error) {
-	if s.provider == nil {
-		return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
+// thinkingLevelFor resolves the per-model override, then the global level.
+// Levels that the model is documented not to support are omitted instead of
+// being sent (Gemini 3.8/3.7 Flash reject MINIMAL with HTTP 400).
+func (s *service) thinkingLevelFor(modelName string) *string {
+	level, configured, supported := s.aiCfg.ThinkingLevelFor(modelName)
+	if !configured {
+		return nil
 	}
-	converted := make([]aiprovider.ImageAttachment, 0, len(imgs))
-	for _, im := range imgs {
+	if !supported {
+		s.logger.Warn("ai thinking level not supported by model, omitting",
+			"model", modelName, "thinking_level", level)
+		return nil
+	}
+	return &level
+}
+
+// smallJitter returns 0..20% of d (capped at 500ms) so retries do not
+// synchronize across concurrent requests.
+func smallJitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return 0
+	}
+	window := d / 5
+	if window > 500*time.Millisecond {
+		window = 500 * time.Millisecond
+	}
+	if window <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int64N(int64(window) + 1))
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// OpenStream opens the provider stream for a prepared pending request. It
+// retries overloaded responses on the same model (up to AI_RETRY_ON_UNAVAILABLE
+// with jittered backoff), moves to the next fallback model for other failures,
+// and never retries a response-header timeout on the same model. The caller's
+// context is expected to carry the AI_OPEN_BUDGET deadline.
+//
+// When AI_HEDGE_AFTER > 0 and a fallback exists, the first fallback model is
+// started in parallel if the primary has not produced its first chunk in time.
+// The first candidate to produce a chunk wins; the other is cancelled.
+func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observe OpenObserver) error {
+	if pending == nil || pending.Project == nil {
+		return apperror.AIProviderReason(apperror.ReasonProviderError, "AI request is not prepared", nil)
+	}
+	if s.provider == nil {
+		s.failDetached(ctx, pending)
+		return apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
+	}
+
+	converted := make([]aiprovider.ImageAttachment, 0, len(pending.providerImages))
+	for _, im := range pending.providerImages {
 		converted = append(converted, aiprovider.ImageAttachment{MimeType: im.MimeType, Data: im.Data})
 	}
 
 	models := s.candidateModels()
 	maxRetries := s.aiCfg.RetryOnUnavailable
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
 	if maxRetries > 2 {
 		maxRetries = 2
 	}
+	openStart := time.Now()
 
-	var lastErr error
-	for modelIdx, modelName := range models {
+	if s.aiCfg.HedgeAfter > 0 && len(models) > 1 {
+		lastErr, attempts := s.openHedged(ctx, pending, observe, models[0], models[1], converted, maxRetries, openStart)
+		if lastErr == nil {
+			pending.TotalAttempts = attempts
+			return nil
+		}
 		if ctx.Err() != nil {
-			if lastErr != nil {
-				return nil, "", false, 0, lastErr
+			pending.TotalAttempts = attempts
+			s.failDetached(ctx, pending)
+			return apperror.AIBusy(OpenBusyMessage, ctx.Err())
+		}
+		// Both hedge candidates failed. The remaining fallbacks (if any)
+		// still run sequentially, never re-running the hedged fallback.
+		if len(models) > 2 {
+			seqErr, seqAttempts := s.openSequential(ctx, pending, observe, models[2:], 2, models[0], converted, maxRetries, openStart)
+			pending.TotalAttempts = attempts + seqAttempts
+			if seqErr == nil {
+				return nil
 			}
-			return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
+			lastErr = seqErr
+		} else {
+			pending.TotalAttempts = attempts
 		}
+		s.failDetached(ctx, pending)
+		return s.openFailure(ctx, lastErr)
+	}
 
-		req := aiprovider.Request{
-			Model: modelName,
-			Messages: []aiprovider.ChatMessage{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userPrompt, Images: converted},
-			},
+	lastErr, attempts := s.openSequential(ctx, pending, observe, models, 0, models[0], converted, maxRetries, openStart)
+	pending.TotalAttempts = attempts
+	if lastErr == nil && ctx.Err() == nil {
+		return nil
+	}
+	s.failDetached(ctx, pending)
+	return s.openFailure(ctx, lastErr)
+}
+
+func (s *service) openFailure(ctx context.Context, lastErr error) error {
+	if ctx.Err() != nil {
+		return apperror.AIBusy(OpenBusyMessage, ctx.Err())
+	}
+	if lastErr == nil {
+		lastErr = apperror.AIProviderReason(apperror.ReasonProviderError, "The AI provider returned an error", nil)
+	}
+	if aiprovider.IsOverloadedError(lastErr) || aiprovider.IsOpenTimeoutError(lastErr) {
+		return apperror.AIBusy(OpenBusyMessage, lastErr)
+	}
+	return lastErr
+}
+
+// openSequential tries models in order, retrying only 429/503 on each model.
+// It returns the last error (nil on success) and the number of provider calls.
+func (s *service) openSequential(
+	ctx context.Context,
+	pending *PendingStream,
+	observe OpenObserver,
+	models []string,
+	modelStart int,
+	primaryModel string,
+	converted []aiprovider.ImageAttachment,
+	maxRetries int,
+	openStart time.Time,
+) (error, int) {
+	var lastErr error
+	totalAttempts := 0
+
+	for localIdx, modelName := range models {
+		if ctx.Err() != nil {
+			break
 		}
+		modelIdx := modelStart + localIdx
+		fallback := modelIdx > 0
+		level := s.thinkingLevelFor(modelName)
+		req := s.providerRequest(pending, modelName, level, converted)
 
-		attempts := 1
-		if maxRetries > 0 {
-			attempts = maxRetries + 1
-		}
-
-		var stream <-chan aiprovider.StreamChunk
-		var err error
-
-		for attempt := 0; attempt < attempts; attempt++ {
+		attempts := maxRetries + 1
+		thinkingRetried := false
+		attempt := 0
+		for attempt < attempts {
 			if ctx.Err() != nil {
-				if err != nil {
-					return nil, "", false, 0, err
-				}
-				return nil, "", false, 0, apperror.AIProviderReason(apperror.ReasonProviderError, "AI stream request was cancelled", ctx.Err())
-			}
-
-			stream, err = s.provider.CompleteStream(ctx, req)
-			if err == nil {
-				if modelIdx > 0 {
-					s.logger.Info("ai stream opened using fallback model",
-						"model", modelName, "primary_model", models[0], "fallback_index", modelIdx)
-				} else if attempt > 0 {
-					s.logger.Info("ai stream open retry succeeded",
-						"model", modelName, "attempt", attempt+1, "max_attempts", attempts)
-				}
-				return stream, modelName, modelIdx > 0, attempt + 1, nil
-			}
-
-			// Do not retry the same model if error is not temporary overload
-			if !aiprovider.IsOverloadedError(err) {
 				break
 			}
-
-			if attempt+1 < attempts {
+			phase := OpenPhaseConnecting
+			if fallback {
+				phase = OpenPhaseFallback
+			} else if attempt > 0 {
+				phase = OpenPhaseRetrying
+			}
+			if observe != nil {
+				observe(OpenPhaseEvent{Phase: phase, Attempt: attempt + 1, Elapsed: time.Since(openStart)})
+			}
+			totalAttempts++
+			stream, err := s.provider.CompleteStream(ctx, req)
+			if err == nil {
+				s.setOpenWinner(pending, modelName, level, fallback, attempt+1, time.Since(openStart))
+				pending.Stream = stream
+				attrs := s.openLogAttrs(pending, totalAttempts)
+				if fallback {
+					s.logger.Info("ai stream opened using fallback model", append(attrs, "primary_model", primaryModel, "fallback_index", modelIdx)...)
+				} else if attempt > 0 {
+					s.logger.Info("ai stream open retry succeeded", attrs...)
+				} else {
+					s.logger.Info("ai stream opened", attrs...)
+				}
+				return nil, totalAttempts
+			}
+			lastErr = err
+			if ctx.Err() != nil {
+				break
+			}
+			if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
+				continue
+			}
+			if aiprovider.IsOpenTimeoutError(err) || !aiprovider.IsOverloadedError(err) {
+				break
+			}
+			attempt++
+			if attempt < attempts {
+				delay := s.retryDelay()
 				s.logger.Warn("ai stream open overloaded, retrying",
-					"model", modelName, "attempt", attempt+1, "max_attempts", attempts, "error", err)
-				if backoff := s.aiCfg.RetryBackoff; backoff > 0 {
-					timer := time.NewTimer(backoff)
-					select {
-					case <-ctx.Done():
-						timer.Stop()
-						return nil, "", false, 0, err
-					case <-timer.C:
-					}
-				} else if ctx.Err() != nil {
-					return nil, "", false, 0, err
+					"model", modelName, "attempt", attempt, "max_attempts", attempts,
+					"backoff_ms", delay.Milliseconds(), "error", err)
+				if !sleepCtx(ctx, delay) {
+					break
 				}
 			} else {
 				s.logger.Warn("ai stream open retries exhausted",
-					"model", modelName, "attempts", attempts, "max_attempts", attempts, "error", err)
+					"model", modelName, "attempts", attempts, "error", err)
 			}
 		}
-
-		lastErr = err
-		// If another model is available in the fallback chain, log and continue
-		if modelIdx+1 < len(models) {
+		if ctx.Err() != nil {
+			break
+		}
+		if localIdx+1 < len(models) {
 			s.logger.Warn("ai stream failed on model, attempting fallback",
-				"failed_model", modelName, "next_model", models[modelIdx+1], "error", err)
+				"failed_model", modelName, "next_model", models[localIdx+1], "error", lastErr)
 		}
 	}
-
-	return nil, "", false, 0, lastErr
+	return lastErr, totalAttempts
 }
 
-func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
+type hedgeResult struct {
+	fallback bool
+	chunk    aiprovider.StreamChunk
+	stream   <-chan aiprovider.StreamChunk
+	model    string
+	attempt  int
+	level    string
+	err      error
+}
+
+func hedgeContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithCancel(parent)
+}
+
+// openHedged races the primary model against the first fallback. The fallback
+// starts when the primary has not produced a first chunk within AI_HEDGE_AFTER,
+// or immediately after the primary exhausts its retries. Exactly one fallback
+// worker is ever started.
+func (s *service) openHedged(
+	ctx context.Context,
+	pending *PendingStream,
+	observe OpenObserver,
+	primaryModel string,
+	fallbackModel string,
+	converted []aiprovider.ImageAttachment,
+	maxRetries int,
+	openStart time.Time,
+) (error, int) {
+	primaryCtx, cancelPrimary := hedgeContext(ctx)
+	var fallbackCtx context.Context
+	var cancelFallback context.CancelFunc
+
+	resCh := make(chan hedgeResult, 4)
+	var attempts atomic.Int32
+	go s.openHedgeCandidate(primaryCtx, pending, observe, primaryModel, false, converted, maxRetries, openStart, &attempts, resCh)
+
+	startedFallback := false
+	hedgeTriggered := false
+	var hedgeStarted time.Duration
+	startFallback := func(byTimer bool) {
+		if startedFallback {
+			return
+		}
+		startedFallback = true
+		if byTimer {
+			hedgeTriggered = true
+			hedgeStarted = time.Since(openStart)
+			s.logger.Warn("ai stream hedge started",
+				"primary_model", primaryModel,
+				"fallback_model", fallbackModel,
+				"hedge_after_ms", s.aiCfg.HedgeAfter.Milliseconds(),
+				"elapsed_ms", hedgeStarted.Milliseconds())
+		}
+		fallbackCtx, cancelFallback = hedgeContext(ctx)
+		go s.openHedgeCandidate(fallbackCtx, pending, observe, fallbackModel, true, converted, maxRetries, openStart, &attempts, resCh)
+	}
+
+	timer := time.NewTimer(s.aiCfg.HedgeAfter)
+	defer timer.Stop()
+
+	failures := 0
+	primaryDone := false
+	fallbackDone := false
+	var lastErr error
+
+	for {
+		select {
+		case <-ctx.Done():
+			cancelPrimary()
+			if cancelFallback != nil {
+				cancelFallback()
+			}
+			return ctx.Err(), int(attempts.Load())
+		case <-timer.C:
+			startFallback(true)
+		case res := <-resCh:
+			if res.fallback {
+				fallbackDone = true
+			} else {
+				primaryDone = true
+			}
+			if res.err == nil {
+				loserCancelled := false
+				winnerCtx := primaryCtx
+				if res.fallback {
+					winnerCtx = fallbackCtx
+					if !primaryDone {
+						cancelPrimary()
+						loserCancelled = true
+					}
+				} else if startedFallback && !fallbackDone {
+					cancelFallback()
+					loserCancelled = true
+				}
+
+				pending.Stream = prependStream(winnerCtx, res.chunk, res.stream)
+				s.setOpenWinner(pending, res.model, levelPtr(res.level), res.fallback, res.attempt, time.Since(openStart))
+				pending.LoserCancelled = loserCancelled
+				if hedgeTriggered {
+					pending.HedgeStarted = hedgeStarted
+					if res.fallback {
+						pending.HedgeWinner = "fallback"
+					} else {
+						pending.HedgeWinner = "primary"
+					}
+				}
+				attrs := s.openLogAttrs(pending, int(attempts.Load()))
+				if hedgeTriggered {
+					attrs = append(attrs,
+						"hedge_started_ms", hedgeStarted.Milliseconds(),
+						"hedge_winner", pending.HedgeWinner,
+						"loser_cancelled", loserCancelled)
+					s.logger.Info("ai stream opened with hedging", attrs...)
+				} else if res.fallback {
+					s.logger.Info("ai stream opened using fallback model", append(attrs, "primary_model", primaryModel)...)
+				} else {
+					s.logger.Info("ai stream opened", attrs...)
+				}
+				return nil, int(attempts.Load())
+			}
+
+			failures++
+			lastErr = res.err
+			if !res.fallback && !startedFallback {
+				// The primary exhausted its retries before the hedge timer:
+				// run the normal fallback immediately.
+				startFallback(false)
+			}
+			if failures >= 2 {
+				cancelPrimary()
+				if cancelFallback != nil {
+					cancelFallback()
+				}
+				return lastErr, int(attempts.Load())
+			}
+		}
+	}
+}
+
+// openHedgeCandidate opens one model (with the same retry policy as the
+// sequential path) and reports either its first stream chunk or a terminal
+// open failure. It sends exactly one result.
+func (s *service) openHedgeCandidate(
+	ctx context.Context,
+	pending *PendingStream,
+	observe OpenObserver,
+	modelName string,
+	fallback bool,
+	converted []aiprovider.ImageAttachment,
+	maxRetries int,
+	openStart time.Time,
+	attempts *atomic.Int32,
+	out chan<- hedgeResult,
+) {
+	level := s.thinkingLevelFor(modelName)
+	req := s.providerRequest(pending, modelName, level, converted)
+	allowed := maxRetries + 1
+	thinkingRetried := false
+	attempt := 0
+	var lastErr error
+
+	fail := func(err error) {
+		out <- hedgeResult{fallback: fallback, model: modelName, err: err}
+	}
+
+	for attempt < allowed {
+		if ctx.Err() != nil {
+			fail(ctx.Err())
+			return
+		}
+		phase := OpenPhaseConnecting
+		if fallback {
+			phase = OpenPhaseFallback
+		} else if attempt > 0 {
+			phase = OpenPhaseRetrying
+		}
+		if observe != nil {
+			observe(OpenPhaseEvent{Phase: phase, Attempt: attempt + 1, Elapsed: time.Since(openStart)})
+		}
+		attempts.Add(1)
+		stream, err := s.provider.CompleteStream(ctx, req)
+		if err == nil {
+			select {
+			case chunk, ok := <-stream:
+				if !ok {
+					fail(apperror.AIProviderReason(apperror.ReasonStreamInterrupted, "AI stream ended before the first chunk", nil))
+					return
+				}
+				if chunk.Err != nil {
+					fail(chunk.Err)
+					return
+				}
+				levelName := "default"
+				if level != nil {
+					levelName = *level
+				}
+				out <- hedgeResult{
+					fallback: fallback,
+					chunk:    chunk,
+					stream:   stream,
+					model:    modelName,
+					attempt:  attempt + 1,
+					level:    levelName,
+				}
+				return
+			case <-ctx.Done():
+				fail(ctx.Err())
+				return
+			}
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			fail(ctx.Err())
+			return
+		}
+		if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
+			continue
+		}
+		if aiprovider.IsOpenTimeoutError(err) || !aiprovider.IsOverloadedError(err) {
+			fail(err)
+			return
+		}
+		attempt++
+		if attempt < allowed {
+			delay := s.retryDelay()
+			s.logger.Warn("ai stream open overloaded, retrying",
+				"model", modelName, "attempt", attempt, "max_attempts", allowed,
+				"backoff_ms", delay.Milliseconds(), "error", err)
+			if !sleepCtx(ctx, delay) {
+				fail(ctx.Err())
+				return
+			}
+		} else {
+			s.logger.Warn("ai stream open retries exhausted",
+				"model", modelName, "attempts", allowed, "error", err)
+		}
+	}
+	fail(lastErr)
+}
+
+func (s *service) providerRequest(pending *PendingStream, modelName string, level *string, converted []aiprovider.ImageAttachment) aiprovider.Request {
+	return aiprovider.Request{
+		Model: modelName,
+		Messages: []aiprovider.ChatMessage{
+			{Role: "system", Content: pending.systemPrompt},
+			{Role: "user", Content: pending.userPrompt, Images: converted},
+		},
+		ThinkingLevel: level,
+	}
+}
+
+func (s *service) handleThinkingRejection(err error, done *bool, modelName string, level *string, req *aiprovider.Request) bool {
+	if *done || !aiprovider.IsThinkingLevelError(err) {
+		return false
+	}
+	thinking := "default"
+	if level != nil {
+		thinking = *level
+	}
+	s.logger.Warn("ai provider rejected thinking level, retrying without it",
+		"model", modelName, "thinking_level", thinking, "error", err)
+	*done = true
+	req.DisableThinking = true
+	req.ThinkingLevel = nil
+	return true
+}
+
+func (s *service) retryDelay() time.Duration {
+	delay := s.aiCfg.RetryBackoff
+	if delay > 0 {
+		delay += smallJitter(delay)
+	}
+	return delay
+}
+
+func (s *service) setOpenWinner(pending *PendingStream, modelName string, level *string, fallback bool, attempt int, duration time.Duration) {
+	pending.Model = modelName
+	pending.FallbackUsed = fallback
+	pending.AttemptNumber = attempt
+	pending.OpenDuration = duration
+	if level != nil {
+		pending.ThinkingLevel = *level
+	} else {
+		pending.ThinkingLevel = "default"
+	}
+}
+
+func (s *service) openLogAttrs(pending *PendingStream, attempts int) []any {
+	return []any{
+		"model", pending.Model,
+		"attempt", pending.AttemptNumber,
+		"attempts", attempts,
+		"fallback_used", pending.FallbackUsed,
+		"thinking_level", pending.ThinkingLevel,
+		"open_ms", pending.OpenDuration.Milliseconds(),
+	}
+}
+
+func levelPtr(level string) *string {
+	if level == "" || level == "default" {
+		return nil
+	}
+	return &level
+}
+
+// prependStream re-emits the already-consumed first chunk, then relays the
+// rest of the winner stream. It stops when ctx is cancelled so a disconnected
+// client cannot leak the relay goroutine.
+func prependStream(ctx context.Context, first aiprovider.StreamChunk, rest <-chan aiprovider.StreamChunk) <-chan aiprovider.StreamChunk {
+	out := make(chan aiprovider.StreamChunk, 1)
+	go func() {
+		defer close(out)
+		select {
+		case out <- first:
+		case <-ctx.Done():
+			return
+		}
+		for {
+			select {
+			case chunk, ok := <-rest:
+				if !ok {
+					return
+				}
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
+}
+
+func (s *service) PrepareGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
 	if _, err := uuid.Parse(projectID); err != nil {
 		return nil, apperror.Validation("Invalid project ID")
 	}
@@ -399,15 +909,14 @@ func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, i
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildGeneratePrompt(briefText), provImgs)
-	if err != nil {
-		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindGenerate})
-		return nil, err
-	}
-	return &PendingStream{Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
+	return &PendingStream{
+		Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description,
+		StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes,
+		systemPrompt: SystemPrompt, userPrompt: BuildGeneratePrompt(briefText), providerImages: provImgs,
+	}, nil
 }
 
-func (s *service) BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
+func (s *service) PrepareRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
 	if _, err := uuid.Parse(projectID); err != nil {
 		return nil, apperror.Validation("Invalid project ID")
 	}
@@ -452,12 +961,33 @@ func (s *service) BeginRevise(ctx context.Context, userID, projectID, instructio
 		}
 	}
 	briefText := FormatBrief(p.Brief.Description, p.Brief.WebsiteType, p.Brief.BusinessName, p.Brief.Style, p.Brief.ColorPalette, p.Brief.Language, p.Brief.Sections)
-	stream, modelName, fallbackUsed, attemptNumber, err := s.openStream(ctx, SystemPrompt, BuildRevisePrompt(briefText, base.HTML, instruction), provImgs)
+	return &PendingStream{
+		Project: p, Kind: model.KindRevise, Prompt: instruction,
+		StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes,
+		systemPrompt: SystemPrompt, userPrompt: BuildRevisePrompt(briefText, base.HTML, instruction), providerImages: provImgs,
+	}, nil
+}
+
+func (s *service) BeginGenerate(ctx context.Context, userID, projectID string, imgs []model.ImagePayload) (*PendingStream, error) {
+	pending, err := s.PrepareGenerate(ctx, userID, projectID, imgs)
 	if err != nil {
-		s.failDetached(ctx, &PendingStream{Project: p, Kind: model.KindRevise})
 		return nil, err
 	}
-	return &PendingStream{Project: p, Kind: model.KindRevise, Prompt: instruction, Stream: stream, StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes, Model: modelName, FallbackUsed: fallbackUsed, AttemptNumber: attemptNumber}, nil
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
+
+func (s *service) BeginRevise(ctx context.Context, userID, projectID, instruction string, baseVersion *int, imgs []model.ImagePayload) (*PendingStream, error) {
+	pending, err := s.PrepareRevise(ctx, userID, projectID, instruction, baseVersion, imgs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.OpenStream(ctx, pending, nil); err != nil {
+		return nil, err
+	}
+	return pending, nil
 }
 
 func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawBuffer string) (*model.Version, error) {
