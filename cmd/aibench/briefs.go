@@ -31,8 +31,13 @@ type BriefFacts struct {
 	Times      map[string]bool
 	HasHours   bool
 	HasContact bool
+	HasAddress bool
 	Palette    []string
 	HasPalette bool
+}
+
+func (f BriefFacts) HasAnyChannel() bool {
+	return f.HasContact || f.HasAddress || len(f.Emails) > 0 || len(f.Phones) > 0 || f.WhatsApp != ""
 }
 
 var (
@@ -154,6 +159,8 @@ func parseBriefFacts(text string) BriefFacts {
 		facts.HasPalette = len(facts.Palette) > 0
 	}
 	facts.HasContact = len(facts.Emails) > 0 || facts.WhatsApp != ""
+	facts.HasAddress = strings.Contains(lower, "alamat:") || strings.Contains(lower, "alamat ") ||
+		strings.Contains(lower, "jalan ") || strings.Contains(lower, "jl. ")
 	return facts
 }
 
