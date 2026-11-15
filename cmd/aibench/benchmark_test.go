@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -76,6 +78,129 @@ func TestRunBenchmarkCounts429And503(t *testing.T) {
 	}
 	if result.Error429 != 1 || result.Error503 != 1 {
 		t.Errorf("errors 429/503 = %d/%d, want 1/1", result.Error429, result.Error503)
+	}
+}
+
+func TestRunBenchmarkDoesNotRetryDailyQuota(t *testing.T) {
+	cases := []struct {
+		name string
+		info provider.QuotaInfo
+	}{
+		{
+			name: "quota-id-per-day",
+			info: provider.QuotaInfo{
+				Daily:      true,
+				QuotaID:    "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+				QuotaModel: "gemini-body-model",
+				RetryDelay: 24 * time.Hour,
+			},
+		},
+		{
+			name: "retry-delay-over-120s",
+			info: provider.QuotaInfo{
+				Daily:      true,
+				QuotaID:    "GenerateRequestsPerMinute",
+				RetryDelay: 3 * time.Minute,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &scriptedProvider{
+				errors: []error{fmt.Errorf("status 429: %w", provider.NewQuotaError(tc.info))},
+				html:   "<!DOCTYPE html><html><body>should not be used</body></html>",
+			}
+			brief := loadBriefByName(t, "full")
+			opt := defaultRunOptions()
+			opt.Model = "requested-model"
+			opt.ThinkingLevel = "LOW"
+			opt.OutFolder = t.TempDir()
+			opt.BriefName = brief.Name
+			opt.RunNumber = 1
+			opt.Backoffs = []time.Duration{time.Millisecond}
+
+			result := runBenchmark(p, brief, opt)
+			if result.Status != "error" {
+				t.Fatalf("status = %s, want error", result.Status)
+			}
+			if !result.DailyQuota {
+				t.Fatal("DailyQuota = false, want true")
+			}
+			if result.AttemptCount != 1 || p.callCount() != 1 {
+				t.Fatalf("attempts/calls = %d/%d, want 1/1 (no retry)", result.AttemptCount, p.callCount())
+			}
+			if result.Quota.QuotaID != tc.info.QuotaID || result.Quota.RetryDelay != tc.info.RetryDelay {
+				t.Errorf("quota = %+v, want %+v", result.Quota, tc.info)
+			}
+		})
+	}
+}
+
+func TestRunBenchmarkRetriesShortQuotaLimit(t *testing.T) {
+	p := &scriptedProvider{
+		errors: []error{fmt.Errorf("status 429: %w", provider.NewQuotaError(provider.QuotaInfo{
+			QuotaID:    "GenerateRequestsPerMinute",
+			RetryDelay: 30 * time.Second,
+		}))},
+		html: "<!DOCTYPE html><html><body>ok</body></html>",
+	}
+	brief := loadBriefByName(t, "full")
+	opt := defaultRunOptions()
+	opt.Model = "test-model"
+	opt.OutFolder = t.TempDir()
+	opt.BriefName = brief.Name
+	opt.RunNumber = 1
+	opt.Backoffs = []time.Duration{time.Millisecond}
+
+	result := runBenchmark(p, brief, opt)
+	if result.Status != "ok" {
+		t.Fatalf("status = %s (%s), want ok after retry", result.Status, result.Error)
+	}
+	if result.AttemptCount != 2 || p.callCount() != 2 {
+		t.Fatalf("attempts/calls = %d/%d, want 2/2", result.AttemptCount, p.callCount())
+	}
+	if result.DailyQuota {
+		t.Fatal("DailyQuota = true for per-minute limit")
+	}
+}
+
+func TestPersistFailedRunWritesNoHTML(t *testing.T) {
+	brief := loadBriefByName(t, "full")
+	opt := defaultRunOptions()
+	opt.Model = "test-model"
+	opt.ThinkingLevel = "LOW"
+	opt.OutFolder = t.TempDir()
+	opt.BriefName = brief.Name
+	opt.RunNumber = 1
+
+	result := BenchmarkResult{HTML: "<!DOCTYPE html><html><body>broken</body></html>", Status: "error", Error: "boom"}
+	if err := persistResult(&result, opt); err != nil {
+		t.Fatalf("persistResult: %v", err)
+	}
+	if result.HTMLPath != "" {
+		t.Errorf("HTMLPath = %q, want empty for failed run", result.HTMLPath)
+	}
+	base := outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, opt.RunNumber)
+	if _, err := os.Stat(filepath.Join(opt.OutFolder, base+".html")); !os.IsNotExist(err) {
+		t.Fatalf("failed run wrote HTML: %v", err)
+	}
+	if result.RawJSONPath == "" {
+		t.Fatal("failed run should still write raw JSON")
+	}
+	if _, err := os.Stat(result.RawJSONPath); err != nil {
+		t.Fatalf("raw JSON missing: %v", err)
+	}
+}
+
+func TestEstimateQuotaReset(t *testing.T) {
+	now := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	got := estimateQuotaReset(provider.QuotaInfo{RetryDelay: 2 * time.Hour}, now)
+	if got != "2026-11-15T12:00:00Z" {
+		t.Errorf("reset with delay = %q", got)
+	}
+	got = estimateQuotaReset(provider.QuotaInfo{}, now)
+	if !strings.Contains(got, "2026-11-16T00:00:00Z") || !strings.Contains(got, "tengah malam") {
+		t.Errorf("reset without delay = %q", got)
 	}
 }
 

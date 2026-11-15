@@ -227,6 +227,186 @@ func TestLintWarnings(t *testing.T) {
 	}
 }
 
+func TestLintPaletteContextAndFallbackWarn(t *testing.T) {
+	full := loadBriefByName(t, "full")
+
+	fallback := strings.Replace(cleanLintHTML, "</body>", `<div class="bg-[#F6EFE4]">x</div></body>`, 1)
+	finding := lintMap(t, full, fallback)[rulePalette]
+	if finding.Status != lintWarn {
+		t.Fatalf("fallback palette = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+	if !strings.Contains(finding.Evidence, "palet cadangan dicampur dengan warna brief") {
+		t.Errorf("fallback evidence %q is missing the mix warning", finding.Evidence)
+	}
+	if !strings.Contains(finding.Evidence, `class="bg-[#F6EFE4]"`) {
+		t.Errorf("fallback evidence %q is missing class context", finding.Evidence)
+	}
+
+	outside := strings.Replace(cleanLintHTML, "</body>", `<div class="bg-[#123456]">x</div></body>`, 1)
+	finding = lintMap(t, full, outside)[rulePalette]
+	if finding.Status != lintFail {
+		t.Fatalf("unknown palette = %s (%s), want FAIL", finding.Status, finding.Evidence)
+	}
+	if !strings.Contains(finding.Evidence, `class="bg-[#123456]"`) {
+		t.Errorf("palette evidence %q is missing class context", finding.Evidence)
+	}
+
+	property := strings.Replace(cleanLintHTML, "</head>", `<style>.x { background: #123456; }</style></head>`, 1)
+	finding = lintMap(t, full, property)[rulePalette]
+	if finding.Status != lintFail {
+		t.Fatalf("property palette = %s (%s), want FAIL", finding.Status, finding.Evidence)
+	}
+	if !strings.Contains(strings.ToLower(finding.Evidence), "background") {
+		t.Errorf("palette evidence %q is missing property context", finding.Evidence)
+	}
+}
+
+func TestLintAccentUsesNearestBackgroundAncestor(t *testing.T) {
+	full := loadBriefByName(t, "full")
+	firstSection := `<section class="bg-ink"><p class="text-accent">Fiktif</p></section>`
+
+	cases := []struct {
+		name string
+		html string
+		want lintStatus
+	}{
+		{
+			name: "accent inside non-section bg-ink",
+			html: `<div class="bg-ink"><p class="text-accent">Fiktif</p></div>`,
+			want: lintPass,
+		},
+		{
+			name: "nearest ancestor bg-ink even inside paper section",
+			html: `<section class="bg-paper"><div class="bg-ink"><p class="text-accent">Fiktif</p></div></section>`,
+			want: lintPass,
+		},
+		{
+			name: "nearest ancestor bg-paper inside ink section",
+			html: `<section class="bg-ink"><div class="bg-paper"><p class="text-accent">Fiktif</p></div></section>`,
+			want: lintWarn,
+		},
+		{
+			name: "plain paper section",
+			html: `<section class="bg-paper"><p class="text-accent">Fiktif</p></section>`,
+			want: lintWarn,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := strings.Replace(cleanLintHTML, firstSection, tc.html, 1)
+			finding := lintMap(t, full, doc)[ruleAccentText]
+			if finding.Status != tc.want {
+				t.Fatalf("%s status = %s (%s), want %s", ruleAccentText, finding.Status, finding.Evidence, tc.want)
+			}
+		})
+	}
+}
+
+func TestLintNoChannelText(t *testing.T) {
+	minimal := loadBriefByName(t, "minimal")
+	full := loadBriefByName(t, "full")
+
+	positive := strings.Replace(cleanLintHTML, "</body>", `<p>Silakan hubungi kami untuk info.</p></body>`, 1)
+	if finding := lintMap(t, minimal, positive)[ruleNoChannel]; finding.Status != lintFail {
+		t.Fatalf("minimal with contact CTA = %s (%s), want FAIL", finding.Status, finding.Evidence)
+	}
+	negative := strings.Replace(cleanLintHTML, "</body>", `<p>Tentang usaha fiktif ini.</p></body>`, 1)
+	if finding := lintMap(t, minimal, negative)[ruleNoChannel]; finding.Status != lintPass {
+		t.Fatalf("minimal without contact text = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+	if finding := lintMap(t, full, positive)[ruleNoChannel]; finding.Status != lintPass {
+		t.Fatalf("full brief with contact channel = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+}
+
+func TestLintInventedDays(t *testing.T) {
+	minimal := loadBriefByName(t, "minimal")
+	full := loadBriefByName(t, "full")
+
+	for _, snippet := range []string{
+		`<p>Buka setiap hari.</p>`,
+		`<p>Kami buka hari Senin.</p>`,
+		`<p>Libur nasional tutup.</p>`,
+	} {
+		doc := strings.Replace(cleanLintHTML, "</body>", snippet+"</body>", 1)
+		if finding := lintMap(t, minimal, doc)[ruleInventedDay]; finding.Status != lintFail {
+			t.Errorf("minimal with %q = %s (%s), want FAIL", snippet, finding.Status, finding.Evidence)
+		}
+	}
+	doc := strings.Replace(cleanLintHTML, "</body>", `<p>Kami buka hari Senin.</p></body>`, 1)
+	if finding := lintMap(t, full, doc)[ruleInventedDay]; finding.Status != lintPass {
+		t.Fatalf("full brief with Senin = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+	clean := strings.Replace(cleanLintHTML, "</body>", `<p>Tentang usaha fiktif ini.</p></body>`, 1)
+	if finding := lintMap(t, minimal, clean)[ruleInventedDay]; finding.Status != lintPass {
+		t.Fatalf("minimal without day text = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+}
+
+func TestLintRepetition(t *testing.T) {
+	full := loadBriefByName(t, "full")
+	repeated := strings.Repeat(`<p>kopi diseduh dengan sabar</p>`, 3)
+	doc := strings.Replace(cleanLintHTML, "</body>", repeated+"</body>", 1)
+	finding := lintMap(t, full, doc)[ruleRepetition]
+	if finding.Status != lintWarn {
+		t.Fatalf("repetition = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+	if !strings.Contains(strings.ToLower(finding.Evidence), "3x") ||
+		!strings.Contains(strings.ToLower(finding.Evidence), "kopi diseduh dengan sabar") {
+		t.Errorf("repetition evidence %q must mention count and phrase", finding.Evidence)
+	}
+	unique := strings.Replace(cleanLintHTML, "</body>", `<p>kopi diseduh dengan sabar</p><p>teh dituang perlahan</p><p>roti dipanggang hangat</p></body>`, 1)
+	if finding := lintMap(t, full, unique)[ruleRepetition]; finding.Status != lintPass {
+		t.Fatalf("unique phrases = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+}
+
+func TestLintEnglishUI(t *testing.T) {
+	full := loadBriefByName(t, "full")
+	doc := strings.Replace(cleanLintHTML, "</body>", `<p>Contact Us</p></body>`, 1)
+	if finding := lintMap(t, full, doc)[ruleEnglishUI]; finding.Status != lintWarn {
+		t.Fatalf("english UI = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+	if finding := lintMap(t, full, cleanLintHTML)[ruleEnglishUI]; finding.Status != lintPass {
+		t.Fatalf("clean Indonesian page = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+}
+
+func TestLintPlanVsPage(t *testing.T) {
+	full := loadBriefByName(t, "full")
+	plan := "<!--\nDESIGN PLAN: Halaman sederhana.\n(2) Tambahkan widget kalkulator interaktif.\nFACTS NAME: Fiktif EMAIL: none\n-->"
+	doc := commentRE.ReplaceAllString(cleanLintHTML, "")
+	doc = strings.Replace(doc, "</head>", plan+"</head>", 1)
+	if finding := lintMap(t, full, doc)[rulePlanPage]; finding.Status != lintWarn {
+		t.Fatalf("plan without interactive element = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+	withInput := strings.Replace(doc, "</body>", `<input type="text"></body>`, 1)
+	if finding := lintMap(t, full, withInput)[rulePlanPage]; finding.Status != lintPass {
+		t.Fatalf("plan with input = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+	menuOnly := strings.Replace(doc, "</body>", `<button aria-label="Menu">Menu</button></body>`, 1)
+	if finding := lintMap(t, full, menuOnly)[rulePlanPage]; finding.Status != lintWarn {
+		t.Fatalf("plan with menu button only = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+}
+
+func TestLintDeadLinkTarget(t *testing.T) {
+	full := loadBriefByName(t, "full")
+	filler := `<a href="#kontak">Kontak</a><section id="kontak"><p>Teks pengisi tanpa fakta.</p></section>`
+	doc := strings.Replace(cleanLintHTML, "</body>", filler+"</body>", 1)
+	if finding := lintMap(t, full, doc)[ruleDeadLink]; finding.Status != lintWarn {
+		t.Fatalf("dead link to filler = %s (%s), want WARN", finding.Status, finding.Evidence)
+	}
+	withFact := `<a href="#kontak">Kontak</a><section id="kontak"><p>WhatsApp: 0812-0000-1111</p></section>`
+	doc = strings.Replace(cleanLintHTML, "</body>", withFact+"</body>", 1)
+	if finding := lintMap(t, full, doc)[ruleDeadLink]; finding.Status != lintPass {
+		t.Fatalf("link to fact section = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+	if finding := lintMap(t, full, cleanLintHTML)[ruleDeadLink]; finding.Status != lintPass {
+		t.Fatalf("no anchors = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+}
+
 func TestLintDirectoryWritesReportAndFails(t *testing.T) {
 	briefs, err := loadBriefs("")
 	if err != nil {
