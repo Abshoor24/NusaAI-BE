@@ -376,8 +376,9 @@ Variabel environment yang relevan untuk Tahap A (lihat `.env.example` dan `inter
 | `AI_MAX_GENERATE_BODY_BYTES` | Batas body JSON khusus generate/revise (default 32 MB; base64 ±33% lebih besar, pakai multipart untuk gambar besar) |
 | `AI_MAX_OUTPUT_TOKENS`, `AI_THINKING_BUDGET` | Knob opsional Gemini; kosong = default model |
 | `AI_DEBUG_LOG_OUTPUT_EDGES` | Dev only: log 200 char awal/akhir output gagal |
-| `AI_STREAM_MAX_DURATION` (default 180s), `AI_STREAM_IDLE_TIMEOUT` (default 60s) | Batas total & idle satu stream generate/revise |
-| `AI_RETRY_ON_UNAVAILABLE` (0–2, default 0), `AI_RETRY_BACKOFF` (default 2s) | Retry buka stream hanya untuk 429/503 pra-stream |
+| `AI_STREAM_MAX_DURATION` (default 180s), `AI_STREAM_IDLE_TIMEOUT` (default 30s) | Batas total & idle satu stream generate/revise |
+| `AI_RETRY_ON_UNAVAILABLE` (0–2, default 1), `AI_RETRY_BACKOFF` (default 2s) | Retry buka stream hanya untuk 429/503 pra-stream |
+| `AI_OPEN_BUDGET` (default 60s), `AI_HEDGE_AFTER` (default 0) | Budget total open phase; hedging paralel model cadangan pertama (opt-in, dapat menggandakan biaya) |
 | `UPLOAD_DIR`, `UPLOAD_MAX_BYTES` | Dir & ukuran maksimum per gambar (default 10 MB) |
 | `PROJECT_MAX_IMAGES` | Jumlah gambar maksimum per request (default 4) |
 | `PROJECT_MAX_HTML_BYTES` | Ukuran maksimum HTML hasil AI (default 512 KiB / 524288: longgar untuk satu file mandiri berisi Tailwind via CDN + JS inline, sekaligus membatasi memori/DB) |
