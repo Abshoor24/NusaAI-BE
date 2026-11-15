@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Studio desain minimalis dengan pendekatan tipografi yang bersih dan berfokus pada kejelasan informasi.
+(2) Widget: Selector akordeon interaktif untuk mengeksplorasi layanan tanpa data buatan.
+(3) Hero: Komposisi asimetris 12-kolom dengan tipografi tegas di kiri dan visual panel berlapis berpola kisi di kanan.
+(4) Palette: Malam (ink #0E1320, paper #F4F5F7, tint #E3E7EE, accent #C6F24E, deep #46630A). Fonts: Outfit & Inter.
+(5) Section order: Hero, Layanan, Prinsip, Kontak, Footer.
+FACTS:
+Menu items: NONE
+WhatsApp: NONE
+Email: NONE
+Address: NONE
+Opening hours: NONE
+PRIMARY: NONE
+ACCENT: NONE
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minimal — Studio Desain</title>
+<meta name="description" content="Minimal adalah studio desain yang berfokus pada kejelasan tipografi dan struktur visual.">
+<meta name="theme-color" content="#0E1320">
+<script>document.documentElement.classList.add('js')</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0E1320',
+          paper: '#F4F5F7',
+          tint: '#E3E7EE',
+          accent: '#C6F24E',
+          deep: '#46630A'
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          sans: ['Inter', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  ::selection { background-color: #C6F24E; color: #0E1320; }
+  .js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s); }
+  .js .reveal.in { opacity: 1; transform: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .rise { animation: rise .8s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d,0s); }
+  .float { animation: float 7s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-2xl font-bold tracking-tight text-ink">Minimal</a>
+      <nav class="hidden md:flex items-center gap-8">
+        <a href="#layanan" class="text-sm font-medium text-ink/80 hover:text-ink transition-colors">Layanan</a>
+        <a href="#prinsip" class="text-sm font-medium text-ink/80 hover:text-ink transition-colors">Prinsip</a>
+        <a href="#layanan" class="rounded-full px-6 py-2.5 bg-ink text-paper text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95">Lihat Layanan</a>
+      </nav>
+      <button onclick="setMenu(true)" class="md:hidden p-2 text-ink" aria-label="Buka menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="w-6 h-6"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Panel -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-paper/98 flex flex-col justify-between p-6">
+    <div class="flex items-center justify-between">
+      <a href="#" onclick="setMenu(false)" class="font-display text-2xl font-bold text-ink">Minimal</a>
+      <button onclick="setMenu(false)" class="p-2 text-ink" aria-label="Tutup menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="w-6 h-6"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="flex flex-col gap-6 text-center">
+      <a href="#layanan" onclick="setMenu(false)" class="font-display text-2xl font-medium text-ink">Layanan</a>
+      <a href="#prinsip" onclick="setMenu(false)" class="font-display text-2xl font-medium text-ink">Prinsip</a>
+    </div>
+    <div>
+      <a href="#layanan" onclick="setMenu(false)" class="block w-full py-4 bg-ink text-paper text-center font-semibold rounded-full">Lihat Layanan</a>
+    </div>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="min-h-svh pt-32 pb-20 md:py-0 flex items-center bg-paper relative overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(227,231,238,.6),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+        <div class="lg:col-span-7">
+          <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.1s">Studio Desain</p>
+          <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink leading-[1.15] mt-4 tracking-tight" style="--d:.2s">
+            Desain visual yang <span class="text-deep">fungsional</span> dan jernih.
+          </h1>
+          <p class="rise text-lg text-ink/80 max-w-prose mt-6 leading-relaxed" style="--d:.3s">
+            Minimal menyusun struktur informasi dan antarmuka visual dengan pendekatan efisien tanpa elemen berlebih.
+          </p>
+          <div class="rise mt-8 flex flex-wrap gap-4" style="--d:.4s">
+            <a href="#layanan" class="rounded-full px-8 py-3 bg-ink text-paper font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2">Lihat Layanan</a>
+            <a href="#prinsip" class="rounded-full px-8 py-3 bg-tint text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2">Prinsip Desain</a>
+          </div>
+        </div>
+        
+        <div class="lg:col-span-5 relative">
+          <div class="absolute -top-4 -right-4 w-full h-full bg-tint/60 rounded-3xl pointer-events-none" aria-hidden="true"></div>
+          <div class="relative overflow-hidden rounded-3xl bg-ink p-8 md:p-10 text-paper min-h-[22rem] flex flex-col justify-between" style="background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:32px 32px">
+            <div class="flex justify-between items-start">
+              <span class="text-xs uppercase tracking-widest text-accent font-semibold">Identitas Studio</span>
+              <span class="w-3 h-3 rounded-full bg-accent float"></span>
+            </div>
+            <div class="my-auto py-8">
+              <p class="font-display text-4xl font-bold tracking-tight text-paper">Minimal</p>
+              <p class="mt-2 text-sm text-paper/70">Fokus pada substansi dan keterbacaan.</p>
+            </div>
+            <div class="pt-4 border-t border-white/10 flex justify-between items-center text-xs text-paper/60">
+              <span>Pendekatan Sistemis</span>
+              <span>Struktur &amp; Bentuk</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layanan Section -->
+    <section id="layanan" class="scroll-mt-24 py-20 md:py-32 bg-tint">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-2xl">
+          <div class="reveal" style="--d:.1s">
+            <p class="text-sm uppercase tracking-widest text-deep font-semibold">Ruang Lingkup</p>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Layanan Desain</h2>
+          </div>
+          <div class="reveal" style="--d:.2s">
+            <p class="text-lg text-ink/80 mt-4">Solusi visual yang dirancang untuk mendukung struktur informasi.</p>
+          </div>
+        </div>
+
+        <div class="mt-12 grid gap-6">
+          <!-- Item 01 -->
+          <div class="reveal" style="--d:.1s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col md:flex-row md:items-baseline justify-between gap-4">
+                <div class="flex items-baseline gap-4">
+                  <span class="font-display text-2xl font-bold text-deep">01</span>
+                  <h3 class="font-display text-2xl font-semibold text-ink">Antarmuka Digital</h3>
+                </div>
+              </div>
+              <p class="mt-4 text-ink/80 max-w-prose">Perancangan tata letak antarmuka web dan aplikasi yang memprioritaskan kemudahan navigasi.</p>
+            </div>
+          </div>
+
+          <!-- Item 02 -->
+          <div class="reveal" style="--d:.2s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col md:flex-row md:items-baseline justify-between gap-4">
+                <div class="flex items-baseline gap-4">
+                  <span class="font-display text-2xl font-bold text-deep">02</span>
+                  <h3 class="font-display text-2xl font-semibold text-ink">Identitas Visual</h3>
+                </div>
+              </div>
+              <p class="mt-4 text-ink/80 max-w-prose">Pengembangan sistem tipografi, palet warna, dan pedoman visual yang konsisten.</p>
+            </div>
+          </div>
+
+          <!-- Item 03 -->
+          <div class="reveal" style="--d:.3s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col md:flex-row md:items-baseline justify-between gap-4">
+                <div class="flex items-baseline gap-4">
+                  <span class="font-display text-2xl font-bold text-deep">03</span>
+                  <h3 class="font-display text-2xl font-semibold text-ink">Desain Cetak</h3>
+                </div>
+              </div>
+              <p class="mt-4 text-ink/80 max-w-prose">Penyusunan publikasi, editorial, dan materi cetak berorientasi pada ketepatan tipografi.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Prinsip Section (Dark Full-Bleed) -->
+    <section id="prinsip" class="scroll-mt-24 py-20 md:py-32 bg-ink text-paper relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-6xl mx-auto px-6 relative z-10">
+        <div class="reveal" style="--d:.1s">
+          <p class="text-sm uppercase tracking-widest text-accent font-semibold">Metode</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-paper mt-3">Prinsip Kerja</h2>
+        </div>
+
+        <div class="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="reveal" style="--d:.2s">
+            <div class="p-8 rounded-2xl bg-white/5 border border-white/10 h-full">
+              <span class="text-accent text-sm font-semibold uppercase tracking-wider">01. Kejelasan</span>
+              <h3 class="font-display text-xl font-semibold text-paper mt-3">Informasi Utama</h3>
+              <p class="mt-3 text-paper/80 leading-relaxed">Menghilangkan elemen dekoratif yang mengurangi fokus pengguna dari pesan utama.</p>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.3s">
+            <div class="p-8 rounded-2xl bg-white/5 border border-white/10 h-full">
+              <span class="text-accent text-sm font-semibold uppercase tracking-wider">02. Proporsi</span>
+              <h3 class="font-display text-xl font-semibold text-paper mt-3">Hirarki Visual</h3>
+              <p class="mt-3 text-paper/80 leading-relaxed">Menggunakan skala tipografi dan ruang kosong untuk mengarahkan alur baca secara alami.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Closing Section -->
+    <section class="py-20 md:py-32 bg-paper">
+      <div class="max-w-3xl mx-auto px-6 text-center">
+        <div class="reveal" style="--d:.1s">
+          <h2 class="font-display text-3xl md:text-4xl font-bold text-ink">Studio Desain Minimal</h2>
+          <p class="text-lg text-ink/80 mt-4 leading-relaxed">
+            Fokus pada esensi, struktur visual, dan kejelasan komunikasi.
+          </p>
+          <div class="mt-8">
+            <a href="#layanan" class="inline-flex items-center gap-2 rounded-full px-8 py-3 bg-ink text-paper font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95">
+              <span>Eksplorasi Layanan</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="w-4 h-4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-ink text-paper py-12 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-6">
+      <p class="font-display font-bold text-xl tracking-tight">Minimal</p>
+      <p class="text-sm text-paper/60">
+        &copy; <span id="year"></span> Minimal. Hak cipta dilindungi.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Set Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    function setMenu(open) {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    // Scroll Reveal Observer
+    document.addEventListener('DOMContentLoaded', () => {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+
+      document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    });
+
+    // Close menu on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setMenu(false);
+    });
+  </script>
+</body>
+</html>

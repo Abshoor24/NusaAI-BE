@@ -1,20 +1,16 @@
 package main
 
 import (
-	"context"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Abshoor24/backend-go/internal/config"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
-	"github.com/Abshoor24/backend-go/internal/modules/project/service"
 )
 
 type BenchmarkConfig struct {
@@ -24,157 +20,97 @@ type BenchmarkConfig struct {
 	Brief           string
 	Runs            int
 	OutFolder       string
-}
-
-// RawRunData menyimpan metadata mentah per run untuk dilaporkan as-is.
-type RawRunData struct {
-	RunNumber     int                     `json:"run_number"`
-	FirstChunkMs  int64                   `json:"first_chunk_ms"`
-	FirstTextMs   int64                   `json:"first_text_ms"`
-	TotalMs       int64                   `json:"total_ms"`
-	UsageMetadata *provider.UsageMetadata `json:"usage_metadata,omitempty"`
-	FinishReason  string                  `json:"finish_reason"`
-	HTMLFile      string                  `json:"html_file"`
-	AttemptCount  int                     `json:"attempt_count"`
-	Error         string                  `json:"error,omitempty"`
-}
-
-type BenchmarkResult struct {
-	// Definisi (lihat juga komentar di runBenchmark):
-	//   FirstChunkMs : waktu dari request dikirim sampai chunk apa pun pertama.
-	//   FirstTextMs  : waktu dari request dikirim sampai token teks non-thought pertama.
-	//   Total        : waktu dari request dikirim sampai chunk Done (ms).
-	//   TokenPerSec  : candidatesTokenCount / ((Total - FirstTextMs)/1000).
-	//                  Penyebut dihitung sejak teks pertama tampil, bukan sejak
-	//                  request dikirim, karena fase thinking bukan bagian dari
-	//                  produksi teks.
-	FirstChunkMs       int64
-	FirstTextMs        int64
-	Total              int64
-	OutputTokenCount   int
-	ThinkingTokenCount int
-	TokenPerSec        float64
-	FinishReason       string
-	ValidHTML          bool
-	HTML               string
-	PromptTokens       int
-	CandidatesTokens   int
-	TotalTokens        int
-	AttemptCount       int
-	Error              string
-	HTMLPath           string
-	RawJSONPath        string
+	Lint            bool
+	LintDir         string
+	Parallel        int
 }
 
 func main() {
-	args := os.Args[1:]
-	var cfg BenchmarkConfig
+	os.Exit(runCLI(os.Args[1:]))
+}
 
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--model":
-			if i+1 < len(args) {
-				cfg.Model = args[i+1]
-				i++
-			}
-		case "--thinking":
-			if i+1 < len(args) {
-				cfg.ThinkingLevel = args[i+1]
-				i++
-			}
-		case "--max-output":
-			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &cfg.MaxOutputTokens)
-				i++
-			}
-		case "--brief":
-			if i+1 < len(args) {
-				cfg.Brief = args[i+1]
-				i++
-			}
-		case "--runs":
-			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &cfg.Runs)
-				i++
-			}
-		case "--out":
-			if i+1 < len(args) {
-				cfg.OutFolder = args[i+1]
-				i++
-			}
-		}
+func runCLI(args []string) int {
+	cfg, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		printUsage(os.Stderr)
+		return 2
+	}
+	if cfg == nil {
+		printUsage(os.Stdout)
+		return 0
 	}
 
-	if cfg.Model == "" {
-		cfg.Model = "gemini-3.8-flash"
+	briefs, err := loadBriefs("")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
-	if cfg.Runs <= 0 {
-		cfg.Runs = 3
-	}
-	if cfg.OutFolder == "" {
-		cfg.OutFolder = "./aibench-results"
+	if cfg.LintDir != "" {
+		return runLintDirectory(cfg.LintDir, cfg.OutFolder, briefs)
 	}
 
-	// Load config to get AI settings (including API key)
+	selected, err := selectBriefs(briefs, cfg.Brief)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "Brief tersedia: %s\n", strings.Join(availableBriefNames(briefs), ", "))
+		return 2
+	}
+	if cfg.Parallel < 0 || cfg.Parallel > 5 {
+		fmt.Fprintln(os.Stderr, "--parallel harus antara 1 dan 5")
+		return 2
+	}
+	if cfg.Parallel > 0 && len(selected) != 1 {
+		fmt.Fprintln(os.Stderr, "--parallel membutuhkan tepat satu --brief")
+		return 2
+	}
+
 	cfgFull, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		return 1
 	}
-
 	aiCfg := cfgFull.AI
 	aiCfg.Model = cfg.Model
 	aiCfg.Timeout = 300 * time.Second
-
-	// Handle thinking level for Gemini 3.x
 	if cfg.ThinkingLevel != "" {
-		switch strings.ToUpper(cfg.ThinkingLevel) {
-		case "MINIMAL", "LOW", "MEDIUM", "HIGH":
-			aiCfg.ThinkingLevel = &cfg.ThinkingLevel
-			aiCfg.ThinkingBudget = nil
-		default:
-			// Unknown level: try to use it, let provider handle it
-			aiCfg.ThinkingLevel = &cfg.ThinkingLevel
-			aiCfg.ThinkingBudget = nil
-		}
+		level := strings.ToUpper(cfg.ThinkingLevel)
+		aiCfg.ThinkingLevel = &level
+		aiCfg.ThinkingBudget = nil
 	} else {
 		aiCfg.ThinkingLevel = nil
 		aiCfg.ThinkingBudget = nil
 	}
-
 	if cfg.MaxOutputTokens > 0 {
 		aiCfg.MaxOutputTokens = int64(cfg.MaxOutputTokens)
 	} else {
 		aiCfg.MaxOutputTokens = 32768
 	}
 
-	os.MkdirAll(cfg.OutFolder, 0755)
-
-	// Create provider - New returns (Provider, error)
 	p, err := provider.New(aiCfg, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if err != nil {
-		log.Fatalf("Failed to create provider: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to create provider: %v\n", err)
+		return 1
 	}
 	if p == nil {
-		log.Fatal("AI provider is not configured")
+		fmt.Fprintln(os.Stderr, "AI provider is not configured")
+		return 1
 	}
 
-	briefs := []string{
-		loadBrief("brief_full"),
-		loadBrief("brief_minimal"),
-		loadBrief("brief_no_color"),
-	}
-
-	if cfg.Brief != "" {
-		briefs = []string{cfg.Brief}
-	}
-
-	fmt.Printf("=== AI Website Generator Benchmark ===\n")
+	fmt.Println("=== AI Website Generator Benchmark ===")
 	fmt.Printf("Model: %s\n", cfg.Model)
 	fmt.Printf("Thinking: %s\n", cfg.ThinkingLevel)
 	fmt.Printf("MaxOutputTokens: %d\n", cfg.MaxOutputTokens)
 	fmt.Printf("Runs: %d\n", cfg.Runs)
 	fmt.Printf("OutFolder: %s\n", cfg.OutFolder)
+	fmt.Printf("Lint: %v\n", cfg.Lint)
 	fmt.Println()
+
+	totalFailures := 0
+	var lintResults []lintFileResult
+	if cfg.Parallel > 0 {
+		return runParallelMode(p, selected[0], *cfg, &lintResults)
+	}
 
 	type BriefSummary struct {
 		Name          string
@@ -185,89 +121,61 @@ func main() {
 		ValidCount    int
 		ValidPercent  float64
 	}
-
 	var summaries []BriefSummary
 
-	for briefIdx, brief := range briefs {
-		briefName := getBriefName(briefIdx)
-		fmt.Printf("--- Brief: %s ---\n", briefName)
-
+	for _, brief := range selected {
+		fmt.Printf("--- Brief: %s ---\n", brief.Name)
 		var firstChunkSum, firstTextSum, totalSum, tpsSum float64
 		var validCount int
 
-		for run := 0; run < cfg.Runs; run++ {
-			result := runBenchmark(p, cfg.Model, brief, cfg.ThinkingLevel, cfg.MaxOutputTokens, cfg.OutFolder, briefName, run+1)
-
-			// Tulis file HTML hanya jika belum ada (jangan pernah menimpa)
-			if _, err := os.Stat(result.HTMLPath); err == nil {
-				log.Printf("PERINGATAN: file %s sudah ada, tidak ditimpa", result.HTMLPath)
-			} else {
-				if err := os.WriteFile(result.HTMLPath, []byte(result.HTML), 0644); err != nil {
-					log.Printf("Gagal tulis HTML %s: %v", result.HTMLPath, err)
+		for run := 1; run <= cfg.Runs; run++ {
+			fmt.Printf("Brief: %s chars=%d hash=%s\n", brief.Name, len(brief.Text), briefDigest(brief.Text))
+			opt := defaultRunOptions()
+			opt.Model = cfg.Model
+			opt.ThinkingLevel = cfg.ThinkingLevel
+			opt.MaxOutputTokens = cfg.MaxOutputTokens
+			opt.OutFolder = cfg.OutFolder
+			opt.BriefName = brief.Name
+			opt.RunNumber = run
+			result := runBenchmark(p, brief, opt)
+			if err := persistResult(&result, opt); err != nil {
+				fmt.Fprintf(os.Stderr, "Gagal menyimpan hasil: %v\n", err)
+				return 1
+			}
+			printRunLine(run, result)
+			if cfg.Lint {
+				lintResult := lintFileResult{
+					File:     filepath.Base(result.HTMLPath),
+					Brief:    brief.Name,
+					Findings: lintHTML(result.HTML, brief),
 				}
+				printLintResult(os.Stdout, lintResult)
+				lintResults = append(lintResults, lintResult)
 			}
-
-			raw := RawRunData{
-				RunNumber:    run + 1,
-				FirstChunkMs: result.FirstChunkMs,
-				FirstTextMs:  result.FirstTextMs,
-				TotalMs:      result.Total,
-				UsageMetadata: &provider.UsageMetadata{
-					PromptTokenCount:     result.PromptTokens,
-					CandidatesTokenCount: result.CandidatesTokens,
-					ThoughtsTokenCount:   result.ThinkingTokenCount,
-					TotalTokenCount:      result.TotalTokens,
-				},
-				FinishReason: result.FinishReason,
-				HTMLFile:     filepath.Base(result.HTMLPath),
-				AttemptCount: result.AttemptCount,
-				Error:        result.Error,
-			}
-			rawJSONPath := filepath.Join(cfg.OutFolder, fmt.Sprintf("%s_%s_run%d_raw.json", briefName, thinkingLabel(cfg.ThinkingLevel), run+1))
-			rawBytes, _ := json.MarshalIndent(raw, "", "  ")
-			if err := os.WriteFile(rawJSONPath, rawBytes, 0644); err != nil {
-				log.Printf("Gagal tulis JSON %s: %v", rawJSONPath, err)
-			}
-			result.RawJSONPath = rawJSONPath
-
-			csvPath := filepath.Join(cfg.OutFolder, fmt.Sprintf("%s_%s_runs.csv", briefName, thinkingLabel(cfg.ThinkingLevel)))
-			appendRunCSV(csvPath, raw)
 
 			firstChunkSum += float64(result.FirstChunkMs) / 1000.0
 			firstTextSum += float64(result.FirstTextMs) / 1000.0
 			totalSum += float64(result.Total) / 1000.0
 			tpsSum += result.TokenPerSec
-			if result.ValidHTML {
+			if result.Status == "ok" {
 				validCount++
-			}
-
-			fmt.Printf("Run %d: firstChunk=%.3fs, firstText=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d\n",
-				run+1, float64(result.FirstChunkMs)/1000.0, float64(result.FirstTextMs)/1000.0, float64(result.Total)/1000.0, result.PromptTokens,
-				result.CandidatesTokens, result.ThinkingTokenCount, result.TokenPerSec, result.FinishReason, result.ValidHTML, result.AttemptCount)
-			if result.Error != "" {
-				fmt.Printf("  ERROR: %s\n", result.Error)
 			}
 		}
 
 		n := float64(cfg.Runs)
-		firstChunkAvg := firstChunkSum / n
-		firstTextAvg := firstTextSum / n
-		totalAvg := totalSum / n
-		tpsAvg := tpsSum / n
-		validPct := float64(validCount) / n * 100
-
-		summaries = append(summaries, BriefSummary{
-			Name:          briefName,
-			FirstChunkAvg: firstChunkAvg,
-			FirstTextAvg:  firstTextAvg,
-			TotalAvg:      totalAvg,
-			TPSAvg:        tpsAvg,
+		summary := BriefSummary{
+			Name:          brief.Name,
+			FirstChunkAvg: firstChunkSum / n,
+			FirstTextAvg:  firstTextSum / n,
+			TotalAvg:      totalSum / n,
+			TPSAvg:        tpsSum / n,
 			ValidCount:    validCount,
-			ValidPercent:  validPct,
-		})
-
+			ValidPercent:  float64(validCount) / n * 100,
+		}
+		summaries = append(summaries, summary)
 		fmt.Printf("AVERAGE: firstChunk=%.3fs, firstText=%.3fs, Total=%.3fs, Tok/s=%.1f, Valid%%=%.0f%% (%d/%d)\n\n",
-			firstChunkAvg, firstTextAvg, totalAvg, tpsAvg, validPct, validCount, cfg.Runs)
+			summary.FirstChunkAvg, summary.FirstTextAvg, summary.TotalAvg, summary.TPSAvg,
+			summary.ValidPercent, validCount, cfg.Runs)
 	}
 
 	fmt.Println("=== SUMMARY TABLE ===")
@@ -276,237 +184,207 @@ func main() {
 		fmt.Printf("%-15s %-13.3f %-13.3f %-10.3f %-10.1f %-8.0f\n",
 			s.Name, s.FirstChunkAvg, s.FirstTextAvg, s.TotalAvg, s.TPSAvg, s.ValidPercent)
 	}
+
+	if cfg.Lint {
+		totalFailures = finishLint(cfg.OutFolder, lintResults)
+	}
+	if totalFailures > 0 {
+		return 1
+	}
+	return 0
 }
 
-// thinkingLabel mengembalikan label thinking untuk nama file.
-func thinkingLabel(level string) string {
-	if level == "" {
-		return "default"
-	}
-	return strings.ToLower(level)
-}
+func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lintResults *[]lintFileResult) int {
+	fmt.Printf("WARNING: uji paralel ini memakai kuota API (%d request sekaligus).\n\n", cfg.Parallel)
+	opt := defaultRunOptions()
+	opt.Model = cfg.Model
+	opt.ThinkingLevel = cfg.ThinkingLevel
+	opt.MaxOutputTokens = cfg.MaxOutputTokens
+	opt.OutFolder = cfg.OutFolder
+	opt.BriefName = brief.Name
 
-// appendRunCSV menambahkan baris data run ke file CSV (membuat header jika belum ada).
-func appendRunCSV(path string, raw RawRunData) {
-	fileExists := false
-	if _, err := os.Stat(path); err == nil {
-		fileExists = true
-	}
-
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Gagal buka CSV %s: %v", path, err)
-		return
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	if !fileExists {
-		w.Write([]string{"run_number", "first_chunk_ms", "first_text_ms", "total_ms",
-			"prompt_tokens", "candidates_tokens", "thoughts_tokens", "total_tokens",
-			"finish_reason", "html_file", "attempt_count", "error"})
-	}
-	w.Write([]string{
-		fmt.Sprintf("%d", raw.RunNumber),
-		fmt.Sprintf("%d", raw.FirstChunkMs),
-		fmt.Sprintf("%d", raw.FirstTextMs),
-		fmt.Sprintf("%d", raw.TotalMs),
-		fmt.Sprintf("%d", raw.UsageMetadata.PromptTokenCount),
-		fmt.Sprintf("%d", raw.UsageMetadata.CandidatesTokenCount),
-		fmt.Sprintf("%d", raw.UsageMetadata.ThoughtsTokenCount),
-		fmt.Sprintf("%d", raw.UsageMetadata.TotalTokenCount),
-		raw.FinishReason,
-		raw.HTMLFile,
-		fmt.Sprintf("%d", raw.AttemptCount),
-		raw.Error,
-	})
-	w.Flush()
-}
-
-func loadBrief(name string) string {
-	path := filepath.Join("cmd", "aibench", "briefs", name+".txt")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "Description: test brief\n"
-	}
-	return string(data)
-}
-
-func getBriefName(idx int) string {
-	names := []string{"full", "minimal", "no_color"}
-	if idx >= 0 && idx < len(names) {
-		return names[idx]
-	}
-	return "unknown"
-}
-
-func runBenchmark(p provider.Provider, model string, brief string, thinkingLevel string, maxOutputTokens int, outFolder, briefName string, runNumber int) BenchmarkResult {
-	ctx := context.Background()
-	start := time.Now()
-
-	briefText := brief
-	userPrompt := service.BuildGeneratePrompt(briefText)
-
-	systemPrompt := service.SystemPrompt
-	var messages []provider.ChatMessage
-	messages = append(messages, provider.ChatMessage{
-		Role:    "system",
-		Content: systemPrompt,
-	})
-	messages = append(messages, provider.ChatMessage{
-		Role:    "user",
-		Content: userPrompt,
-		Images:  nil,
-	})
-
-	req := provider.Request{
-		Model:    model,
-		Messages: messages,
-	}
-
-	// Retry logic: 3 attempts with backoff 5s, 10s, 20s for 503/429.
-	// Tidak ada fallback model: jika semua percobaan gagal, run dilaporkan gagal.
-	var streamCh <-chan provider.StreamChunk
-	var streamErr error
-	attemptCount := 0
-	backoffs := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
-
-	for attempt := 0; attempt < 3; attempt++ {
-		attemptCount = attempt + 1
-		streamCh, streamErr = p.CompleteStream(ctx, req)
-		if streamErr == nil {
-			break
+	fmt.Printf("Brief: %s chars=%d hash=%s\n", brief.Name, len(brief.Text), briefDigest(brief.Text))
+	results := runParallel(p, brief, opt, cfg.Parallel)
+	failures := 0
+	for i, result := range results {
+		runOpt := opt
+		runOpt.RunNumber = i + 1
+		if err := persistResult(&result, runOpt); err != nil {
+			fmt.Fprintf(os.Stderr, "Gagal menyimpan hasil request %d: %v\n", i+1, err)
+			return 1
 		}
-		if !isOverloadError(streamErr) {
-			// Bukan overload (misal 400 bad request), jangan retry.
-			break
+		fmt.Printf("Request %d: firstChunk=%.3fs total=%.3fs status=%s attempts=%d errors429=%d errors503=%d\n",
+			i+1, float64(result.FirstChunkMs)/1000.0, float64(result.Total)/1000.0,
+			result.Status, result.AttemptCount, result.Error429, result.Error503)
+		if result.Error != "" {
+			fmt.Printf("  ERROR: %s\n", result.Error)
 		}
-		if attempt < 2 {
-			backoff := backoffs[attempt]
-			log.Printf("Percobaan %d gagal (overload), mencoba lagi dalam %v: %v", attemptCount, backoff, streamErr)
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return BenchmarkResult{Total: time.Since(start).Milliseconds(), Error: ctx.Err().Error(), AttemptCount: attemptCount}
+		if cfg.Lint {
+			lintResult := lintFileResult{
+				File:     filepath.Base(result.HTMLPath),
+				Brief:    brief.Name,
+				Findings: lintHTML(result.HTML, brief),
 			}
+			printLintResult(os.Stdout, lintResult)
+			*lintResults = append(*lintResults, lintResult)
 		}
 	}
-
-	if streamErr != nil {
-		log.Printf("Provider error setelah %d percobaan: %v", attemptCount, streamErr)
-		return BenchmarkResult{Total: time.Since(start).Milliseconds(), Error: streamErr.Error(), AttemptCount: attemptCount}
+	if cfg.Lint {
+		failures = finishLint(cfg.OutFolder, *lintResults)
 	}
-
-	var buf strings.Builder
-	var firstChunkTime time.Time
-	var firstTextTime time.Time
-	var firstChunkReceived bool
-	var firstTextReceived bool
-	var finishReason string
-	var usage *provider.UsageMetadata
-
-	idleTimer := time.NewTimer(120 * time.Second)
-	defer idleTimer.Stop()
-
-	for chunk := range streamCh {
-		// Chunk apa pun pertama (termasuk thinking / kosong / usage-only)
-		if !firstChunkReceived {
-			firstChunkReceived = true
-			firstChunkTime = time.Now()
-		}
-		// Token teks pertama: provider hanya meneruskan teks non-thought
-		// (lihat gemini_provider.go: bagian Thought dan Text kosong dilewati),
-		// jadi chunk pertama yang membawa Token adalah teks.
-		if chunk.Token != "" && !firstTextReceived {
-			firstTextReceived = true
-			firstTextTime = time.Now()
-		}
-		if chunk.Token != "" {
-			buf.WriteString(chunk.Token)
-		}
-		if chunk.FinishReason != "" {
-			finishReason = chunk.FinishReason
-		}
-		if chunk.Usage != nil {
-			usage = chunk.Usage
-		}
-		if chunk.Done {
-			break
-		}
-		idleTimer.Reset(120 * time.Second)
+	if failures > 0 {
+		return 1
 	}
+	return 0
+}
 
-	totalMs := time.Since(start).Milliseconds()
-
-	var firstChunkMs int64
-	var firstTextMs int64
-	if firstChunkReceived {
-		firstChunkMs = firstChunkTime.Sub(start).Milliseconds()
-	} else {
-		firstChunkMs = totalMs
-	}
-	if firstTextReceived {
-		firstTextMs = firstTextTime.Sub(start).Milliseconds()
-	} else {
-		firstTextMs = totalMs
-	}
-
-	// Token/detik = candidatesTokenCount / ((total_ms - first_text_ms)/1000).
-	// Penyebut dimulai saat teks pertama tampil (setelah fase thinking),
-	// sehingga mengukur laju produksi teks, bukan laju seluruh respons.
-	totalSeconds := float64(totalMs) / 1000.0
-	firstTextSeconds := float64(firstTextMs) / 1000.0
-	denominator := totalSeconds - firstTextSeconds
-	if denominator <= 0 {
-		denominator = 0
-	}
-
-	var tokenPerSec float64
-	if usage != nil && usage.CandidatesTokenCount > 0 && denominator > 0 {
-		tokenPerSec = float64(usage.CandidatesTokenCount) / denominator
-	}
-
-	var promptTokens, candidatesTokens, thinkingTokens, totalTokens int
-	if usage != nil {
-		promptTokens = usage.PromptTokenCount
-		candidatesTokens = usage.CandidatesTokenCount
-		thinkingTokens = usage.ThoughtsTokenCount
-		totalTokens = usage.TotalTokenCount
-	}
-
-	lower := strings.ToLower(buf.String())
-	validHTML := strings.Contains(lower, "<!doctype html>") || strings.Contains(lower, "<html>")
-	if !strings.Contains(lower, "</html>") {
-		validHTML = false
-	}
-
-	htmlPath := filepath.Join(outFolder, fmt.Sprintf("%s_%s_run%d.html", briefName, thinkingLabel(thinkingLevel), runNumber))
-
-	return BenchmarkResult{
-		FirstChunkMs:       firstChunkMs,
-		FirstTextMs:        firstTextMs,
-		Total:              totalMs,
-		OutputTokenCount:   candidatesTokens,
-		ThinkingTokenCount: thinkingTokens,
-		TokenPerSec:        tokenPerSec,
-		FinishReason:       finishReason,
-		ValidHTML:          validHTML,
-		HTML:               buf.String(),
-		PromptTokens:       promptTokens,
-		CandidatesTokens:   candidatesTokens,
-		TotalTokens:        totalTokens,
-		AttemptCount:       attemptCount,
-		HTMLPath:           htmlPath,
+func printRunLine(run int, result BenchmarkResult) {
+	fmt.Printf("Run %d: firstChunk=%.3fs, firstText=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d, Status=%s, 429=%d, 503=%d\n",
+		run, float64(result.FirstChunkMs)/1000.0, float64(result.FirstTextMs)/1000.0,
+		float64(result.Total)/1000.0, result.PromptTokens, result.CandidatesTokens,
+		result.ThinkingTokenCount, result.TokenPerSec, result.FinishReason, result.ValidHTML,
+		result.AttemptCount, result.Status, result.Error429, result.Error503)
+	if result.Error != "" {
+		fmt.Printf("  ERROR: %s\n", result.Error)
 	}
 }
 
-// isOverloadError cek apakah error adalah overload (503/429) yang layak di-retry.
-func isOverloadError(err error) bool {
-	if err == nil {
-		return false
+func finishLint(outFolder string, results []lintFileResult) int {
+	path, err := writeLintReport(outFolder, results)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Gagal menulis lint report: %v\n", err)
+		return 1
 	}
-	s := err.Error()
-	return strings.Contains(s, "429") || strings.Contains(s, "503") ||
-		strings.Contains(s, "RESOURCE_EXHAUSTED") || strings.Contains(s, "UNAVAILABLE") ||
-		strings.Contains(s, "overloaded") || strings.Contains(s, "Overloaded")
+	fmt.Printf("\nLint report: %s\n", path)
+	failures := 0
+	for _, result := range results {
+		if result.hasFailure() {
+			failures++
+		}
+	}
+	if failures > 0 {
+		fmt.Printf("LINT FAILED: %d file memiliki pelanggaran.\n", failures)
+		return failures
+	}
+	fmt.Println("LINT PASSED: tidak ada pelanggaran FAIL.")
+	return 0
+}
+
+func runLintDirectory(dir, outFolder string, briefs []Brief) int {
+	results, hasFailure, err := lintDirectory(dir, briefs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Lint directory gagal: %v\n", err)
+		return 1
+	}
+	for _, result := range results {
+		printLintResult(os.Stdout, result)
+	}
+	path, err := writeLintReport(outFolder, results)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Gagal menulis lint report: %v\n", err)
+		return 1
+	}
+	fmt.Printf("\nLint report: %s\n", path)
+	if hasFailure {
+		fmt.Println("LINT FAILED")
+		return 1
+	}
+	fmt.Println("LINT PASSED")
+	return 0
+}
+
+func parseArgs(args []string) (*BenchmarkConfig, error) {
+	cfg := BenchmarkConfig{
+		Model:     "gemini-3.8-flash",
+		Runs:      3,
+		OutFolder: "./aibench-results",
+	}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--model":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--model membutuhkan nilai")
+			}
+			cfg.Model = args[i+1]
+			i++
+		case "--thinking":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--thinking membutuhkan nilai")
+			}
+			cfg.ThinkingLevel = args[i+1]
+			i++
+		case "--max-output":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--max-output membutuhkan nilai")
+			}
+			value, err := strconv.Atoi(args[i+1])
+			if err != nil || value <= 0 {
+				return nil, fmt.Errorf("--max-output harus bilangan positif")
+			}
+			cfg.MaxOutputTokens = value
+			i++
+		case "--brief":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--brief membutuhkan nilai")
+			}
+			cfg.Brief = args[i+1]
+			i++
+		case "--runs":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--runs membutuhkan nilai")
+			}
+			value, err := strconv.Atoi(args[i+1])
+			if err != nil || value <= 0 {
+				return nil, fmt.Errorf("--runs harus bilangan positif")
+			}
+			cfg.Runs = value
+			i++
+		case "--out":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--out membutuhkan nilai")
+			}
+			cfg.OutFolder = args[i+1]
+			i++
+		case "--lint":
+			cfg.Lint = true
+		case "--lint-dir":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--lint-dir membutuhkan nilai")
+			}
+			cfg.LintDir = args[i+1]
+			i++
+		case "--parallel":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--parallel membutuhkan nilai")
+			}
+			value, err := strconv.Atoi(args[i+1])
+			if err != nil || value < 1 || value > 5 {
+				return nil, fmt.Errorf("--parallel harus antara 1 dan 5")
+			}
+			cfg.Parallel = value
+			i++
+		case "--help", "-h":
+			return nil, nil
+		default:
+			return nil, fmt.Errorf("flag tidak dikenal: %s", args[i])
+		}
+	}
+	return &cfg, nil
+}
+
+func printUsage(w *os.File) {
+	fmt.Fprintln(w, "Usage: go run ./cmd/aibench [flags]")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Flags:")
+	fmt.Fprintln(w, "  --brief NAME        full|service|wa_only|minimal|nopalette (kosong = semua)")
+	fmt.Fprintln(w, "  --model NAME        model provider (default gemini-3.8-flash)")
+	fmt.Fprintln(w, "  --thinking LEVEL    MINIMAL|LOW|MEDIUM|HIGH (kosong = default)")
+	fmt.Fprintln(w, "  --max-output N      max output tokens (default 32768)")
+	fmt.Fprintln(w, "  --runs N            jumlah run per brief (default 3)")
+	fmt.Fprintln(w, "  --out PATH          folder hasil (default ./aibench-results)")
+	fmt.Fprintln(w, "  --lint              lint setiap HTML hasil dan tulis lint_report.md")
+	fmt.Fprintln(w, "  --lint-dir PATH     lint semua HTML di folder tanpa memanggil API")
+	fmt.Fprintln(w, "  --parallel N        N request paralel untuk satu brief (maks 5)")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Brief tersedia: "+strings.Join(requiredBriefs, ", "))
 }

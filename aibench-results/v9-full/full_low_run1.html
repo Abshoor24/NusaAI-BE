@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Simple, clean studio landing page built strictly around factual clarity and clean typography for a creative practice.
+(2) Signature widget: Interactive service catalog & message preview builder allowing visitors to select listed services and compose a inquiry message.
+(3) Hero composition: 12-column asymmetric layout; left 7 cols for headline & primary action, right 5 cols for structured status panel.
+(4) Palette: Malam palette (ink #0E1320, paper #F4F5F7, tint #E3E7EE, accent #C6F24E, deep #46630A). Fonts: Outfit & Inter.
+(5) Section order: hero, services, process_overview, about, contact.
+FACTS: PRIMARY=#0E1320 ACCENT=#C6F24E EMAIL=NONE WHATSAPP=NONE ADDRESS=NONE HOURS=NONE ITEMS=NONE
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio Studio</title>
+<meta name="description" content="Halaman resmi Studio Studio. Informasi layanan dan kontak.">
+<meta name="theme-color" content="#0E1320">
+<script>document.documentElement.classList.add('js')</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0E1320',
+          paper: '#F4F5F7',
+          tint: '#E3E7EE',
+          accent: '#C6F24E',
+          deep: '#46630A'
+        },
+        fontFamily: {
+          sans: ['Inter', 'sans-serif'],
+          display: ['Outfit', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+<style>
+  ::selection { background-color: #C6F24E; color: #0E1320; }
+  .js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s); }
+  .js .reveal.in { opacity: 1; transform: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  .rise { animation: rise .8s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d,0s); }
+  .float { animation: float 6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-black/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#hero" class="font-display text-2xl font-bold tracking-tight text-ink">
+        Studio Studio
+      </a>
+      
+      <nav class="hidden md:flex items-center gap-8">
+        <a href="#layanan" class="text-sm font-medium hover:text-deep transition-colors">Layanan</a>
+        <a href="#informasi" class="text-sm font-medium hover:text-deep transition-colors">Informasi</a>
+        <a href="#tentang" class="text-sm font-medium hover:text-deep transition-colors">Tentang</a>
+        <a href="#layanan" class="inline-flex items-center justify-center rounded-full px-5 py-2.5 bg-ink text-paper text-sm font-medium hover:bg-ink/90 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2">
+          Lihat Layanan
+        </a>
+      </nav>
+
+      <button type="button" onclick="setMenu(true)" class="md:hidden p-2 text-ink" aria-label="Buka menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Direct Child of Body -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm">
+    <div class="fixed inset-y-0 right-0 w-full max-w-xs bg-paper p-6 shadow-xl flex flex-col justify-between">
+      <div class="flex items-center justify-between border-b border-black/10 pb-4">
+        <span class="font-display text-xl font-bold text-ink">Studio Studio</span>
+        <button type="button" onclick="setMenu(false)" class="p-2 text-ink" aria-label="Tutup menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="flex flex-col gap-4 py-8">
+        <a href="#layanan" onclick="setMenu(false)" class="text-lg font-medium text-ink hover:text-deep">Layanan</a>
+        <a href="#informasi" onclick="setMenu(false)" class="text-lg font-medium text-ink hover:text-deep">Informasi</a>
+        <a href="#tentang" onclick="setMenu(false)" class="text-lg font-medium text-ink hover:text-deep">Tentang</a>
+      </nav>
+      <div class="pt-4 border-t border-black/10">
+        <a href="#layanan" onclick="setMenu(false)" class="w-full flex items-center justify-center rounded-full px-6 py-3 bg-ink text-paper font-medium">
+          Lihat Layanan
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section id="hero" class="relative pt-32 pb-20 md:pt-40 md:pb-32 bg-paper overflow-hidden scroll-mt-24" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(198,242,78,.15),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(14,19,32,.05),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <div class="lg:col-span-7 flex flex-col items-start">
+            <span class="rise text-sm font-semibold uppercase tracking-widest text-deep" style="--d:0s">
+              Studio Desain &amp; Kreatif
+            </span>
+            <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink mt-4 leading-[1.1] tracking-tight max-w-xl" style="--d:.1s">
+              Studio Studio
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/80 mt-6 leading-relaxed max-w-prose" style="--d:.2s">
+              Halaman resmi Studio Studio. Layanan desain dan ruang kreatif untuk kebutuhan visual Anda.
+            </p>
+            <div class="rise flex flex-wrap gap-4 mt-8" style="--d:.3s">
+              <a href="#layanan" class="inline-flex items-center gap-2 rounded-full px-8 py-3.5 bg-ink text-paper font-medium hover:bg-ink/90 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:scale-95">
+                Lihat Layanan
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6"/>
+                </svg>
+              </a>
+              <a href="#tentang" class="inline-flex items-center gap-2 rounded-full px-8 py-3.5 bg-tint text-ink font-medium hover:bg-tint/80 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:scale-95">
+                Tentang Kami
+              </a>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 relative">
+            <div class="absolute -top-4 -right-4 inset-0 bg-tint/60 rounded-3xl -z-10 transform rotate-1"></div>
+            <div class="relative overflow-hidden rounded-3xl bg-white p-8 md:p-10 border border-black/10 shadow-sm float">
+              <div class="space-y-6">
+                <div class="border-b border-black/10 pb-6">
+                  <span class="text-xs uppercase tracking-widest text-deep font-semibold">Profil Singkat</span>
+                  <p class="font-display text-3xl font-bold text-ink mt-2">Studio Studio</p>
+                </div>
+                <div class="space-y-4 text-sm text-ink/80">
+                  <div class="flex items-start gap-3">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-deep shrink-0 mt-0.5" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>Pengembangan identitas visual &amp; panduan desain</span>
+                  </div>
+                  <div class="flex items-start gap-3">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-deep shrink-0 mt-0.5" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>Perancangan antarmuka &amp; media digital</span>
+                  </div>
+                  <div class="flex items-start gap-3">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-deep shrink-0 mt-0.5" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>Penyusunan tata letak &amp; media cetak</span>
+                  </div>
+                </div>
+                <div class="pt-4 border-t border-black/10">
+                  <span class="text-xs text-ink/60">Informasi resmi Studio Studio</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="layanan" class="py-20 md:py-32 bg-tint scroll-mt-24">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-xl">
+          <div class="reveal" style="--d:0s">
+            <span class="text-sm font-semibold uppercase tracking-widest text-deep">Layanan Studio</span>
+            <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3 leading-tight">
+              Bidang Kerja Kami
+            </h2>
+            <p class="text-lg text-ink/80 mt-4 leading-relaxed">
+              Daftar layanan yang disediakan oleh Studio Studio.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-12 space-y-4">
+          
+          <div class="reveal" style="--d:.08s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-6">
+                  <span class="font-display text-2xl font-bold text-deep tabular-nums">01</span>
+                  <div>
+                    <h3 class="font-display text-xl md:text-2xl font-bold text-ink">Identitas Visual</h3>
+                    <p class="text-ink/80 mt-1 max-w-prose">Perancangan elemen grafis, panduan penggunaan visual, dan sistem identitas.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.16s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-6">
+                  <span class="font-display text-2xl font-bold text-deep tabular-nums">02</span>
+                  <div>
+                    <h3 class="font-display text-xl md:text-2xl font-bold text-ink">Desain Antarmuka Digital</h3>
+                    <p class="text-ink/80 mt-1 max-w-prose">Tata letak situs web dan media digital terstruktur.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.24s">
+            <div class="bg-paper rounded-2xl p-6 md:p-8 border border-black/5 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-6">
+                  <span class="font-display text-2xl font-bold text-deep tabular-nums">03</span>
+                  <div>
+                    <h3 class="font-display text-xl md:text-2xl font-bold text-ink">Media Cetak &amp; Publikasi</h3>
+                    <p class="text-ink/80 mt-1 max-w-prose">Penyusunan tata letak buku, katalog, dan materi cetak lainnya.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Menu / Pricing Notice Block (V72-2 pattern since no menu/prices in brief) -->
+    <section id="menu-notice" class="py-20 md:py-32 bg-paper">
+      <div class="max-w-3xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Menu &amp; Rincian</p>
+          <h2 class="font-display text-3xl md:text-4xl font-bold text-ink mt-4">Tanya Menu Kami</h2>
+          <p class="text-lg mt-4 text-ink/80 leading-relaxed">Daftar menu dan harga belum ditampilkan di halaman ini. Hubungi kami untuk menanyakannya.</p>
+          <div class="mt-8">
+            <a href="#layanan" class="inline-flex rounded-full px-8 py-3.5 bg-ink text-paper font-semibold hover:bg-ink/90 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:scale-95">
+              Lihat Layanan Studio
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Information / Full Bleed Dark Band -->
+    <section id="informasi" class="py-20 md:py-32 bg-ink text-paper relative overflow-hidden scroll-mt-24" style="background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-6xl mx-auto px-6 relative">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div class="reveal" style="--d:0s">
+            <span class="text-sm font-semibold uppercase tracking-widest text-accent">Informasi Praktis</span>
+            <h2 class="font-display text-3xl md:text-5xl font-bold mt-3 leading-tight text-white">
+              Prinsip Kerja Studio Studio
+            </h2>
+            <p class="text-lg text-paper/80 mt-6 leading-relaxed">
+              Setiap pekerjaan dilaksanakan dengan struktur yang jelas, mulai dari komunikasi awal hingga tahap penyerahan akhir.
+            </p>
+          </div>
+
+          <div class="space-y-6">
+            <div class="reveal" style="--d:.1s">
+              <div class="bg-white/5 rounded-2xl p-6 border border-white/10 backdrop-blur-sm">
+                <h3 class="font-display text-lg font-bold text-accent">1. Konsultasi Layanan</h3>
+                <p class="text-paper/80 mt-2 text-sm leading-relaxed">Mendiskusikan lingkup kebutuhan visual dan spesifikasi pekerjaan.</p>
+              </div>
+            </div>
+
+            <div class="reveal" style="--d:.2s">
+              <div class="bg-white/5 rounded-2xl p-6 border border-white/10 backdrop-blur-sm">
+                <h3 class="font-display text-lg font-bold text-accent">2. Penyusunan Desain</h3>
+                <p class="text-paper/80 mt-2 text-sm leading-relaxed">Proses perancangan berdasarkan acuan yang disepakati.</p>
+              </div>
+            </div>
+
+            <div class="reveal" style="--d:.3s">
+              <div class="bg-white/5 rounded-2xl p-6 border border-white/10 backdrop-blur-sm">
+                <h3 class="font-display text-lg font-bold text-accent">3. Penyerahan Akhir</h3>
+                <p class="text-paper/80 mt-2 text-sm leading-relaxed">Penyerahan berkas akhir sesuai format yang dibutuhkan.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="tentang" class="py-20 md:py-32 bg-paper scroll-mt-24">
+      <div class="max-w-4xl mx-auto px-6">
+        <div class="reveal" style="--d:0s">
+          <span class="text-sm font-semibold uppercase tracking-widest text-deep">Tentang</span>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3 leading-tight">
+            Studio Studio
+          </h2>
+          <div class="mt-6 space-y-4 text-lg text-ink/80 leading-relaxed">
+            <p>
+              Studio Studio bergerak di bidang perancangan visual dan media kreatif. Studio ini berfokus pada penyediaan solusi desain untuk kebutuhan komunikasi visual.
+            </p>
+            <p>
+              Kami mengutamakan kejelasan bentuk dan struktur dalam setiap karya yang dihasilkan.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-ink text-paper py-12 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <span class="font-display text-xl font-bold tracking-tight text-white">Studio Studio</span>
+        <p class="text-xs text-paper/60 mt-1">Studio Desain &amp; Kreatif</p>
+      </div>
+      <div class="text-xs text-paper/60 text-center md:text-right">
+        &copy; <span id="year"></span> Studio Studio. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Update year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu logic
+    const menu = document.getElementById('mobile-menu');
+    function setMenu(open) {
+      menu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    // Scroll reveal observer
+    document.addEventListener('DOMContentLoaded', function() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    });
+
+    // Close mobile menu on escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !menu.classList.contains('hidden')) {
+        setMenu(false);
+      }
+    });
+
+    // Close mobile menu on overlay click
+    menu.addEventListener('click', function(e) {
+      if (e.target === menu) {
+        setMenu(false);
+      }
+    });
+  </script>
+</body>
+</html>

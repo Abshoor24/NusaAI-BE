@@ -1,0 +1,6 @@
+Description: Kopi Arum Fiktif adalah kedai kopi fiktif di Jalan Contoh No. 1, Kota Fiktif. WhatsApp: 0812-0000-1111. Email: halo@kopiarumfiktif.test. Jam buka: Senin-Minggu 09.00-21.00. Menu: Kopi Tubruk Rp15.000; Kopi Susu Rp22.000; Croissant Rp18.000.
+Website type: food_and_drink
+Business/brand name: Kopi Arum Fiktif
+Visual style: hangat, modern, jelas fiktif
+Content language: id
+Requested sections: menu, tentang, kontak, jam buka
