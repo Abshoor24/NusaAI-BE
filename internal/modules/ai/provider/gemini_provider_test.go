@@ -469,6 +469,113 @@ func TestGeminiProviderOverloadedPreStream(t *testing.T) {
 	}
 }
 
+func TestGeminiProviderClassifiesQuota429(t *testing.T) {
+	body := `{"error":{"code":429,"message":"quota exceeded","status":"RESOURCE_EXHAUSTED","details":[` +
+		`{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaMetric":"generate_requests","quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","quotaDimensions":{"location":"global","model":"gemini-3.6-flash"},"quotaValue":"20"}]},` +
+		`{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"60369s"}]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprintln(w, body)
+	}))
+	defer srv.Close()
+
+	p := NewGeminiProvider(config.AIConfig{APIKey: "test-key", BaseURL: srv.URL, Timeout: 5 * time.Second}, testLogger())
+	_, err := p.CompleteStream(context.Background(), Request{
+		Model:    "gemini-3.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+	})
+	if err == nil {
+		t.Fatal("expected 429 error")
+	}
+	if !IsOverloadedError(err) {
+		t.Error("IsOverloadedError = false, want true for 429")
+	}
+	info, ok := QuotaErrorInfo(err)
+	if !ok {
+		t.Fatal("QuotaErrorInfo did not recover the 429 classification")
+	}
+	if !info.Daily {
+		t.Error("Daily = false, want true for PerDay quota")
+	}
+	if info.QuotaID != "GenerateRequestsPerDayPerProjectPerModel-FreeTier" {
+		t.Errorf("QuotaID = %q", info.QuotaID)
+	}
+	if info.QuotaValue != "20" {
+		t.Errorf("QuotaValue = %q, want 20", info.QuotaValue)
+	}
+	if info.QuotaModel != "gemini-3.6-flash" {
+		t.Errorf("QuotaModel = %q, want gemini-3.6-flash", info.QuotaModel)
+	}
+	if info.RequestedModel != "gemini-3.5-flash" {
+		t.Errorf("RequestedModel = %q, want gemini-3.5-flash", info.RequestedModel)
+	}
+	if info.RetryDelay != 60369*time.Second {
+		t.Errorf("RetryDelay = %v, want 60369s", info.RetryDelay)
+	}
+}
+
+func TestParseQuotaInfoClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		body      string
+		wantDaily bool
+		wantDelay time.Duration
+		wantQuota string
+		wantValue string
+		wantModel string
+	}{
+		{
+			name:      "per day wins even with short retry",
+			body:      `{"error":{"details":[{"retryDelay":"5s"},{"violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","quotaValue":20,"quotaDimensions":{"model":"m1"}}]}]}}`,
+			wantDaily: true,
+			wantDelay: 5 * time.Second,
+			wantQuota: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+			wantValue: "20",
+			wantModel: "m1",
+		},
+		{
+			name:      "long retry without per day is daily",
+			body:      `{"error":{"details":[{"violations":[{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel-FreeTier","quotaValue":"25","quotaDimensions":{"model":"m2"}}]},{"retryDelay":"121s"}]}}`,
+			wantDaily: true,
+			wantDelay: 121 * time.Second,
+			wantQuota: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+			wantValue: "25",
+			wantModel: "m2",
+		},
+		{
+			name:      "short retry without per day stays temporary",
+			body:      `{"error":{"details":[{"violations":[{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel-FreeTier","quotaValue":"25"}]},{"retryDelay":"5s"}]}}`,
+			wantDaily: false,
+			wantDelay: 5 * time.Second,
+			wantQuota: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+			wantValue: "25",
+		},
+		{
+			name:      "malformed body falls back to temporary",
+			body:      `not-json`,
+			wantDaily: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := parseQuotaInfo([]byte(tc.body), "requested-model")
+			if info.Daily != tc.wantDaily {
+				t.Errorf("Daily = %v, want %v", info.Daily, tc.wantDaily)
+			}
+			if info.RetryDelay != tc.wantDelay {
+				t.Errorf("RetryDelay = %v, want %v", info.RetryDelay, tc.wantDelay)
+			}
+			if info.QuotaID != tc.wantQuota || info.QuotaValue != tc.wantValue || info.QuotaModel != tc.wantModel {
+				t.Errorf("quota = %q/%q/%q, want %q/%q/%q",
+					info.QuotaID, info.QuotaValue, info.QuotaModel,
+					tc.wantQuota, tc.wantValue, tc.wantModel)
+			}
+			if info.RequestedModel != "requested-model" {
+				t.Errorf("RequestedModel = %q", info.RequestedModel)
+			}
+		})
+	}
+}
+
 func TestGeminiProviderOverloadedMidStream(t *testing.T) {
 	// Mid-stream error objects with UNAVAILABLE/RESOURCE_EXHAUSTED carry the
 	// overloaded message; other statuses stay generic. Neither leaks the
