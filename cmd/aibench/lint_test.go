@@ -370,6 +370,11 @@ func TestLintEnglishUI(t *testing.T) {
 	if finding := lintMap(t, full, cleanLintHTML)[ruleEnglishUI]; finding.Status != lintPass {
 		t.Fatalf("clean Indonesian page = %s (%s), want PASS", finding.Status, finding.Evidence)
 	}
+	englishBrief := full
+	englishBrief.Text = strings.Replace(englishBrief.Text, "Content language: id", "Content language: en", 1)
+	if finding := lintMap(t, englishBrief, doc)[ruleEnglishUI]; finding.Status != lintPass {
+		t.Fatalf("English page = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
 }
 
 func TestLintPlanVsPage(t *testing.T) {
@@ -404,6 +409,13 @@ func TestLintDeadLinkTarget(t *testing.T) {
 	}
 	if finding := lintMap(t, full, cleanLintHTML)[ruleDeadLink]; finding.Status != lintPass {
 		t.Fatalf("no anchors = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
+
+	service := loadBriefByName(t, "service")
+	serviceDoc := strings.Replace(cleanLintHTML, "</body>",
+		`<a href="#layanan">Layanan</a><section id="layanan"><p>servis mesin dan ganti oli</p></section></body>`, 1)
+	if finding := lintMap(t, service, serviceDoc)[ruleDeadLink]; finding.Status != lintPass {
+		t.Fatalf("link to service facts = %s (%s), want PASS", finding.Status, finding.Evidence)
 	}
 }
 

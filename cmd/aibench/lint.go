@@ -65,33 +65,34 @@ const (
 )
 
 var (
-	commentRE     = regexp.MustCompile(`(?s)<!--(.*?)-->`)
-	scriptRE      = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
-	styleRE       = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
-	tagRE         = regexp.MustCompile(`(?s)<[^>]+>`)
-	scriptSrcRE   = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']`)
-	linkTagRE     = regexp.MustCompile(`(?is)<link\b[^>]*>`)
-	attrRE        = regexp.MustCompile(`(?is)\b([a-z0-9:_-]+)\s*=\s*["']([^"']*)["']`)
-	anchorRE      = regexp.MustCompile(`(?is)<(?:a|button)\b[^>]*>(.*?)</(?:a|button)>`)
-	ariaLabelRE   = regexp.MustCompile(`(?is)\baria-label\s*=\s*["']([^"']+)["']`)
-	sectionRE     = regexp.MustCompile(`(?is)<section\b[^>]*>.*?</section>`)
-	sectionTag    = regexp.MustCompile(`(?is)<section\b[^>]*>`)
-	classAttrRE   = regexp.MustCompile(`(?is)\bclass\s*=\s*["']([^"']*)["']`)
-	cssPropertyRE = regexp.MustCompile(`(?is)([a-z-]+)\s*:\s*[^;{}<>]*$`)
-	tagScanRE     = regexp.MustCompile(`(?is)<(/?)\s*([a-zA-Z][a-zA-Z0-9:-]*)([^>]*)>`)
-	wordRE        = regexp.MustCompile(`(?i)[\p{L}\p{N}']+`)
-	planPoint2RE  = regexp.MustCompile(`(?i)^\s*(?:[-*]\s*)?\(?2[.)]\s*(.*)$`)
-	planWidgetRE  = regexp.MustCompile(`(?i)\b(widget|tab|tabs|kalkulator|calculator)\b`)
-	buttonRE      = regexp.MustCompile(`(?is)<button\b([^>]*)>(.*?)</button>`)
-	anchorAttrsRE = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
-	sectionAttrRE = regexp.MustCompile(`(?is)<section\b([^>]*)>(.*?)</section>`)
-	brandNameRE   = regexp.MustCompile(`(?im)^\s*Business/brand name:\s*(.+)$`)
-	moneyRE       = regexp.MustCompile(`(?i)\brp\s*[0-9][0-9.]*`)
-	addressRE     = regexp.MustCompile(`(?i)\b(?:jalan|jl\.)\s+[^,.\n]+`)
-	waLinkRE      = regexp.MustCompile(`(?i)(?:wa\.me/|api\.whatsapp\.com/send\?[^"'\s]*phone=)([0-9]+)`)
-	telLinkRE     = regexp.MustCompile(`(?i)tel:([+0-9()\-.\s]{7,})`)
-	cssURLRE      = regexp.MustCompile(`(?is)@import\s+(?:url\()?\s*["']?([^"')\s]+)`)
-	openNowRE     = regexp.MustCompile(`(?is)\b(buka|open)\b[^.!?\n]{0,20}\b(sekarang|hari ini|now)\b`)
+	commentRE      = regexp.MustCompile(`(?s)<!--(.*?)-->`)
+	scriptRE       = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
+	styleRE        = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
+	tagRE          = regexp.MustCompile(`(?s)<[^>]+>`)
+	scriptSrcRE    = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']`)
+	linkTagRE      = regexp.MustCompile(`(?is)<link\b[^>]*>`)
+	attrRE         = regexp.MustCompile(`(?is)\b([a-z0-9:_-]+)\s*=\s*["']([^"']*)["']`)
+	anchorRE       = regexp.MustCompile(`(?is)<(?:a|button)\b[^>]*>(.*?)</(?:a|button)>`)
+	ariaLabelRE    = regexp.MustCompile(`(?is)\baria-label\s*=\s*["']([^"']+)["']`)
+	sectionTag     = regexp.MustCompile(`(?is)<section\b[^>]*>`)
+	classAttrRE    = regexp.MustCompile(`(?is)\bclass\s*=\s*["']([^"']*)["']`)
+	propertyNameRE = regexp.MustCompile(`^(?:--?[a-zA-Z][a-zA-Z0-9-]*|[a-zA-Z][a-zA-Z0-9-]*)$`)
+	tagScanRE      = regexp.MustCompile(`(?is)<(/?)\s*([a-zA-Z][a-zA-Z0-9:-]*)([^>]*)>`)
+	wordRE         = regexp.MustCompile(`(?i)[\p{L}\p{N}']+`)
+	planPoint2RE   = regexp.MustCompile(`(?i)^\s*(?:[-*]\s*)?\(?2[.)]\s*(.*)$`)
+	planWidgetRE   = regexp.MustCompile(`(?i)\b(widget|tab|tabs|kalkulator|calculator)\b`)
+	buttonRE       = regexp.MustCompile(`(?is)<button\b([^>]*)>(.*?)</button>`)
+	anchorAttrsRE  = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
+	sectionAttrRE  = regexp.MustCompile(`(?is)<section\b([^>]*)>(.*?)</section>`)
+	brandNameRE    = regexp.MustCompile(`(?im)^\s*Business/brand name:\s*(.+)$`)
+	moneyRE        = regexp.MustCompile(`(?i)\brp\s*[0-9][0-9.]*`)
+	addressRE      = regexp.MustCompile(`(?i)\b(?:jalan|jl\.)\s+[^,.\n]+`)
+	onclickHashRE  = regexp.MustCompile(`#([A-Za-z][A-Za-z0-9_-]*)`)
+	contentFactsRE = regexp.MustCompile(`(?im)\b(?:menu|layanan)\s*:\s*([^\n]+)`)
+	waLinkRE       = regexp.MustCompile(`(?i)(?:wa\.me/|api\.whatsapp\.com/send\?[^"'\s]*phone=)([0-9]+)`)
+	telLinkRE      = regexp.MustCompile(`(?i)tel:([+0-9()\-.\s]{7,})`)
+	cssURLRE       = regexp.MustCompile(`(?is)@import\s+(?:url\()?\s*["']?([^"')\s]+)`)
+	openNowRE      = regexp.MustCompile(`(?is)\b(buka|open)\b[^.!?\n]{0,20}\b(sekarang|hari ini|now)\b`)
 )
 
 type htmlTag struct {
@@ -582,6 +583,9 @@ func checkDeadLinkTarget(doc string, brief Brief) lintFinding {
 		attrs := parseAttrs(m[1])
 		addAnchorTarget(targets, attrs["data-target"])
 		addAnchorTarget(targets, attrs["data-href"])
+		for _, target := range onclickHashRE.FindAllStringSubmatch(attrs["onclick"], -1) {
+			addAnchorTarget(targets, "#"+target[1])
+		}
 	}
 	if len(targets) == 0 {
 		return finding(ruleDeadLink, lintPass, "tidak ada tautan anchor ke section")
@@ -660,7 +664,30 @@ func sectionHasBriefFacts(section string, brief Brief) bool {
 			return true
 		}
 	}
+	for _, phrase := range briefContentFacts(brief.Text) {
+		if strings.Contains(lower, strings.ToLower(phrase)) {
+			return true
+		}
+	}
 	return false
+}
+
+func briefContentFacts(text string) []string {
+	var phrases []string
+	for _, m := range contentFactsRE.FindAllStringSubmatch(text, -1) {
+		for _, part := range strings.FieldsFunc(m[1], func(r rune) bool {
+			return r == ';' || r == ',' || r == '/'
+		}) {
+			part = strings.TrimSpace(part)
+			if idx := strings.Index(strings.ToLower(part), "rp"); idx >= 0 {
+				part = strings.TrimSpace(part[:idx])
+			}
+			if len([]rune(part)) >= 4 {
+				phrases = append(phrases, part)
+			}
+		}
+	}
+	return phrases
 }
 
 func normalizeDigits(value string) string {
@@ -787,14 +814,28 @@ func hexUsageContext(doc string, start, end int) string {
 		relativeEnd := end - valueStart
 		return `class="` + windowAround(value, relativeStart, relativeEnd) + `"`
 	}
-	prefix := doc[:start]
-	if loc := cssPropertyRE.FindStringSubmatchIndex(prefix); loc != nil {
-		property := strings.TrimSpace(prefix[loc[2]:loc[3]])
-		valueStart := loc[1]
-		value := strings.TrimSpace(doc[valueStart:end])
-		return windowAround(property+": "+value, 0, len(property)+len(value))
+	if property, ok := cssPropertyAt(doc, start); ok {
+		value := strings.TrimSpace(doc[start:end])
+		return contextWindow(property+": "+value, 0, len(property)+2, 40)
 	}
 	return contextWindow(doc, start, end, 40)
+}
+
+func cssPropertyAt(doc string, start int) (string, bool) {
+	head := doc[:start]
+	colon := strings.LastIndex(head, ":")
+	if colon < 0 || strings.ContainsAny(head[colon+1:], ";{}<>\n") {
+		return "", false
+	}
+	begin := colon
+	for begin > 0 && !strings.ContainsRune(";{}<>\n\"'", rune(head[begin-1])) {
+		begin--
+	}
+	property := strings.TrimSpace(head[begin:colon])
+	if !propertyNameRE.MatchString(property) {
+		return "", false
+	}
+	return property, true
 }
 
 func windowAround(value string, start, end int) string {

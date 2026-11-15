@@ -108,8 +108,9 @@ func runCLI(args []string) int {
 
 	totalFailures := 0
 	var lintResults []lintFileResult
+	lintSkipped := 0
 	if cfg.Parallel > 0 {
-		return runParallelMode(p, selected[0], *cfg, &lintResults)
+		return runParallelMode(p, selected[0], *cfg, &lintResults, &lintSkipped)
 	}
 
 	type BriefSummary struct {
@@ -149,6 +150,7 @@ func runCLI(args []string) int {
 			}
 			if cfg.Lint {
 				if result.Status == "error" {
+					lintSkipped++
 					fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, run)+".html")
 				} else {
 					lintResult := lintFileResult{
@@ -194,7 +196,7 @@ func runCLI(args []string) int {
 	}
 
 	if cfg.Lint {
-		totalFailures = finishLint(cfg.OutFolder, lintResults)
+		totalFailures = finishLint(cfg.OutFolder, lintResults, lintSkipped)
 	}
 	if totalFailures > 0 {
 		return 1
@@ -202,7 +204,7 @@ func runCLI(args []string) int {
 	return 0
 }
 
-func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lintResults *[]lintFileResult) int {
+func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lintResults *[]lintFileResult, lintSkipped *int) int {
 	fmt.Printf("WARNING: uji paralel ini memakai kuota API (%d request sekaligus).\n\n", cfg.Parallel)
 	opt := defaultRunOptions()
 	opt.Model = cfg.Model
@@ -235,6 +237,7 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 		}
 		if cfg.Lint {
 			if result.Status == "error" {
+				*lintSkipped++
 				fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, i+1)+".html")
 			} else {
 				lintResult := lintFileResult{
@@ -248,7 +251,7 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 		}
 	}
 	if cfg.Lint {
-		failures = finishLint(cfg.OutFolder, *lintResults)
+		failures = finishLint(cfg.OutFolder, *lintResults, *lintSkipped)
 	}
 	if failures > 0 {
 		return 1
@@ -299,18 +302,25 @@ func printRunLine(run int, result BenchmarkResult) {
 	}
 }
 
-func finishLint(outFolder string, results []lintFileResult) int {
+func finishLint(outFolder string, results []lintFileResult, skipped int) int {
 	path, err := writeLintReport(outFolder, results)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Gagal menulis lint report: %v\n", err)
 		return 1
 	}
 	fmt.Printf("\nLint report: %s\n", path)
+	if len(results) == 0 && skipped > 0 {
+		fmt.Printf("LINT DILEWATI: %d run gagal; tidak dihitung sebagai PASS atau FAIL.\n", skipped)
+		return 0
+	}
 	failures := 0
 	for _, result := range results {
 		if result.hasFailure() {
 			failures++
 		}
+	}
+	if skipped > 0 {
+		fmt.Printf("Catatan: %d run dilewati (run gagal); tidak dihitung PASS/FAIL.\n", skipped)
 	}
 	if failures > 0 {
 		fmt.Printf("LINT FAILED: %d file memiliki pelanggaran.\n", failures)
