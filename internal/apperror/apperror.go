@@ -38,6 +38,9 @@ const (
 	ReasonStreamInterrupted  = "STREAM_INTERRUPTED"
 	ReasonInvalidOutput      = "INVALID_OUTPUT"
 	ReasonProviderError      = "PROVIDER_ERROR"
+	// ReasonQuota is attached to AI_BUSY when every configured model is
+	// blocked by an exhausted daily provider quota.
+	ReasonQuota = "quota"
 )
 
 // Error is the canonical application error used across all layers.
@@ -48,8 +51,9 @@ type Error struct {
 	Message string // safe, human-readable message exposed to the client
 	Fields  map[string]string
 	Err     error // underlying cause, never exposed to the client
-	// Reason is an optional stable sub-code, currently only set on AI
-	// provider errors. Empty means "no reason" and it is omitted from JSON.
+	// Reason is an optional stable sub-code set on AI provider errors and on
+	// AI_BUSY quota exhaustion. Empty means "no reason" and it is omitted
+	// from JSON.
 	Reason string
 }
 
@@ -127,6 +131,14 @@ func AIProvider(message string, err error) *Error   { return new(KindAIProvider,
 // AIBusy reports that the provider open phase exhausted its budget or the
 // provider stayed overloaded. The stable code is AI_BUSY.
 func AIBusy(message string, err error) *Error { return new(KindAIBusy, message, err) }
+
+// AIBusyReason is AIBusy with an optional stable sub-code (for example quota
+// when every model's daily quota is exhausted).
+func AIBusyReason(reason, message string, err error) *Error {
+	e := new(KindAIBusy, message, err)
+	e.Reason = reason
+	return e
+}
 
 // AIProviderReason builds an AI provider error with a stable machine-readable
 // sub-code for the frontend. Kind, HTTP status and message semantics are

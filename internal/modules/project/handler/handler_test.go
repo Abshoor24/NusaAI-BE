@@ -30,6 +30,7 @@ func testHandlerLogger() *slog.Logger {
 type stubService struct {
 	beginPending *service.PendingStream
 	beginErr     error
+	openErr      error
 	finishVer    *model.Version
 	finishErr    error
 	finishCalls  int
@@ -138,6 +139,9 @@ func (s *stubService) OpenStream(ctx context.Context, pending *service.PendingSt
 	}
 	if err := s.waitOpen(ctx); err != nil {
 		return err
+	}
+	if s.openErr != nil {
+		return s.openErr
 	}
 	return nil
 }
@@ -1098,6 +1102,39 @@ func TestGenerateSSEOverloadedMidStreamMessage(t *testing.T) {
 	}
 	if stub.finishCalls != 0 || stub.failCalls != 1 {
 		t.Errorf("finish=%d fail=%d, want 0/1", stub.finishCalls, stub.failCalls)
+	}
+}
+
+func TestGenerateSSEDailyQuotaOpenError(t *testing.T) {
+	stub := &stubService{
+		openErr:      apperror.AIBusyReason(apperror.ReasonQuota, service.QuotaExhaustedMessage, nil),
+		beginPending: pendingFor("p1", scriptedStream(nil, false)),
+	}
+	h := newTestHandlerWithAI(stub, config.AIConfig{
+		MaxBytes: 1 << 20, MaxGenerateBodyBytes: 32 << 20,
+		OpenBudget: time.Second, StreamMaxDuration: time.Minute,
+		StreamIdleTimeout: time.Minute,
+	})
+
+	rec, req := generateReq()
+	h.Generate(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
+		t.Fatalf("want error without done:\n%s", body)
+	}
+	errObj := errorEventData(t, body)
+	if errObj["code"] != "AI_BUSY" {
+		t.Errorf("code=%v, want AI_BUSY", errObj["code"])
+	}
+	if errObj["message"] != service.QuotaExhaustedMessage {
+		t.Errorf("message=%v, want daily quota message", errObj["message"])
+	}
+	if errObj["reason"] != apperror.ReasonQuota {
+		t.Errorf("reason=%v, want %q", errObj["reason"], apperror.ReasonQuota)
+	}
+	if stub.failCalls != 0 {
+		t.Errorf("failCalls = %d, want 0 (service already rolled back)", stub.failCalls)
 	}
 }
 
