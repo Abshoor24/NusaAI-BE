@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -58,6 +59,14 @@ type fakeProvider struct {
 	rejectThinking bool
 	// reqs records every request in call order.
 	reqs []aiprovider.Request
+	// ctxs records the context of every CompleteStream call.
+	ctxs []context.Context
+	// tokensByModel overrides tokens per model (falls back to tokens).
+	tokensByModel map[string][]string
+	// firstChunkDelay applies before the first token of every stream.
+	firstChunkDelay time.Duration
+	// firstChunkDelayByModel overrides firstChunkDelay per model.
+	firstChunkDelayByModel map[string]time.Duration
 }
 
 func (f *fakeProvider) CompleteStream(ctx context.Context, req aiprovider.Request) (<-chan aiprovider.StreamChunk, error) {
@@ -65,10 +74,18 @@ func (f *fakeProvider) CompleteStream(ctx context.Context, req aiprovider.Reques
 	f.lastReq = req
 	f.calls++
 	f.reqs = append(f.reqs, req)
+	f.ctxs = append(f.ctxs, ctx)
 	if len(req.Messages) > 1 {
 		f.usedImgs = len(req.Messages[1].Images)
 	}
 	tokens, errAt := f.tokens, f.errAt
+	if byModel, ok := f.tokensByModel[req.Model]; ok {
+		tokens = byModel
+	}
+	chunkDelay := f.firstChunkDelay
+	if byModel, ok := f.firstChunkDelayByModel[req.Model]; ok {
+		chunkDelay = byModel
+	}
 	var openErr error
 	if len(f.openErrSeq) > 0 {
 		openErr = f.openErrSeq[0]
@@ -98,18 +115,38 @@ func (f *fakeProvider) CompleteStream(ctx context.Context, req aiprovider.Reques
 	ch := make(chan aiprovider.StreamChunk, 32)
 	go func() {
 		defer close(ch)
+		if chunkDelay > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(chunkDelay):
+			}
+		}
 		for i, tok := range tokens {
 			if i == errAt {
-				ch <- aiprovider.StreamChunk{Err: errors.New("upstream exploded")}
+				select {
+				case ch <- aiprovider.StreamChunk{Err: errors.New("upstream exploded")}:
+				case <-ctx.Done():
+				}
 				return
 			}
-			ch <- aiprovider.StreamChunk{Token: tok}
+			select {
+			case ch <- aiprovider.StreamChunk{Token: tok}:
+			case <-ctx.Done():
+				return
+			}
 		}
 		if errAt == len(tokens) {
-			ch <- aiprovider.StreamChunk{Err: errors.New("upstream exploded")}
+			select {
+			case ch <- aiprovider.StreamChunk{Err: errors.New("upstream exploded")}:
+			case <-ctx.Done():
+			}
 			return
 		}
-		ch <- aiprovider.StreamChunk{Done: true, FinishReason: reason, BlockReason: block, Usage: usage}
+		select {
+		case ch <- aiprovider.StreamChunk{Done: true, FinishReason: reason, BlockReason: block, Usage: usage}:
+		case <-ctx.Done():
+		}
 	}()
 	return ch, nil
 }
@@ -1535,4 +1572,315 @@ func TestUnsupportedThinkingLevelIsNotSent(t *testing.T) {
 	if _, ae := drainAndFinish(ctx, t, svc, pending); ae != nil {
 		t.Fatalf("finish: %v", ae)
 	}
+}
+
+// --- hedging ---
+
+func newHedgeService(t *testing.T, fp *fakeProvider, mutate func(*config.AIConfig)) Service {
+	t.Helper()
+	aiCfg, uploadCfg, projectCfg := testConfigs()
+	aiCfg.Model = "primary-model"
+	aiCfg.FallbackModels = []string{"fallback-model"}
+	aiCfg.RetryOnUnavailable = 0
+	aiCfg.RetryBackoff = time.Millisecond
+	if mutate != nil {
+		mutate(&aiCfg)
+	}
+	uploadCfg.Dir = t.TempDir()
+	return New(newFakeRepo(), fp, aiCfg, uploadCfg, projectCfg, testLogger())
+}
+
+func collectTokens(t *testing.T, ch <-chan aiprovider.StreamChunk) []string {
+	t.Helper()
+	var tokens []string
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				return tokens
+			}
+			if chunk.Err != nil {
+				t.Fatalf("stream error: %v", chunk.Err)
+			}
+			if chunk.Token != "" {
+				tokens = append(tokens, chunk.Token)
+			}
+		case <-deadline:
+			t.Fatal("timed out draining stream")
+		}
+	}
+}
+
+func TestHedgeFallbackWinsWhenPrimaryIsSlow(t *testing.T) {
+	fp := newFakeProvider()
+	fp.tokensByModel = map[string][]string{
+		"primary-model":  {"P1", "P2"},
+		"fallback-model": {"F1", "F2"},
+	}
+	fp.firstChunkDelayByModel = map[string]time.Duration{
+		"primary-model":  300 * time.Millisecond,
+		"fallback-model": 10 * time.Millisecond,
+	}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 30 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if !pending.FallbackUsed || pending.HedgeWinner != "fallback" {
+		t.Errorf("fallback_used=%v hedge_winner=%q, want true/fallback", pending.FallbackUsed, pending.HedgeWinner)
+	}
+	if !pending.LoserCancelled || pending.HedgeStarted <= 0 {
+		t.Errorf("loser_cancelled=%v hedge_started=%v, want true and >0", pending.LoserCancelled, pending.HedgeStarted)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2", fp.calls)
+	}
+	if got := collectTokens(t, pending.Stream); len(got) != 2 || got[0] != "F1" || got[1] != "F2" {
+		t.Errorf("tokens = %v, want [F1 F2]", got)
+	}
+	svc.FailStream(ctx, pending)
+
+	waitFor(t, time.Second, func() bool { return fp.ctxs[0].Err() == context.Canceled })
+}
+
+func TestHedgeNotStartedWhenPrimaryIsFast(t *testing.T) {
+	fp := newFakeProvider("P1")
+	fp.firstChunkDelay = 5 * time.Millisecond
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 500 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if pending.HedgeWinner != "" || pending.HedgeStarted != 0 {
+		t.Errorf("hedge_winner=%q hedge_started=%v, want none", pending.HedgeWinner, pending.HedgeStarted)
+	}
+	if fp.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (fallback never started)", fp.calls)
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
+}
+
+func TestHedgePrimaryOverloadRetriesThenFallbackOnce(t *testing.T) {
+	fp := newFakeProvider("F1")
+	fp.openErrSeq = []error{overloadedOpenErr(), overloadedOpenErr(), nil}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = time.Second // long: fallback starts from primary failure, not the timer
+		c.RetryOnUnavailable = 1
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3 (2 primary, 1 fallback)", fp.calls)
+	}
+	if fp.reqs[0].Model != "primary-model" || fp.reqs[1].Model != "primary-model" || fp.reqs[2].Model != "fallback-model" {
+		t.Errorf("model order = [%s %s %s], want primary, primary, fallback",
+			fp.reqs[0].Model, fp.reqs[1].Model, fp.reqs[2].Model)
+	}
+	if pending.HedgeWinner != "" {
+		t.Errorf("hedge_winner = %q, want empty (timer never fired)", pending.HedgeWinner)
+	}
+	if !pending.FallbackUsed {
+		t.Error("fallback_used = false, want true")
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
+}
+
+func TestHedgeRespectsOpenBudgetWhenBothSlow(t *testing.T) {
+	fp := newFakeProvider("X")
+	fp.firstChunkDelay = 5 * time.Second
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 10 * time.Millisecond
+	})
+	p := createDraft(t, svc, "user-1")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("open took %v, want bounded by the context budget", elapsed)
+	}
+	var ae *apperror.Error
+	if !errors.As(err, &ae) || ae.Code() != "AI_BUSY" {
+		t.Fatalf("error = %v, want AI_BUSY", err)
+	}
+	if fp.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (primary + hedged fallback)", fp.calls)
+	}
+}
+
+func TestHedgeDoesNotLeakLoserGoroutine(t *testing.T) {
+	before := runtime.NumGoroutine()
+	fp := newFakeProvider()
+	fp.tokensByModel = map[string][]string{
+		"primary-model":  {"P1"},
+		"fallback-model": {"F1"},
+	}
+	fp.firstChunkDelayByModel = map[string]time.Duration{
+		"primary-model":  300 * time.Millisecond,
+		"fallback-model": 5 * time.Millisecond,
+	}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 20 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
+
+	time.Sleep(150 * time.Millisecond)
+	after := runtime.NumGoroutine()
+	if after > before+2 {
+		t.Errorf("goroutines before=%d after=%d, want no leaked hedge workers", before, after)
+	}
+	if fp.ctxs[0].Err() != context.Canceled {
+		t.Errorf("loser ctx err = %v, want context.Canceled", fp.ctxs[0].Err())
+	}
+}
+
+func TestHedgeNeverRelaysLoserTokens(t *testing.T) {
+	fp := newFakeProvider()
+	fp.tokensByModel = map[string][]string{
+		"primary-model":  {"P1", "P2"},
+		"fallback-model": {"F1", "F2"},
+	}
+	fp.firstChunkDelayByModel = map[string]time.Duration{
+		"primary-model":  200 * time.Millisecond,
+		"fallback-model": 5 * time.Millisecond,
+	}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 20 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	got := collectTokens(t, pending.Stream)
+	if len(got) != 2 || got[0] != "F1" || got[1] != "F2" {
+		t.Errorf("tokens = %v, want exactly the fallback tokens [F1 F2]", got)
+	}
+	for _, tok := range got {
+		if strings.HasPrefix(tok, "P") {
+			t.Errorf("loser token %q reached the stream", tok)
+		}
+	}
+	svc.FailStream(ctx, pending)
+}
+
+func TestHedgePrimaryWinsAfterHedgeFires(t *testing.T) {
+	fp := newFakeProvider()
+	fp.tokensByModel = map[string][]string{
+		"primary-model":  {"P1"},
+		"fallback-model": {"F1"},
+	}
+	fp.firstChunkDelayByModel = map[string]time.Duration{
+		"primary-model":  80 * time.Millisecond,
+		"fallback-model": 300 * time.Millisecond,
+	}
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 20 * time.Millisecond
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if pending.HedgeWinner != "primary" || !pending.LoserCancelled {
+		t.Errorf("hedge_winner=%q loser_cancelled=%v, want primary/true", pending.HedgeWinner, pending.LoserCancelled)
+	}
+	if got := collectTokens(t, pending.Stream); len(got) != 1 || got[0] != "P1" {
+		t.Errorf("tokens = %v, want [P1]", got)
+	}
+	svc.FailStream(ctx, pending)
+	waitFor(t, time.Second, func() bool { return fp.ctxs[1].Err() == context.Canceled })
+}
+
+func TestHedgeWorksWithThinkingLevelRetry(t *testing.T) {
+	fp := newFakeProvider()
+	fp.rejectThinking = true
+	fp.tokensByModel = map[string][]string{
+		"primary-model":  {"P1"},
+		"fallback-model": {"F1"},
+	}
+	fp.firstChunkDelayByModel = map[string]time.Duration{
+		"primary-model":  200 * time.Millisecond,
+		"fallback-model": 5 * time.Millisecond,
+	}
+	level := "LOW"
+	svc := newHedgeService(t, fp, func(c *config.AIConfig) {
+		c.HedgeAfter = 50 * time.Millisecond
+		c.ThinkingLevel = &level
+	})
+	ctx := context.Background()
+	p := createDraft(t, svc, "user-1")
+
+	pending, err := svc.BeginGenerate(ctx, "user-1", p.ID, nil)
+	if err != nil {
+		t.Fatalf("BeginGenerate: %v", err)
+	}
+	if fp.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4 (two per model: reject + retry)", fp.calls)
+	}
+	perModel := map[string]int{}
+	retried := map[string]int{}
+	for _, req := range fp.reqs {
+		perModel[req.Model]++
+		if req.ThinkingLevel == nil {
+			if !req.DisableThinking {
+				t.Errorf("model %s retry missing DisableThinking", req.Model)
+			}
+			retried[req.Model]++
+		}
+	}
+	if perModel["primary-model"] != 2 || perModel["fallback-model"] != 2 {
+		t.Errorf("calls per model = %v, want 2/2", perModel)
+	}
+	if retried["primary-model"] != 1 || retried["fallback-model"] != 1 {
+		t.Errorf("thinking retries per model = %v, want one each", retried)
+	}
+	if pending.HedgeWinner != "fallback" {
+		t.Errorf("hedge_winner = %q, want fallback", pending.HedgeWinner)
+	}
+	collectTokens(t, pending.Stream)
+	svc.FailStream(ctx, pending)
+}
+
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition not met before timeout")
 }

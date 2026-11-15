@@ -815,6 +815,13 @@ func streamDiagnosticAttrs(pending *service.PendingStream) []any {
 	if pending.Model != "" {
 		attrs = append(attrs, "model", pending.Model)
 	}
+	if pending.HedgeWinner != "" {
+		attrs = append(attrs,
+			"hedge_winner", pending.HedgeWinner,
+			"hedge_started_ms", pending.HedgeStarted.Milliseconds(),
+			"loser_cancelled", pending.LoserCancelled,
+		)
+	}
 	return attrs
 }
 

@@ -902,6 +902,9 @@ data: {"phase":"connecting","attempt":1,"elapsed_ms":0}
 
 > `status` tidak menyebut nama model dan bukan progres HTML; gunakan untuk teks progres seperti "Menyiapkan AI…" / "Mencoba lagi…".
 
+> [!NOTE]
+> **Hedging (opsional, `AI_HEDGE_AFTER`).** Jika `AI_HEDGE_AFTER > 0` dan ada model cadangan, server boleh memulai model cadangan pertama secara paralel ketika model utama belum menghasilkan potongan pertama dalam batas waktu tersebut. Model pertama yang menghasilkan potongan pertama menjadi pemenang; model lain dibatalkan. Karena ini dapat menggandakan biaya provider, default `0` (nonaktif). Rekomendasi bila dibutuhkan: `AI_HEDGE_AFTER=8s` dengan `gemini-3.5-flash` dan `AI_THINKING_LEVEL=LOW`. Event `status` tetap tidak menyebut nama model, dan pemenang dilaporkan lewat log server (`hedge_winner`, `loser_cancelled`), bukan payload SSE.
+
 **2. `event: token`** — dikirim berulang selama HTML ditulis
 
 ```
