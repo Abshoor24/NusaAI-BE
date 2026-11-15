@@ -1,0 +1,6 @@
+Description: Kedai Teh Fiktif menjual teh melati fiktif. WhatsApp: 0812-0000-3333.
+Website type: food_and_drink
+Business/brand name: Kedai Teh Fiktif
+Visual style: sederhana, tenang
+Content language: id
+Requested sections: tentang, kontak
