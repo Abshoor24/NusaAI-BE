@@ -18,7 +18,10 @@ var (
 	// the frontend must see activity within a few seconds, not after a
 	// multi-attempt open phase.
 	sseOpenHeartbeatInterval = 5 * time.Second
-	sseWriteTimeout          = 60 * time.Second
+	// sseWriteTimeout is a per-write deadline, not a total stream budget.
+	// Every event/heartbeat refreshes it, so the 150s open + 180s stream
+	// (~330s total) is not cut by SERVER_WRITE_TIMEOUT or this value.
+	sseWriteTimeout = 60 * time.Second
 )
 
 // sseWriter wraps an http.ResponseWriter with automatic flushing for SSE.
