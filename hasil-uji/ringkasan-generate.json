@@ -1,0 +1,79 @@
+{
+  "started_at": "2026-11-17T18:42:25.425Z",
+  "steps": [
+    {
+      "step": "create-a-service",
+      "project_id": "97b53d3f-d35b-4cfb-8105-845381cf2919"
+    },
+    {
+      "step": "html-a-service",
+      "file": "C:\\project\\pakhir\\be\\hasil-uji\\a-service.html",
+      "bytes": 27323
+    },
+    {
+      "step": "create-b-minimal",
+      "project_id": "b29b5e51-6b28-4e8f-b32c-cb7ea980ca61"
+    },
+    {
+      "step": "html-b-minimal",
+      "file": "C:\\project\\pakhir\\be\\hasil-uji\\b-minimal.html",
+      "bytes": 14371
+    },
+    {
+      "step": "create-c-service-repeat",
+      "project_id": "25ab328f-1f96-4dfb-8104-92481031158c"
+    },
+    {
+      "step": "html-c-service-repeat",
+      "file": "C:\\project\\pakhir\\be\\hasil-uji\\c-service-repeat.html",
+      "bytes": 27323
+    }
+  ],
+  "generates": [
+    {
+      "label": "a-service",
+      "project_id": "97b53d3f-d35b-4cfb-8105-845381cf2919",
+      "started_at": "2026-11-17T18:42:25.584Z",
+      "started_at_wib": "18/11/2026, 01.42.25",
+      "first_event_ms": 20.264,
+      "first_token_ms": 42862.3557,
+      "total_ms": 106547,
+      "first_event_s": 0.02,
+      "first_token_s": 42.86,
+      "total_s": 106.55,
+      "status": "ok"
+    },
+    {
+      "label": "b-minimal",
+      "project_id": "b29b5e51-6b28-4e8f-b32c-cb7ea980ca61",
+      "started_at": "2026-11-17T18:44:12.162Z",
+      "started_at_wib": "18/11/2026, 01.44.12",
+      "first_event_ms": 14.6551,
+      "first_token_ms": 77565.049,
+      "total_ms": 107048,
+      "first_event_s": 0.01,
+      "first_token_s": 77.57,
+      "total_s": 107.05,
+      "status": "ok"
+    },
+    {
+      "label": "c-service-repeat",
+      "project_id": "25ab328f-1f96-4dfb-8104-92481031158c",
+      "started_at": "2026-11-17T18:45:59.237Z",
+      "started_at_wib": "18/11/2026, 01.45.59",
+      "first_event_ms": 14.0694,
+      "first_token_ms": 14.0694,
+      "total_ms": 25,
+      "first_event_s": 0.01,
+      "first_token_s": 0.01,
+      "total_s": 0.02,
+      "status": "ok"
+    }
+  ],
+  "aborted": false,
+  "account": {
+    "email": "realai-1794940945428-444628@example.com"
+  },
+  "finished_at": "2026-11-17T18:45:59.271Z",
+  "phase": "done"
+}

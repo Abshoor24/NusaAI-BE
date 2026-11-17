@@ -1,0 +1,244 @@
+{
+  "service": {
+    "file": "a-service.html",
+    "design_plan_line": 4,
+    "facts_line_no": 10,
+    "facts_line": "FACTS: MENU: NONE | WA: 0812-0000-2222 | EMAIL: NONE | ADDRESS: Jalan Rekaan No. 2, Kota Fiktif | HOURS: Selasa-Sabtu 08.00-17.00 | PRIMARY: #10223F | ACCENT: #E0A93B",
+    "facts": {
+      "MENU": "NONE",
+      "WA": "0812-0000-2222",
+      "EMAIL": "NONE",
+      "ADDRESS": "Jalan Rekaan No. 2, Kota Fiktif",
+      "HOURS": "Selasa-Sabtu 08.00-17.00"
+    },
+    "facts_present_in_design_plan": true,
+    "menu_unavailable": {
+      "pass": true,
+      "belum_tersedia_count": 0,
+      "belum_tersedia_matches": [],
+      "visible_menu_word_matches": []
+    },
+    "days": {
+      "pass": false,
+      "found": [
+        "selasa",
+        "sabtu",
+        "senin",
+        "rabu",
+        "kamis",
+        "jumat",
+        "minggu"
+      ],
+      "allowed": [
+        "selasa",
+        "sabtu"
+      ],
+      "violations": [
+        "senin",
+        "rabu",
+        "kamis",
+        "jumat",
+        "minggu"
+      ],
+      "evidence": [
+        {
+          "line": 145,
+          "match": "Selasa",
+          "snippet": "or Jaya Fiktif siap merawat motor Anda di Jalan Rekaan No. 2, Kota Fiktif. Buka Selasa sampai Sabtu mulai pukul 08.00 hingga 17.00."
+        },
+        {
+          "line": 145,
+          "match": "Sabtu",
+          "snippet": "siap merawat motor Anda di Jalan Rekaan No. 2, Kota Fiktif. Buka Selasa sampai Sabtu mulai pukul 08.00 hingga 17.00."
+        },
+        {
+          "line": 177,
+          "match": "Selasa",
+          "snippet": "Selasa — Sabtu"
+        },
+        {
+          "line": 177,
+          "match": "Sabtu",
+          "snippet": "Selasa — Sabtu"
+        },
+        {
+          "line": 311,
+          "match": "Senin",
+          "snippet": "Senin"
+        },
+        {
+          "line": 315,
+          "match": "Selasa",
+          "snippet": "Selasa"
+        },
+        {
+          "line": 319,
+          "match": "Rabu",
+          "snippet": "Rabu"
+        },
+        {
+          "line": 323,
+          "match": "Kamis",
+          "snippet": "Kamis"
+        },
+        {
+          "line": 327,
+          "match": "Jumat",
+          "snippet": "Jumat"
+        },
+        {
+          "line": 331,
+          "match": "Sabtu",
+          "snippet": "Sabtu"
+        },
+        {
+          "line": 335,
+          "match": "Minggu",
+          "snippet": "Minggu"
+        },
+        {
+          "line": 395,
+          "match": "Selasa",
+          "snippet": "Buka hari Selasa sampai Sabtu pada jam 08.00 - 17.00 WIB"
+        },
+        {
+          "line": 395,
+          "match": "Sabtu",
+          "snippet": "Buka hari Selasa sampai Sabtu pada jam 08.00 - 17.00 WIB"
+        }
+      ],
+      "invented_day_phrase_matches": [
+        {
+          "line": 312,
+          "match": "Tutup",
+          "snippet": "Tutup"
+        },
+        {
+          "line": 336,
+          "match": "Tutup",
+          "snippet": "Tutup"
+        }
+      ]
+    },
+    "address_phone": {
+      "pass": false,
+      "address_full_count_visible": 4,
+      "address_core_count_visible": 4,
+      "address_core_count_raw": 6,
+      "phone_count_visible": 1,
+      "allowed_phones": [
+        "0812-0000-2222"
+      ],
+      "bad_phones": [],
+      "wa_link_count": 6,
+      "wa_links": [
+        "6281200002222",
+        "6281200002222",
+        "6281200002222",
+        "6281200002222",
+        "6281200002222",
+        "6281200002222"
+      ],
+      "tel_link_count": 0,
+      "bad_link_phones": [],
+      "address_evidence": [
+        {
+          "line": 145,
+          "match": "Jalan Rekaan No. 2, Kota Fiktif",
+          "snippet": "Bengkel Motor Jaya Fiktif siap merawat motor Anda di Jalan Rekaan No. 2, Kota Fiktif. Buka Selasa sampai Sabtu mulai pukul 08.00 hingga 17.00."
+        },
+        {
+          "line": 355,
+          "match": "Jalan Rekaan No. 2, Kota Fiktif",
+          "snippet": "Jalan Rekaan No. 2, Kota Fiktif"
+        },
+        {
+          "line": 394,
+          "match": "Jalan Rekaan No. 2, Kota Fiktif",
+          "snippet": "Jalan Rekaan No. 2, Kota Fiktif"
+        },
+        {
+          "line": 414,
+          "match": "Jalan Rekaan No. 2, Kota Fiktif",
+          "snippet": "Jalan Rekaan No. 2, Kota Fiktif"
+        }
+      ],
+      "phone_evidence": [
+        {
+          "line": 379,
+          "match": "0812-0000-2222",
+          "snippet": "0812-0000-2222"
+        }
+      ]
+    },
+    "invented": {
+      "pass": true,
+      "doc_emails": [],
+      "email_violations": [],
+      "visible_prices": [],
+      "doc_price_marker_count": 0,
+      "bad_phones": [],
+      "bad_link_phones": []
+    },
+    "visible_line_count": 82
+  },
+  "minimal": {
+    "file": "b-minimal.html",
+    "design_plan_line": 4,
+    "facts_line_no": 10,
+    "facts_line": "FACTS: MENU: NONE | WA: NONE | EMAIL: NONE | ADDRESS: NONE | HOURS: NONE | PRIMARY: NONE | ACCENT: NONE -->",
+    "facts": {
+      "MENU": "NONE",
+      "WA": "NONE",
+      "EMAIL": "NONE",
+      "ADDRESS": "NONE",
+      "HOURS": "NONE"
+    },
+    "facts_present_in_design_plan": true,
+    "menu_unavailable": {
+      "pass": true,
+      "belum_tersedia_count": 0,
+      "belum_tersedia_matches": [],
+      "visible_menu_word_matches": []
+    },
+    "days": {
+      "pass": true,
+      "found": [],
+      "allowed": [],
+      "violations": [],
+      "evidence": [],
+      "invented_day_phrase_matches": [
+        {
+          "line": 194,
+          "match": "setiap hari",
+          "snippet": "Mengolah adonan dan memanggang roti langsung setiap hari untuk menjaga kualitas sajian saat dinikmati."
+        }
+      ]
+    },
+    "address_phone": {
+      "pass": true,
+      "address_full_count_visible": 0,
+      "address_core_count_visible": 0,
+      "address_core_count_raw": 0,
+      "phone_count_visible": 0,
+      "allowed_phones": [],
+      "bad_phones": [],
+      "wa_link_count": 0,
+      "wa_links": [],
+      "tel_link_count": 0,
+      "bad_link_phones": [],
+      "address_evidence": [],
+      "phone_evidence": []
+    },
+    "invented": {
+      "pass": true,
+      "doc_emails": [],
+      "email_violations": [],
+      "visible_prices": [],
+      "doc_price_marker_count": 0,
+      "bad_phones": [],
+      "bad_link_phones": []
+    },
+    "visible_line_count": 39
+  }
+}

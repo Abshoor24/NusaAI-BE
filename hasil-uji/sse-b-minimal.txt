@@ -1,0 +1,605 @@
+event: status
+data: {"attempt":1,"elapsed_ms":0,"phase":"connecting"}
+
+: ping
+
+: ping
+
+: ping
+
+event: status
+data: {"attempt":2,"elapsed_ms":15836,"phase":"retrying"}
+
+: ping
+
+: ping
+
+event: status
+data: {"attempt":1,"elapsed_ms":29747,"phase":"fallback"}
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+event: token
+data: {"token":"\u003c!DOCTYPE"}
+
+event: token
+data: {"token":" html\u003e\n\u003chtml lang=\"id\" class=\"scroll-smooth\"\u003e\n\u003chead\u003e\n\u003c!--"}
+
+event: token
+data: {"token":" DESIGN PLAN:\n(1) Konsep: Kedai roti fiktif sederhana bernuansa hangat dengan tata letak editorial"}
+
+event: token
+data: {"token":" minimalis berbasis tipografi.\n(2) none\n(3) Hero asimetris 12-kolom: kolom kiri mem"}
+
+event: token
+data: {"token":"uat judul ringkas dan tombol navigasi; kolom kanan memuat panel tipografis identitas kedai roti.\n(4) ink"}
+
+event: token
+data: {"token":" #2B1D14, paper #F6EFE4, tint #EADBC6, accent"}
+
+event: token
+data: {"token":" #D9733A, deep #9A4A1C; Outfit dan Inter.\n(5) hero, tentang,"}
+
+event: token
+data: {"token":" layanan, penutup.\nFACTS: MENU: NONE | WA: NONE | EMAIL: NONE | ADDRESS: NONE"}
+
+event: token
+data: {"token":" | HOURS: NONE | PRIMARY: NONE | ACCENT: NONE --\u003e\n\u003cmeta charset=\"UTF-8\"\u003e\n"}
+
+event: token
+data: {"token":"\u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"\u003e\n\u003c"}
+
+event: token
+data: {"token":"title\u003eKedai Roti Fiktif\u003c/title\u003e\n\u003cmeta name=\"description\" content=\"Kedai roti fiktif meny"}
+
+event: token
+data: {"token":"ajikan roti pilihan langsung di kedai.\"\u003e\n\u003cmeta name=\"theme-color\" content=\"#2B1D14\"\u003e\n"}
+
+event: token
+data: {"token":"\u003cscript\u003edocument.documentElement.classList.add('js')\u003c/script\u003e\n\u003cscript src=\"https://cdn"}
+
+event: token
+data: {"token":".tailwindcss.com\"\u003e\u003c/script\u003e\n\u003cscript\u003e\ntailwind.config = {\n  theme: {\n    "}
+
+event: token
+data: {"token":"extend: {\n      colors: {\n        ink: '#2B1D14',\n        paper: '#F6E"}
+
+event: token
+data: {"token":"FE4',\n        tint: '#EADBC6',\n        accent: '#D9733A"}
+
+event: token
+data: {"token":"',\n        deep: '#9A4A1C'\n      },\n      fontFamily: {\n        "}
+
+event: token
+data: {"token":"sans: ['Inter', 'sans-serif'],\n        display: ['Outfit', 'sans-serif']\n      "}
+
+event: token
+data: {"token":"}\n    }\n  }\n}\n\u003c/script\u003e\n\u003clink rel=\"preconnect\" href=\"https://fonts.googleapis.com"}
+
+event: token
+data: {"token":"\"\u003e\n\u003clink rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin\u003e\n\u003clink href"}
+
+event: token
+data: {"token":"=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;50"}
+
+event: token
+data: {"token":"0;600;700\u0026family=Outfit:wght@400;500;"}
+
+event: token
+data: {"token":"600;700\u0026display=swap\" rel=\"stylesheet\"\u003e\n\u003cstyle\u003e\n::selection {"}
+
+event: token
+data: {"token":"\n  background-color: #D9733A;\n  color: #2B1D1"}
+
+event: token
+data: {"token":"4;\n}\n.js .reveal {\n  opacity: 0;\n  transform: translateY(2"}
+
+event: token
+data: {"token":"4px);\n  transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,"}
+
+event: token
+data: {"token":"0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s"}
+
+event: token
+data: {"token":");\n}\n.js .reveal.in {\n  opacity: 1;\n  transform: none;"}
+
+event: token
+data: {"token":"\n}\n@keyframes rise {\n  from { opacity: 0; transform: translateY(20px); }\n  to {"}
+
+event: token
+data: {"token":" opacity: 1; transform: none; }\n}\n@keyframes float {\n  0%, 10"}
+
+event: token
+data: {"token":"0% { transform: translateY(0); }\n  50% { transform: translateY(-10px);"}
+
+event: token
+data: {"token":" }\n}\n.rise {\n  animation: rise .8s cubic-bezier(.2,.7,.2,1"}
+
+event: token
+data: {"token":") both;\n  animation-delay: var(--d, 0s);\n}\n.float {\n"}
+
+event: token
+data: {"token":"  animation: float 7s ease-in-out infinite;\n}\n@media (prefers-reduced"}
+
+event: token
+data: {"token":"-motion: reduce) {\n  .js .reveal { opacity: 1; transform: none; transition:"}
+
+event: token
+data: {"token":" none; }\n  .rise, .float { animation: none; }\n}\n\u003c/style\u003e\n\u003c/head\u003e\n\u003c"}
+
+event: token
+data: {"token":"body class=\"bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink min-"}
+
+event: token
+data: {"token":"h-screen flex flex-col\"\u003e\n\n\u003cheader class=\"fixed top-0 inset-x-0 z-"}
+
+event: token
+data: {"token":"40 bg-paper/95 backdrop-blur-md border-b border-black/10\"\u003e\n"}
+
+event: token
+data: {"token":"  \u003cdiv class=\"max-w-6xl mx-auto px-6 h-20 flex items-center justify-between"}
+
+event: token
+data: {"token":"\"\u003e\n    \u003ca href=\"#\" class=\"font-display text-2xl font-bold tracking-tight text-ink"}
+
+event: token
+data: {"token":"\"\u003eKedai Roti Fiktif\u003c/a\u003e\n    \u003cnav class=\"hidden md:flex items-center gap-"}
+
+event: token
+data: {"token":"8\"\u003e\n      \u003ca href=\"#tentang\" class=\"text-sm uppercase tracking-widest font-medium"}
+
+event: token
+data: {"token":" text-ink hover:text-deep transition-colors\"\u003eTentang\u003c/a\u003e\n      \u003ca href=\"#layanan\""}
+
+event: token
+data: {"token":" class=\"text-sm uppercase tracking-widest font-medium text-ink hover:text-deep transition-colors"}
+
+event: token
+data: {"token":"\"\u003eKedai\u003c/a\u003e\n      \u003ca href=\"#layanan\" class=\"rounded-full bg-accent px-6 py-2."}
+
+event: token
+data: {"token":"5 text-sm font-semibold text-ink shadow-sm hover:-translate-y-0.5 active:scale-9"}
+
+event: token
+data: {"token":"5 transition-transform\"\u003eLihat Kedai\u003c/a\u003e\n    \u003c/nav\u003e\n    \u003cbutton id=\"menu-open"}
+
+event: token
+data: {"token":"-btn\" type=\"button\" aria-label=\"Buka menu\" class=\"md:hidden p-2 text-ink\"\u003e"}
+
+event: token
+data: {"token":"\n      \u003csvg class=\"w-6 h-6\" viewBox=\"0 0 24 24"}
+
+event: token
+data: {"token":"\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\""}
+
+event: token
+data: {"token":" stroke-linejoin=\"round\" aria-hidden=\"true\"\u003e\n        \u003cpath d=\"M4 7h1"}
+
+event: token
+data: {"token":"6M4 12h16M4 17h16\"/\u003e\n      \u003c/svg\u003e\n"}
+
+event: token
+data: {"token":"    \u003c/button\u003e\n  \u003c/div\u003e\n\u003c/header\u003e\n\n\u003cdiv id=\"mobile-menu\" class=\"hidden md"}
+
+event: token
+data: {"token":":hidden fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm\"\u003e\n  \u003cdiv class"}
+
+event: token
+data: {"token":"=\"fixed inset-y-0 right-0 w-full max-w-xs bg-paper p-6"}
+
+event: token
+data: {"token":" shadow-xl flex flex-col justify-between\"\u003e\n    \u003cdiv\u003e\n      \u003cdiv class=\"flex items-center justify-"}
+
+event: token
+data: {"token":"between pb-6 border-b border-black/10\"\u003e\n        \u003cspan class=\"font-display text"}
+
+event: token
+data: {"token":"-xl font-bold text-ink\"\u003eKedai Roti Fiktif\u003c/span\u003e\n        \u003cbutton id=\"menu"}
+
+event: token
+data: {"token":"-close-btn\" type=\"button\" aria-label=\"Tutup menu\" class=\"p-2 text-"}
+
+event: token
+data: {"token":"ink\"\u003e\n          \u003csvg class=\"w-6 h-6\" viewBox=\"0 0 24 "}
+
+event: token
+data: {"token":"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\""}
+
+event: token
+data: {"token":"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"\u003e\n            \u003cpath d=\"M6 6"}
+
+event: token
+data: {"token":"l12 12M18 6L6 18\"/\u003e\n          \u003c/svg\u003e\n        \u003c/button\u003e"}
+
+event: token
+data: {"token":"\n      \u003c/div\u003e\n      \u003cnav class=\"mt-8 flex flex-col gap-6\"\u003e\n        \u003ca"}
+
+event: token
+data: {"token":" href=\"#tentang\" class=\"menu-link text-base uppercase tracking-wider font-semibold text-ink\"\u003eTentang\u003c/a\u003e\n        "}
+
+event: token
+data: {"token":"\u003ca href=\"#layanan\" class=\"menu-link text-base uppercase tracking-wider font-semibold text-"}
+
+event: token
+data: {"token":"ink\"\u003eKedai\u003c/a\u003e\n      \u003c/nav\u003e\n    \u003c/div\u003e\n    \u003cdiv\u003e\n      \u003ca href=\"#layanan\" class=\"menu"}
+
+event: token
+data: {"token":"-link block text-center rounded-full bg-accent px-6 py-3 text-base font-semibold text"}
+
+event: token
+data: {"token":"-ink\"\u003eLihat Kedai\u003c/a\u003e\n    \u003c/div\u003e\n  \u003c/div\u003e\n\u003c/div\u003e\n\n\u003cmain class=\"flex-grow"}
+
+event: token
+data: {"token":" pt-20\"\u003e\n  \u003csection id=\"hero\" class=\"relative min-h-[calc(100svh"}
+
+event: token
+data: {"token":"-5rem)] flex items-center py-16 md:py-24 overflow-hidden\" style=\"background-image:"}
+
+event: token
+data: {"token":"radial-gradient(60% 50% at 85% 10%,rgba(21"}
+
+event: token
+data: {"token":"7,115,58,.18),transparent 60%),radial-gradient(50% 40% at"}
+
+event: token
+data: {"token":" 10% 90%,rgba(154,74,28,.10),transparent 60%)"}
+
+event: token
+data: {"token":"\"\u003e\n    \u003cdiv class=\"max-w-6xl mx-auto px-6 w-full\"\u003e\n"}
+
+event: token
+data: {"token":"      \u003cdiv class=\"grid grid-cols-1 lg:grid-cols-12 gap-12 items"}
+
+event: token
+data: {"token":"-center\"\u003e\n        \u003cdiv class=\"lg:col-span-7 flex flex-col items-start\"\u003e\n          \u003cp class"}
+
+event: token
+data: {"token":"=\"rise text-sm font-semibold uppercase tracking-widest text-deep\" style=\"--d:.1s\"\u003eKedai Roti"}
+
+event: token
+data: {"token":"\u003c/p\u003e\n          \u003ch1 class=\"rise mt-4 text-[clamp(2.25rem,4."}
+
+event: token
+data: {"token":"6vw,4.25rem)] font-display font-bold leading-[1.1] tracking-tight text-ink"}
+
+event: token
+data: {"token":"\" style=\"--d:.2s\"\u003e\n            Sajian Roti di \u003cspan class=\"text-deep\"\u003eKedai"}
+
+event: token
+data: {"token":" Roti Fiktif\u003c/span\u003e\n          \u003c/h1\u003e\n          \u003cp class=\"rise mt-6 text-lg md:text-xl text-"}
+
+event: token
+data: {"token":"ink/80 max-w-prose leading-relaxed\" style=\"--d:.3s\"\u003e\n            Ked"}
+
+event: token
+data: {"token":"ai roti yang berfokus pada olahan adonan roti panggang segar untuk dinikmati setiap waktu.\n          \u003c/p\u003e"}
+
+event: token
+data: {"token":"\n          \u003cdiv class=\"rise mt-8 flex flex-wrap gap-4 items-center\" style=\"--d:.4"}
+
+event: token
+data: {"token":"s\"\u003e\n            \u003ca href=\"#layanan\" class=\"rounded-full bg-accent px-8 py-"}
+
+event: token
+data: {"token":"3.5 text-base font-semibold text-ink shadow-sm hover:-translate-y-0.5"}
+
+event: token
+data: {"token":" active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring"}
+
+event: token
+data: {"token":"-deep focus-visible:ring-offset-2\"\u003e\n              Lihat Kedai\n            \u003c/a\u003e\n            \u003ca href"}
+
+event: token
+data: {"token":"=\"#tentang\" class=\"rounded-full border border-ink/20 px-8 py-3.5"}
+
+event: token
+data: {"token":" text-base font-semibold text-ink hover:bg-black/5 hover:-translate-y-0."}
+
+event: token
+data: {"token":"5 active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2"}
+
+event: token
+data: {"token":" focus-visible:ring-ink focus-visible:ring-offset-2\"\u003e\n              Tentang Kami\n            \u003c/a\u003e\n          \u003c/div\u003e"}
+
+event: token
+data: {"token":"\n        \u003c/div\u003e\n\n        \u003cdiv class=\"lg:col-span-5 relative\"\u003e\n          \u003cdiv class=\""}
+
+event: token
+data: {"token":"absolute -top-4 -right-4 inset-0 rounded-3xl bg-tint/60 transform rotate-1 pointer-events"}
+
+event: token
+data: {"token":"-none\" aria-hidden=\"true\"\u003e\u003c/div\u003e\n          \u003cdiv class=\"relative overflow-hidden rounded-3xl"}
+
+: ping
+
+event: token
+data: {"token":" bg-tint border border-black/10 p-8 md:p-12 min-h-[2"}
+
+event: token
+data: {"token":"2rem] flex flex-col justify-center shadow-sm\"\u003e\n            \u003cdiv class=\"float flex flex-col items-center"}
+
+event: token
+data: {"token":" justify-center text-center\"\u003e\n              \u003cspan class=\"text-xs uppercase tracking-widest text-deep font-semibold\"\u003e"}
+
+event: token
+data: {"token":"Identitas Usaha\u003c/span\u003e\n              \u003cp class=\"mt-4 font-display text-4xl md:text"}
+
+event: token
+data: {"token":"-5xl font-bold tracking-tight text-ink\"\u003e\n                Kedai Roti\n              \u003c/p\u003e"}
+
+event: token
+data: {"token":"\n              \u003cdiv class=\"mt-4 h-1 w-12 bg-deep rounded-full\"\u003e\u003c/div\u003e\n              \u003cp class"}
+
+event: token
+data: {"token":"=\"mt-4 text-sm text-ink/80 max-w-xs leading-relaxed\"\u003e\n                Men"}
+
+event: token
+data: {"token":"yediakan aneka sajian roti pilihan untuk para penikmat roti.\n              \u003c/p\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e"}
+
+event: token
+data: {"token":"\n        \u003c/div\u003e\n      \u003c/div\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\n  \u003csection id=\"tentang\" class"}
+
+event: token
+data: {"token":"=\"scroll-mt-24 py-20 md:py-32 bg-tint border-y border"}
+
+event: token
+data: {"token":"-black/10\"\u003e\n    \u003cdiv class=\"max-w-6xl mx-auto px-6\"\u003e\n      \u003c"}
+
+event: token
+data: {"token":"div class=\"max-w-3xl\"\u003e\n        \u003cdiv class=\"reveal\" style=\"--d:.08"}
+
+event: token
+data: {"token":"s\"\u003e\n          \u003cp class=\"text-sm font-semibold uppercase tracking-widest text-deep\"\u003eProfil"}
+
+event: token
+data: {"token":" Singkat\u003c/p\u003e\n          \u003ch2 class=\"mt-3 font-display text-3xl md:text-5"}
+
+event: token
+data: {"token":"xl font-bold tracking-tight text-ink\"\u003eTentang Kedai\u003c/h2\u003e\n        \u003c/div\u003e\n        \u003cdiv class=\"reveal mt-8"}
+
+event: token
+data: {"token":" space-y-6 text-lg leading-relaxed text-ink/90\" style=\"--d:.16s\"\u003e"}
+
+event: token
+data: {"token":"\n          \u003cp\u003e\n            Kedai Roti Fiktif merupakan usaha kedai roti yang menyajikan berbagai pilihan"}
+
+event: token
+data: {"token":" roti hangat untuk memenuhi kebutuhan harian para pencinta roti.\n          \u003c/p\u003e\n          \u003cp\u003e\n            Kami meng"}
+
+event: token
+data: {"token":"utamakan pembuatan roti secara langsung dengan bahan baku bermutu untuk menghadirkan cita rasa adonan yang lembut dan nikmat disant"}
+
+event: token
+data: {"token":"ap langsung di kedai.\n          \u003c/p\u003e\n        \u003c/div\u003e\n      \u003c/div\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\n  "}
+
+event: token
+data: {"token":"\u003csection id=\"layanan\" class=\"scroll-mt-24 py-20 md:py-3"}
+
+event: token
+data: {"token":"2 bg-ink text-paper relative\" style=\"background-image:linear-gradient(rgba(255,"}
+
+event: token
+data: {"token":"255,255,.06) 1px,transparent 1px),linear-gradient("}
+
+event: token
+data: {"token":"90deg,rgba(255,255,255,.06) 1px"}
+
+event: token
+data: {"token":",transparent 1px);background-size:48px 48px\"\u003e\n    \u003cdiv class=\""}
+
+event: token
+data: {"token":"max-w-6xl mx-auto px-6\"\u003e\n      \u003cdiv class=\"reveal max-w-2"}
+
+event: token
+data: {"token":"xl\" style=\"--d:.08s\"\u003e\n        \u003cp class=\"text-sm font-semibold uppercase"}
+
+event: token
+data: {"token":" tracking-widest text-accent\"\u003eFokus Usaha\u003c/p\u003e\n        \u003ch2 class=\"mt-3 font-display text"}
+
+event: token
+data: {"token":"-3xl md:text-5xl font-bold tracking-tight text-paper\"\u003eAktivitas Kedai\u003c/h2\u003e\n        \u003cp"}
+
+event: token
+data: {"token":" class=\"mt-4 text-lg text-paper/85\"\u003e\n          Berikut adalah kegiatan utama yang kami jal"}
+
+event: token
+data: {"token":"ankan dalam mengelola sajian roti di kedai.\n        \u003c/p\u003e\n      \u003c/div\u003e\n\n      \u003cdiv class=\"mt"}
+
+event: token
+data: {"token":"-12 divide-y divide-white/10 border-y border-white/10\"\u003e\n        \u003cdiv class"}
+
+event: token
+data: {"token":"=\"reveal\" style=\"--d:.12s\"\u003e\n          \u003cdiv class=\"py-8 grid grid-cols-1 md:"}
+
+event: token
+data: {"token":"grid-cols-12 gap-4 items-baseline transition-transform duration-300 hover:-translate-"}
+
+event: token
+data: {"token":"y-1\"\u003e\n            \u003cspan class=\"font-display text-2xl font-bold text-accent tabular"}
+
+event: token
+data: {"token":"-nums md:col-span-2\"\u003e01\u003c/span\u003e\n            \u003cdiv class=\"md:col-span"}
+
+event: token
+data: {"token":"-4\"\u003e\n              \u003ch3 class=\"text-xl font-bold text-paper\"\u003ePemanggangan Roti\u003c/h3\u003e\n            "}
+
+event: token
+data: {"token":"\u003c/div\u003e\n            \u003cdiv class=\"md:col-span-6\"\u003e\n              \u003cp class=\"text-base"}
+
+event: token
+data: {"token":" text-paper/80 leading-relaxed\"\u003e\n                Mengolah adonan dan memanggang roti langsung setiap hari untuk"}
+
+event: token
+data: {"token":" menjaga kualitas sajian saat dinikmati.\n              \u003c/p\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n"}
+
+event: token
+data: {"token":"        \u003cdiv class=\"reveal\" style=\"--d:.18s\"\u003e\n          \u003cdiv class=\"py-"}
+
+event: token
+data: {"token":"8 grid grid-cols-1 md:grid-cols-12 gap-4 items-baseline transition-transform"}
+
+event: token
+data: {"token":" duration-300 hover:-translate-y-1\"\u003e\n            \u003cspan class=\"font-display text-"}
+
+event: token
+data: {"token":"2xl font-bold text-accent tabular-nums md:col-span-2\"\u003e02\u003c/span\u003e\n            "}
+
+event: token
+data: {"token":"\u003cdiv class=\"md:col-span-4\"\u003e\n              \u003ch3 class=\"text-xl font-"}
+
+event: token
+data: {"token":"bold text-paper\"\u003ePenyajian di Kedai\u003c/h3\u003e\n            \u003c/div\u003e\n            \u003cdiv class=\"md:col-span-"}
+
+event: token
+data: {"token":"6\"\u003e\n              \u003cp class=\"text-base text-paper/80 leading-relaxed\"\u003e\n                Men"}
+
+event: token
+data: {"token":"yediakan tempat yang nyaman bagi para pengunjung yang ingin bersantai sambil menikmati hidangan roti hangat.\n              \u003c/p\u003e"}
+
+event: token
+data: {"token":"\n            \u003c/div\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n        \u003cdiv class=\"reveal\" style=\"--d:.24"}
+
+event: token
+data: {"token":"s\"\u003e\n          \u003cdiv class=\"py-8 grid grid-cols-1 md:grid-cols-1"}
+
+event: token
+data: {"token":"2 gap-4 items-baseline transition-transform duration-300 hover:-translate-y-1\"\u003e\n"}
+
+event: token
+data: {"token":"            \u003cspan class=\"font-display text-2xl font-bold text-accent tabular-nums md:col"}
+
+event: token
+data: {"token":"-span-2\"\u003e03\u003c/span\u003e\n            \u003cdiv class=\"md:col-span-4\"\u003e\n              "}
+
+event: token
+data: {"token":"\u003ch3 class=\"text-xl font-bold text-paper\"\u003eVariasi Roti Segar\u003c/h3\u003e\n            \u003c/div\u003e\n"}
+
+event: token
+data: {"token":"            \u003cdiv class=\"md:col-span-6\"\u003e\n              \u003cp class=\"text-base text-"}
+
+event: token
+data: {"token":"paper/80 leading-relaxed\"\u003e\n                Menghadirkan aneka bentuk serta isian roti manis maupun gurih sesuai"}
+
+event: token
+data: {"token":" selera para penikmat adonan roti.\n              \u003c/p\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n"}
+
+event: token
+data: {"token":"      \u003c/div\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\n  \u003csection id=\"penutup\" class=\"py-2"}
+
+event: token
+data: {"token":"0 md:py-28 bg-paper\"\u003e\n    \u003cdiv class=\"max-w-6xl mx-auto px-"}
+
+event: token
+data: {"token":"6\"\u003e\n      \u003cdiv class=\"reveal rounded-3xl bg-tint border border-black/10 p-8"}
+
+event: token
+data: {"token":" md:p-14 text-center max-w-3xl mx-auto\" style=\"--d:."}
+
+event: token
+data: {"token":"08s\"\u003e\n        \u003cp class=\"text-sm font-semibold uppercase tracking-widest text-deep"}
+
+event: token
+data: {"token":"\"\u003eSajian Berkala\u003c/p\u003e\n        \u003ch2 class=\"mt-3 font-display text-3"}
+
+event: token
+data: {"token":"xl md:text-4xl font-bold tracking-tight text-ink\"\u003e\n          Kedai Roti F"}
+
+event: token
+data: {"token":"iktif\n        \u003c/h2\u003e\n        \u003cp class=\"mt-4 text-base md:text-lg text-"}
+
+event: token
+data: {"token":"ink/80 leading-relaxed\"\u003e\n          Tempat menikmati olahan roti hangat dengan adonan lembut yang siap menem"}
+
+event: token
+data: {"token":"ani hari Anda.\n        \u003c/p\u003e\n        \u003cdiv class=\"mt-8\"\u003e\n          \u003ca href=\"#"}
+
+event: token
+data: {"token":"hero\" class=\"inline-block rounded-full bg-accent px-8 py-3 text-base font-semibold text-ink shadow"}
+
+event: token
+data: {"token":"-sm hover:-translate-y-0.5 active:scale-95 transition-transform\"\u003e\n            Kem"}
+
+event: token
+data: {"token":"bali ke Atas\n          \u003c/a\u003e\n        \u003c/div\u003e\n      \u003c/div\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\u003c/main"}
+
+event: token
+data: {"token":"\u003e\n\n\u003cfooter class=\"bg-ink text-paper py-8 border-t border-white/10\"\u003e\n  "}
+
+event: token
+data: {"token":"\u003cdiv class=\"max-w-6xl mx-auto px-6 flex flex-col md:flex-"}
+
+event: token
+data: {"token":"row items-center justify-between gap-4 text-sm text-paper/70\"\u003e\n    \u003cp"}
+
+event: token
+data: {"token":" class=\"font-display font-semibold text-paper text-base\"\u003eKedai Roti Fiktif\u003c/p\u003e\n    "}
+
+event: token
+data: {"token":"\u003cp\u003e\u0026copy; \u003cspan id=\"year\"\u003e\u003c/span\u003e Kedai Roti Fiktif. Hak cipta dilindungi"}
+
+event: token
+data: {"token":".\u003c/p\u003e\n  \u003c/div\u003e\n\u003c/footer\u003e\n\n\u003cscript\u003e\ndocument.getElementById('year').textContent = new Date().getFullYear();\n\nconst"}
+
+event: token
+data: {"token":" menu = document.getElementById('mobile-menu');\nconst menuOpenBtn = document.getElementById('menu-open-"}
+
+event: token
+data: {"token":"btn');\nconst menuCloseBtn = document.getElementById('menu-close-btn');\nconst menuLinks = document."}
+
+event: token
+data: {"token":"querySelectorAll('.menu-link');\n\nfunction setMenu(open) {\n  menu.classList.toggle('hidden', !open);\n  "}
+
+event: token
+data: {"token":"document.body.classList.toggle('overflow-hidden', open);\n}\n\nif (menuOpenBtn) menu"}
+
+event: token
+data: {"token":"OpenBtn.addEventListener('click', () =\u003e setMenu(true));\nif (menuCloseBtn) menuCloseBtn"}
+
+event: token
+data: {"token":".addEventListener('click', () =\u003e setMenu(false));\nmenu.addEventListener('click', (e) =\u003e {"}
+
+event: token
+data: {"token":"\n  if (e.target === menu) setMenu(false);\n});\nmenuLinks.forEach(link =\u003e"}
+
+event: token
+data: {"token":" {\n  link.addEventListener('click', () =\u003e setMenu(false));\n});\nwindow.addEventListener('keydown', ("}
+
+event: token
+data: {"token":"e) =\u003e {\n  if (e.key === 'Escape' \u0026\u0026 !menu.classList.contains('hidden"}
+
+event: token
+data: {"token":"')) {\n    setMenu(false);\n  }\n});\n\nconst observer = new IntersectionObserver((entries)"}
+
+event: token
+data: {"token":" =\u003e {\n  entries.forEach(entry =\u003e {\n    if (entry.isIntersecting) {\n      "}
+
+event: token
+data: {"token":"entry.target.classList.add('in');\n      observer.unobserve(entry.target);\n    }"}
+
+event: token
+data: {"token":"\n  });\n}, { threshold: 0.15 });\n\ndocument.querySelectorAll('.reveal').forEach(el"}
+
+event: token
+data: {"token":" =\u003e observer.observe(el));\n\u003c/script\u003e\n\u003c/body\u003e\n\u003c/html\u003e"}
+
+event: done
+data: {"project_id":"b29b5e51-6b28-4e8f-b32c-cb7ea980ca61","version_id":"efb6e05f-c48d-427c-88c7-985ed1465bd1","version_number":1}
+

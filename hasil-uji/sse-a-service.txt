@@ -1,0 +1,1071 @@
+event: status
+data: {"attempt":1,"elapsed_ms":0,"phase":"connecting"}
+
+event: status
+data: {"attempt":2,"elapsed_ms":3508,"phase":"retrying"}
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+: ping
+
+event: status
+data: {"attempt":1,"elapsed_ms":40909,"phase":"fallback"}
+
+event: token
+data: {"token":"\u003c!DOCTYPE"}
+
+event: token
+data: {"token":" html\u003e\n\u003chtml lang=\"id\" class=\"scroll-smooth\"\u003e\n\u003chead\u003e\n\u003c!--"}
+
+event: token
+data: {"token":" DESIGN PLAN:\nBengkel motor presisi dengan pendekatan modern, bersih, dan transparan untuk perawatan kendaraan roda dua.\nWidget"}
+
+event: token
+data: {"token":": kalkulator pemilih layanan interaktif yang menyusun draf pesan WhatsApp secara otomatis.\nHero asimetris 12-"}
+
+event: token
+data: {"token":"kolom: sisi kiri pesan utama dan aksi, sisi kanan panel jam buka operasional Selasa-Sabtu dengan status waktu"}
+
+event: token
+data: {"token":" nyata.\nPalet: ink #10223F, paper #F7F3EC, tint"}
+
+event: token
+data: {"token":" #E8E0D2, accent #E0A93B, deep #8A5A0"}
+
+event: token
+data: {"token":"0. Tipografi: Outfit dan Inter.\nSections: Beranda, Layanan, Jam Operasional, Kontak."}
+
+event: token
+data: {"token":"\nFACTS: MENU: NONE | WA: 0812-0000-2222"}
+
+event: token
+data: {"token":" | EMAIL: NONE | ADDRESS: Jalan Rekaan No. 2, Kota Fiktif | HOURS: Selasa-Sabtu 08"}
+
+event: token
+data: {"token":".00-17.00 | PRIMARY: #10223F | ACCENT: #"}
+
+event: token
+data: {"token":"E0A93B\n--\u003e\n\u003cmeta charset=\"UTF-8\"\u003e\n\u003cmeta name=\"viewport\""}
+
+event: token
+data: {"token":" content=\"width=device-width, initial-scale=1.0\"\u003e\n\u003ctitle\u003eBengkel Motor Jaya"}
+
+event: token
+data: {"token":" Fiktif - Servis, Ganti Oli \u0026 Tune Up\u003c/title\u003e\n\u003cmeta name=\"description\" content=\"Bengkel Motor Jaya"}
+
+event: token
+data: {"token":" Fiktif melayani servis mesin, ganti oli, dan tune up di Jalan Rekaan No. 2, Kota Fiktif"}
+
+event: token
+data: {"token":". Buka Selasa sampai Sabtu.\"\u003e\n\u003cmeta name=\"theme-color\" content=\"#10223F"}
+
+event: token
+data: {"token":"\"\u003e\n\n\u003cscript\u003edocument.documentElement.classList.add('js')\u003c/script\u003e\n\u003cscript src=\"https://cdn"}
+
+event: token
+data: {"token":".tailwindcss.com\"\u003e\u003c/script\u003e\n\u003cscript\u003e\ntailwind.config = {\n  theme: {\n    "}
+
+event: token
+data: {"token":"extend: {\n      colors: {\n        ink: '#10223F',\n        paper: '#"}
+
+event: token
+data: {"token":"F7F3EC',\n        tint: '#E8E0D2',\n        accent: '#E"}
+
+event: token
+data: {"token":"0A93B',\n        deep: '#8A5A00'\n      },\n      font"}
+
+event: token
+data: {"token":"Family: {\n        sans: ['Inter', 'sans-serif'],\n        display: ['Outfit', 'sans-serif']\n      "}
+
+event: token
+data: {"token":"}\n    }\n  }\n}\n\u003c/script\u003e\n\n\u003clink rel=\"preconnect\" href=\"https://"}
+
+event: token
+data: {"token":"fonts.googleapis.com\"\u003e\n\u003clink rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin\u003e\n\u003c"}
+
+event: token
+data: {"token":"link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;"}
+
+event: token
+data: {"token":"500;600;700\u0026family=Outfit:wght@400;50"}
+
+event: token
+data: {"token":"0;600;700\u0026display=swap\" rel=\"stylesheet\"\u003e\n\n\u003cstyle\u003e\n::"}
+
+event: token
+data: {"token":"selection {\n  background-color: #E0A93B;\n  color: #102"}
+
+event: token
+data: {"token":"23F;\n}\n.js .reveal {\n  opacity: 0;\n  transform: translateY"}
+
+event: token
+data: {"token":"(24px);\n  transition: opacity .7s cubic-bezier(.2,.7,.2,1"}
+
+event: token
+data: {"token":") var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1)"}
+
+event: token
+data: {"token":" var(--d,0s);\n}\n.js .reveal.in {\n  opacity: 1;"}
+
+event: token
+data: {"token":"\n  transform: none;\n}\n@keyframes rise {\n  from { opacity: 0; transform: translateY(20px"}
+
+event: token
+data: {"token":"); }\n  to { opacity: 1; transform: none; }\n}\n@keyframes float {\n  0"}
+
+event: token
+data: {"token":"%, 100% { transform: translateY(0); }\n  50% { transform: translateY(-"}
+
+event: token
+data: {"token":"10px); }\n}\n.rise {\n  animation: rise .8s cubic-bezier(.2,.7,.2,"}
+
+event: token
+data: {"token":"1) both;\n  animation-delay: var(--d, 0s);\n}\n.float {"}
+
+event: token
+data: {"token":"\n  animation: float 7s ease-in-out infinite;\n}\n@media (prefers-"}
+
+event: token
+data: {"token":"reduced-motion: reduce) {\n  .js .reveal { opacity: 1; transform: none; transition"}
+
+event: token
+data: {"token":": none; }\n  .rise, .float { animation: none; }\n}\n\u003c/style\u003e\n\u003c/head\u003e\n\u003c"}
+
+event: token
+data: {"token":"body class=\"bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink"}
+
+event: token
+data: {"token":"\"\u003e\n\n\u003c!-- Navigasi --\u003e\n\u003cheader class=\"fixed top-0 inset-x-0 z-40 bg"}
+
+event: token
+data: {"token":"-paper/95 backdrop-blur-md border-b border-black/10\"\u003e\n  \u003cdiv"}
+
+event: token
+data: {"token":" class=\"max-w-6xl mx-auto px-6 h-20 flex items-center justify-"}
+
+event: token
+data: {"token":"between\"\u003e\n    \u003ca href=\"#\" class=\"font-display font-bold text-xl tracking-tight text-ink\"\u003e"}
+
+event: token
+data: {"token":"\n      Bengkel Motor Jaya Fiktif\n    \u003c/a\u003e\n    \n    \u003cnav class=\"hidden md:flex"}
+
+event: token
+data: {"token":" items-center gap-8\"\u003e\n      \u003ca href=\"#layanan\" class=\"text-sm font-medium text-ink"}
+
+event: token
+data: {"token":"/80 hover:text-ink transition-colors\"\u003eLayanan\u003c/a\u003e\n      \u003ca href=\"#jam-buka"}
+
+event: token
+data: {"token":"\" class=\"text-sm font-medium text-ink/80 hover:text-ink transition-colors\"\u003e"}
+
+event: token
+data: {"token":"Jam Buka\u003c/a\u003e\n      \u003ca href=\"#kontak\" class=\"text-sm font-medium text-ink/8"}
+
+event: token
+data: {"token":"0 hover:text-ink transition-colors\"\u003eKontak\u003c/a\u003e\n    \u003c/nav\u003e\n\n    \u003cdiv class=\"hidden"}
+
+event: token
+data: {"token":" md:flex items-center\"\u003e\n      \u003ca href=\"https://wa.me/628120"}
+
+event: token
+data: {"token":"0002222?text=Halo%20Bengkel%20Motor%20J"}
+
+event: token
+data: {"token":"aya%20Fiktif,%20saya%20ingin%20tanya%20layanan.\" target"}
+
+event: token
+data: {"token":"=\"_blank\" rel=\"noopener noreferrer\" class=\"inline-flex items-center justify-center px-6 py-2.5 rounded"}
+
+event: token
+data: {"token":"-full bg-accent text-ink font-semibold text-sm transition-transform duration-200 hover:-translate-"}
+
+event: token
+data: {"token":"y-0.5 active:scale-95 shadow-sm\"\u003e\n        Pesan lewat WhatsApp\n      \u003c/a\u003e\n    \u003c/div\u003e"}
+
+event: token
+data: {"token":"\n\n    \u003cbutton type=\"button\" onclick=\"setMenu(true)\" class=\"md:hidden p-2 text-ink\""}
+
+event: token
+data: {"token":" aria-label=\"Buka menu navigasi\"\u003e\n      \u003csvg viewBox=\"0 0 24 24\""}
+
+event: token
+data: {"token":" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke"}
+
+event: token
+data: {"token":"-linejoin=\"round\" class=\"w-6 h-6\" aria-hidden=\"true\"\u003e\n        \u003cpath"}
+
+event: token
+data: {"token":" d=\"M4 7h16M4 12h16M4 17h1"}
+
+event: token
+data: {"token":"6\"/\u003e\n      \u003c/svg\u003e\n    \u003c/button\u003e\n  \u003c/div\u003e\n\u003c/header\u003e\n\n\u003c!-- Menu Seluler --\u003e\n\u003cdiv"}
+
+event: token
+data: {"token":" id=\"mobile-menu\" class=\"hidden md:hidden fixed inset-0 z-50 bg-paper/"}
+
+event: token
+data: {"token":"95 backdrop-blur-lg flex flex-col p-6\"\u003e\n  \u003cdiv class=\"flex items-center"}
+
+event: token
+data: {"token":" justify-between mb-8\"\u003e\n    \u003cspan class=\"font-display font-bold text-xl text-ink\"\u003eBengkel Motor"}
+
+event: token
+data: {"token":" Jaya Fiktif\u003c/span\u003e\n    \u003cbutton type=\"button\" onclick=\"setMenu(false)\" class=\"p-"}
+
+event: token
+data: {"token":"2 text-ink\" aria-label=\"Tutup menu navigasi\"\u003e\n      \u003csvg viewBox=\"0 0"}
+
+event: token
+data: {"token":" 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\""}
+
+event: token
+data: {"token":" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"w-6 h-6\" aria-hidden"}
+
+event: token
+data: {"token":"=\"true\"\u003e\n        \u003cpath d=\"M6 6l12 12M18 6L"}
+
+event: token
+data: {"token":"6 18\"/\u003e\n      \u003c/svg\u003e\n    \u003c/button\u003e\n  \u003c/div\u003e\n  \u003cnav class=\"flex"}
+
+event: token
+data: {"token":" flex-col gap-6 text-xl font-medium\"\u003e\n    \u003ca href=\"#layanan\" onclick=\"setMenu(false"}
+
+event: token
+data: {"token":")\" class=\"py-2 text-ink border-b border-black/5\"\u003eLayanan\u003c/a\u003e\n    \u003ca href=\"#jam"}
+
+event: token
+data: {"token":"-buka\" onclick=\"setMenu(false)\" class=\"py-2 text-ink border-b border-"}
+
+event: token
+data: {"token":"black/5\"\u003eJam Buka\u003c/a\u003e\n    \u003ca href=\"#kontak\" onclick=\"setMenu(false)\""}
+
+event: token
+data: {"token":" class=\"py-2 text-ink border-b border-black/5\"\u003eKontak\u003c/a\u003e\n  \u003c/nav"}
+
+event: token
+data: {"token":"\u003e\n  \u003cdiv class=\"mt-auto pt-6\"\u003e\n    \u003ca href=\"https://wa.me"}
+
+event: token
+data: {"token":"/6281200002222?text=Halo%20Bengkel%"}
+
+event: token
+data: {"token":"20Motor%20Jaya%20Fiktif,%20saya%20ingin%20tanya%"}
+
+event: token
+data: {"token":"20layanan.\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"w-full inline-flex items-"}
+
+event: token
+data: {"token":"center justify-center px-8 py-3.5 rounded-full bg-accent text-ink font-semibold text"}
+
+event: token
+data: {"token":"-base shadow-sm\"\u003e\n      Pesan lewat WhatsApp\n    \u003c/a\u003e\n  \u003c/div\u003e\n\u003c/div\u003e\n\n\u003cmain\u003e"}
+
+event: token
+data: {"token":"\n  \u003c!-- Beranda (Hero) --\u003e\n  \u003csection class=\"relative pt-32 pb-20 md:pt"}
+
+event: token
+data: {"token":"-40 md:pb-28 overflow-hidden\" style=\"background-image:radial-gradient(60%"}
+
+: ping
+
+event: token
+data: {"token":" 50% at 85% 10%,rgba(224,169,5"}
+
+event: token
+data: {"token":"9,.2),transparent 60%),radial-gradient(50% 40% at 10% 90"}
+
+event: token
+data: {"token":"%,rgba(16,34,63,.08),transparent 60%)\"\u003e\n    \u003cdiv class"}
+
+event: token
+data: {"token":"=\"max-w-6xl mx-auto px-6\"\u003e\n      \u003cdiv class=\"grid grid-cols"}
+
+event: token
+data: {"token":"-1 lg:grid-cols-12 gap-12 items-center\"\u003e\n        \n        \u003c!-- Kolom T"}
+
+event: token
+data: {"token":"eks Hero (7 Kolom) --\u003e\n        \u003cdiv class=\"lg:col-span-7 flex flex-"}
+
+event: token
+data: {"token":"col items-start\"\u003e\n          \u003cp class=\"rise text-sm uppercase tracking-widest text-deep font"}
+
+event: token
+data: {"token":"-semibold\" style=\"--d:.1s\"\u003e\n            Bengkel Motor di Kota Fiktif\n          \u003c/p\u003e\n"}
+
+event: token
+data: {"token":"          \u003ch1 class=\"rise mt-4 text-[clamp(2.25rem,4.4vw,4"}
+
+event: token
+data: {"token":".25rem)] font-display font-bold leading-[1.15] text-ink tracking-tight\""}
+
+event: token
+data: {"token":" style=\"--d:.2s\"\u003e\n            Servis motor dengan \u003cspan class=\"text-deep\"\u003etepat dan tel"}
+
+event: token
+data: {"token":"iti\u003c/span\u003e\n          \u003c/h1\u003e\n          \u003cp class=\"rise mt-6 text-lg leading-relaxed text-ink/"}
+
+event: token
+data: {"token":"80 max-w-xl\" style=\"--d:.3s\"\u003e\n            Bengkel Motor Jaya Fikt"}
+
+event: token
+data: {"token":"if siap merawat motor Anda di Jalan Rekaan No. 2, Kota Fiktif. Buka Selasa sampai Sabtu mulai"}
+
+event: token
+data: {"token":" pukul 08.00 hingga 17.00.\n          \u003c/p\u003e\n          \u003cdiv class"}
+
+event: token
+data: {"token":"=\"rise mt-8 flex flex-wrap gap-4\" style=\"--d:.4s\"\u003e\n            \u003ca"}
+
+event: token
+data: {"token":" href=\"https://wa.me/6281200002222?text="}
+
+event: token
+data: {"token":"Halo%20Bengkel%20Motor%20Jaya%20Fiktif,%20"}
+
+event: token
+data: {"token":"saya%20ingin%20tanya%20layanan.\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"inline-"}
+
+event: token
+data: {"token":"flex items-center justify-center px-8 py-3.5 rounded-full bg-accent text-ink"}
+
+event: token
+data: {"token":" font-semibold text-base transition-transform duration-200 hover:-translate-y-0.5 active"}
+
+event: token
+data: {"token":":scale-95 shadow-sm\"\u003e\n              Pesan lewat WhatsApp\n            \u003c/a\u003e\n            \u003ca href=\"#layanan"}
+
+event: token
+data: {"token":"\" class=\"inline-flex items-center justify-center px-8 py-3.5 rounded-full bg"}
+
+event: token
+data: {"token":"-tint text-ink font-semibold text-base transition-transform duration-200 hover:-translate-y"}
+
+event: token
+data: {"token":"-0.5 active:scale-95 ring-1 ring-black/10\"\u003e\n              Lihat Layanan\n            \u003c/a\u003e"}
+
+event: token
+data: {"token":"\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n        \u003c!-- Kolom Panel Hero (5 Kolom) --\u003e\n        \u003cdiv class"}
+
+event: token
+data: {"token":"=\"lg:col-span-5 relative\"\u003e\n          \u003c!-- Lapisan latar belakang dekoratif --\u003e\n          \u003cdiv class"}
+
+event: token
+data: {"token":"=\"absolute -top-3 -right-3 w-full h-full rounded-3xl bg-tint/60 border border-"}
+
+event: token
+data: {"token":"black/5\" aria-hidden=\"true\"\u003e\u003c/div\u003e\n          \n          \u003c!-- Panel Utama Jam Buka --\u003e\n          \u003cdiv class=\""}
+
+event: token
+data: {"token":"relative bg-ink text-paper rounded-3xl p-8 md:p-10 shadow-lg ring-1 ring-white"}
+
+event: token
+data: {"token":"/10 overflow-hidden flex flex-col justify-center items-center min-h-[22rem]\"\u003e\n            \u003c!--"}
+
+event: token
+data: {"token":" Aksen Garis \u0026 Lingkaran Geometris Halus --\u003e\n            \u003cdiv class=\"absolute inset-0"}
+
+event: token
+data: {"token":" flex items-center justify-center pointer-events-none select-none opacity-10\" aria-hidden=\"true"}
+
+event: token
+data: {"token":"\"\u003e\n              \u003cdiv class=\"float w-64 h-64 rounded-full border border-accent\"\u003e\u003c/div\u003e\n            \u003c/div\u003e\n\n"}
+
+event: token
+data: {"token":"            \u003cdiv class=\"relative text-center z-10\"\u003e\n              \u003cp class=\"text-sm uppercase"}
+
+event: token
+data: {"token":" tracking-widest text-accent font-medium\"\u003eJam Operasional\u003c/p\u003e\n              \u003cp class=\"mt-4"}
+
+event: token
+data: {"token":" text-5xl md:text-6xl font-display font-bold tabular-nums leading-none whitespace-nowrap text-white"}
+
+event: token
+data: {"token":"\"\u003e08.00\u003c/p\u003e\n              \u003cp class=\"my-3 text-sm uppercase tracking-"}
+
+event: token
+data: {"token":"widest text-paper/70 font-sans\"\u003esampai\u003c/p\u003e\n              \u003cp class=\"text-5xl md:"}
+
+event: token
+data: {"token":"text-6xl font-display font-bold tabular-nums leading-none whitespace-nowrap text-white\"\u003e"}
+
+event: token
+data: {"token":"17.00\u003c/p\u003e\n              \u003cdiv class=\"mt-6\"\u003e\n                \u003cspan id=\""}
+
+event: token
+data: {"token":"hero-status\" class=\"px-4 py-1.5 rounded-full font-semibold text-base\"\u003e"}
+
+event: token
+data: {"token":"Memeriksa status...\u003c/span\u003e\n              \u003c/div\u003e\n              \u003cp class=\"mt-4 text-xs tracking-wider uppercase"}
+
+event: token
+data: {"token":" text-paper/60\"\u003eSelasa — Sabtu\u003c/p\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n      \u003c/div\u003e\n    "}
+
+event: token
+data: {"token":"\u003c/div\u003e\n  \u003c/section\u003e\n\n  \u003c!-- Layanan --\u003e\n  \u003csection id=\"layanan\" class=\"py-2"}
+
+event: token
+data: {"token":"0 md:py-32 bg-tint border-y border-black/10 scroll-mt-2"}
+
+event: token
+data: {"token":"0\"\u003e\n    \u003cdiv class=\"max-w-6xl mx-auto px-6\"\u003e\n      \n      "}
+
+event: token
+data: {"token":"\u003cdiv class=\"flex flex-col md:flex-row md:items-end justify-between mb-16 gap-4"}
+
+event: token
+data: {"token":"\"\u003e\n        \u003cdiv\u003e\n          \u003cspan class=\"text-sm uppercase tracking-widest text-deep font-semibold\"\u003e"}
+
+event: token
+data: {"token":"Pilihan Perawatan\u003c/span\u003e\n          \u003ch2 class=\"mt-3 text-3xl md:text-5xl font-"}
+
+event: token
+data: {"token":"display font-bold tracking-tight text-ink\"\u003eDaftar Layanan\u003c/h2\u003e\n        \u003c/div\u003e\n        \u003cp class=\"text-"}
+
+event: token
+data: {"token":"ink/80 max-w-md text-base leading-relaxed\"\u003e\n          Tiga layanan perawatan motor yang tersedia"}
+
+event: token
+data: {"token":" di bengkel kami untuk menjaga kinerja kendaraan Anda.\n        \u003c/p\u003e\n      \u003c/div\u003e\n\n      \u003cdiv class=\"grid grid"}
+
+event: token
+data: {"token":"-cols-1 md:grid-cols-3 gap-6\"\u003e\n        \n        \u003c!-- Layanan 0"}
+
+event: token
+data: {"token":"1 --\u003e\n        \u003cdiv class=\"reveal\" style=\"--d:.08s\"\u003e\n          \u003cdiv class"}
+
+event: token
+data: {"token":"=\"bg-paper rounded-2xl p-8 border border-black/10 h-full flex flex-col justify-"}
+
+event: token
+data: {"token":"between transition-transform duration-300 hover:-translate-y-1\"\u003e\n            \u003cdiv\u003e\n              \u003cspan"}
+
+event: token
+data: {"token":" class=\"text-3xl font-display font-bold text-deep tabular-nums\"\u003e01\u003c/span\u003e\n              \u003ch3 class"}
+
+event: token
+data: {"token":"=\"mt-4 text-2xl font-display font-bold text-ink\"\u003eServis Mesin\u003c/h3\u003e\n              \u003cp class=\""}
+
+event: token
+data: {"token":"mt-3 text-ink/80 text-base leading-relaxed\"\u003e\n                Pemeriksaan dan perbaikan"}
+
+event: token
+data: {"token":" komponen mesin motor agar performa berkendara tetap optimal.\n              \u003c/p\u003e\n            \u003c/div\u003e\n            \u003cdiv class=\"mt-"}
+
+event: token
+data: {"token":"8 pt-4 border-t border-black/10\"\u003e\n              \u003cspan class=\"text-xs uppercase"}
+
+event: token
+data: {"token":" tracking-widest text-ink/60 font-medium\"\u003eKategori Mesin\u003c/span\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n"}
+
+event: token
+data: {"token":"        \u003c!-- Layanan 02 --\u003e\n        \u003cdiv class=\"reveal\" style=\"--d:.16s"}
+
+event: token
+data: {"token":"\"\u003e\n          \u003cdiv class=\"bg-paper rounded-2xl p-8 border border-black/10"}
+
+event: token
+data: {"token":" h-full flex flex-col justify-between transition-transform duration-300 hover:-translate-y-"}
+
+event: token
+data: {"token":"1\"\u003e\n            \u003cdiv\u003e\n              \u003cspan class=\"text-3xl font-display font-bold text-deep"}
+
+event: token
+data: {"token":" tabular-nums\"\u003e02\u003c/span\u003e\n              \u003ch3 class=\"mt-4 text-2xl font-display"}
+
+event: token
+data: {"token":" font-bold text-ink\"\u003eGanti Oli\u003c/h3\u003e\n              \u003cp class=\"mt-3 text-ink/"}
+
+event: token
+data: {"token":"80 text-base leading-relaxed\"\u003e\n                Penggantian pelumas mesin secara berkala untuk menjaga kebersihan dan kest"}
+
+event: token
+data: {"token":"abilan komponen mesin.\n              \u003c/p\u003e\n            \u003c/div\u003e\n            \u003cdiv class=\"mt-8 pt-"}
+
+event: token
+data: {"token":"4 border-t border-black/10\"\u003e\n              \u003cspan class=\"text-xs uppercase tracking-wid"}
+
+event: token
+data: {"token":"est text-ink/60 font-medium\"\u003eKategori Pelumas\u003c/span\u003e\n            \u003c/div\u003e\n          \u003c/div\u003e\n        "}
+
+event: token
+data: {"token":"\u003c/div\u003e\n\n        \u003c!-- Layanan 03 --\u003e\n        \u003cdiv class=\"reveal\" style=\"--d:.2"}
+
+event: token
+data: {"token":"4s\"\u003e\n          \u003cdiv class=\"bg-paper rounded-2xl p-8 border border-black/"}
+
+event: token
+data: {"token":"10 h-full flex flex-col justify-between transition-transform duration-300 hover:-translate-"}
+
+event: token
+data: {"token":"y-1\"\u003e\n            \u003cdiv\u003e\n              \u003cspan class=\"text-3xl font-display font-bold text"}
+
+event: token
+data: {"token":"-deep tabular-nums\"\u003e03\u003c/span\u003e\n              \u003ch3 class=\"mt-4 text-2xl font"}
+
+event: token
+data: {"token":"-display font-bold text-ink\"\u003eTune Up\u003c/h3\u003e\n              \u003cp class=\"mt-3 text-ink"}
+
+event: token
+data: {"token":"/80 text-base leading-relaxed\"\u003e\n                Penyetelan ulang sistem pembakaran, pengapian,"}
+
+: ping
+
+event: token
+data: {"token":" dan setelan motor agar kembali pada performa ideal.\n              \u003c/p\u003e\n            \u003c/div\u003e\n            \u003cdiv class=\"mt"}
+
+event: token
+data: {"token":"-8 pt-4 border-t border-black/10\"\u003e\n              \u003cspan class=\"text-xs"}
+
+event: token
+data: {"token":" uppercase tracking-widest text-ink/60 font-medium\"\u003eKategori Penyetelan\u003c/span\u003e\n            \u003c/div\u003e"}
+
+event: token
+data: {"token":"\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n      \u003c/div\u003e\n\n      \u003c!-- Widget Interaktif: Susun Pesan Layanan --\u003e\n      \u003cdiv"}
+
+event: token
+data: {"token":" class=\"mt-16 reveal\" style=\"--d:.32s\"\u003e\n        \u003cdiv class=\"bg"}
+
+event: token
+data: {"token":"-paper rounded-2xl p-6 md:p-8 border border-black/10\"\u003e\n          \u003cdiv"}
+
+event: token
+data: {"token":" class=\"max-w-2xl\"\u003e\n            \u003ch4 class=\"text-xl font-display font-"}
+
+event: token
+data: {"token":"bold text-ink\"\u003ePilih Kebutuhan Servis Anda\u003c/h4\u003e\n            \u003cp class=\"mt-2 text-sm text"}
+
+event: token
+data: {"token":"-ink/80\"\u003e\n              Pilih satu atau lebih layanan di bawah ini untuk menyiapkan draf pertanyaan sebelum mengirim"}
+
+event: token
+data: {"token":" ke WhatsApp bengkel.\n            \u003c/p\u003e\n          \u003c/div\u003e\n\n          \u003cdiv class=\"mt-6 flex flex-wrap gap"}
+
+event: token
+data: {"token":"-3\"\u003e\n            \u003clabel class=\"cursor-pointer inline-flex items-center gap-2.5 px-4"}
+
+event: token
+data: {"token":" py-2.5 rounded-xl bg-tint/60 border border-black/10 text-sm font-medium"}
+
+event: token
+data: {"token":" text-ink select-none hover:bg-tint\"\u003e\n              \u003cinput type=\"checkbox\" value=\"Servis Mesin\""}
+
+event: token
+data: {"token":" class=\"service-checkbox w-4 h-4 rounded text-ink focus:ring-accent accent-ink\""}
+
+event: token
+data: {"token":" onchange=\"updateMessageDraft()\"\u003e\n              \u003cspan\u003eServis Mesin\u003c/span\u003e\n            \u003c/label\u003e\n            \u003clabel class"}
+
+event: token
+data: {"token":"=\"cursor-pointer inline-flex items-center gap-2.5 px-4 py-2.5 rounded"}
+
+event: token
+data: {"token":"-xl bg-tint/60 border border-black/10 text-sm font-medium text-ink"}
+
+event: token
+data: {"token":" select-none hover:bg-tint\"\u003e\n              \u003cinput type=\"checkbox\" value=\"Ganti Oli\" class=\""}
+
+event: token
+data: {"token":"service-checkbox w-4 h-4 rounded text-ink focus:ring-accent accent-ink\" onchange=\""}
+
+event: token
+data: {"token":"updateMessageDraft()\"\u003e\n              \u003cspan\u003eGanti Oli\u003c/span\u003e\n            \u003c/label\u003e\n            \u003clabel class=\"cursor-"}
+
+event: token
+data: {"token":"pointer inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg"}
+
+event: token
+data: {"token":"-tint/60 border border-black/10 text-sm font-medium text-ink select-none"}
+
+event: token
+data: {"token":" hover:bg-tint\"\u003e\n              \u003cinput type=\"checkbox\" value=\"Tune Up\" class=\"service-checkbox"}
+
+event: token
+data: {"token":" w-4 h-4 rounded text-ink focus:ring-accent accent-ink\" onchange=\"updateMessage"}
+
+event: token
+data: {"token":"Draft()\"\u003e\n              \u003cspan\u003eTune Up\u003c/span\u003e\n            \u003c/label\u003e\n          \u003c/div\u003e\n\n          \u003cdiv class=\"mt-"}
+
+event: token
+data: {"token":"6 pt-6 border-t border-black/10 flex flex-col sm:flex-row sm:items-center"}
+
+event: token
+data: {"token":" justify-between gap-4\"\u003e\n            \u003cdiv class=\"text-sm text-ink/80\"\u003e\n              \u003c"}
+
+event: token
+data: {"token":"span class=\"font-medium text-ink\"\u003eTeks pesan: \u003c/span\u003e\n              \u003cspan id=\"draft-preview"}
+
+event: token
+data: {"token":"\" class=\"italic\"\u003eHalo Bengkel Motor Jaya Fiktif, saya ingin tanya layanan.\u003c/span\u003e\n            \u003c/div\u003e\n            "}
+
+event: token
+data: {"token":"\u003ca id=\"btn-composed\" href=\"https://wa.me/628120000"}
+
+event: token
+data: {"token":"2222?text=Halo%20Bengkel%20Motor%20Jaya%20Fikt"}
+
+event: token
+data: {"token":"if,%20saya%20ingin%20tanya%20layanan.\" target=\"_blank\""}
+
+event: token
+data: {"token":" rel=\"noopener noreferrer\" class=\"shrink-0 inline-flex items-center justify-center px-6 py-"}
+
+event: token
+data: {"token":"2.5 rounded-full bg-accent text-ink font-semibold text-sm transition-transform duration-2"}
+
+event: token
+data: {"token":"00 hover:-translate-y-0.5 active:scale-95\"\u003e\n              Pesan lewat WhatsApp"}
+
+event: token
+data: {"token":"\n            \u003c/a\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n      \u003c/div\u003e\n\n    \u003c/div\u003e\n  \u003c/section\u003e\n\n  \u003c!-- Jam"}
+
+event: token
+data: {"token":" Operasional \u0026 Rincian Waktu --\u003e\n  \u003csection id=\"jam-buka\" class=\"py-20 md:py"}
+
+event: token
+data: {"token":"-32 bg-ink text-paper relative overflow-hidden scroll-mt-20\" style=\"background-image:linear-gradient"}
+
+event: token
+data: {"token":"(rgba(255,255,255,.05) 1px,transparent 1px),"}
+
+event: token
+data: {"token":"linear-gradient(90deg,rgba(255,255,255,.05"}
+
+event: token
+data: {"token":") 1px,transparent 1px);background-size:48px 48px\"\u003e\n    "}
+
+event: token
+data: {"token":"\n    \u003cdiv class=\"max-w-6xl mx-auto px-6 relative z-10\"\u003e"}
+
+event: token
+data: {"token":"\n      \u003cdiv class=\"max-w-3xl\"\u003e\n        \u003cspan class=\"text-sm uppercase tracking-widest"}
+
+event: token
+data: {"token":" text-accent font-semibold\"\u003eJadwal Kerja\u003c/span\u003e\n        \u003ch2 class=\"mt-3 text-3xl md:text"}
+
+event: token
+data: {"token":"-5xl font-display font-bold tracking-tight text-white\"\u003eJam Operasional Bengkel\u003c/h2\u003e\n        \u003cp class=\""}
+
+event: token
+data: {"token":"mt-4 text-lg text-paper/80 leading-relaxed\"\u003e\n          Kami siap melayani kebutuhan kendaraan"}
+
+event: token
+data: {"token":" roda dua Anda sesuai jadwal operasional tetap setiap pekannya.\n        \u003c/p\u003e\n      \u003c/div\u003e\n\n      \u003cdiv class=\"mt-"}
+
+event: token
+data: {"token":"12 grid grid-cols-1 md:grid-cols-2 gap-8 items-start\"\u003e\n        "}
+
+event: token
+data: {"token":"\n        \u003c!-- Tabel Jadwal --\u003e\n        \u003cdiv class=\"bg-white/5 rounded-2xl p-6"}
+
+event: token
+data: {"token":" md:p-8 border border-white/10 backdrop-blur-sm\"\u003e\n          \u003ch3 class=\"text-xl"}
+
+event: token
+data: {"token":" font-display font-bold text-white mb-6\"\u003eHari \u0026 Waktu Pelayanan\u003c/h3\u003e\n          \u003cul class=\"divide"}
+
+event: token
+data: {"token":"-y divide-white/10 text-base\"\u003e\n            \u003cli class=\"flex items-center justify-between py-3"}
+
+event: token
+data: {"token":"\"\u003e\n              \u003cspan class=\"text-paper/70\"\u003eSenin\u003c/span\u003e\n              \u003cspan class=\"font-medium text-paper"}
+
+event: token
+data: {"token":"/50\"\u003eTutup\u003c/span\u003e\n            \u003c/li\u003e\n            \u003cli class=\"flex items-center justify-between py"}
+
+event: token
+data: {"token":"-3\"\u003e\n              \u003cspan class=\"font-medium text-white\"\u003eSelasa\u003c/span\u003e\n              \u003cspan class=\"tabular-"}
+
+event: token
+data: {"token":"nums font-semibold text-accent\"\u003e08.00 — 17.00 WIB\u003c/span\u003e\n            "}
+
+event: token
+data: {"token":"\u003c/li\u003e\n            \u003cli class=\"flex items-center justify-between py-3\"\u003e\n              \u003cspan class=\""}
+
+event: token
+data: {"token":"font-medium text-white\"\u003eRabu\u003c/span\u003e\n              \u003cspan class=\"tabular-nums font-semibold text-"}
+
+event: token
+data: {"token":"accent\"\u003e08.00 — 17.00 WIB\u003c/span\u003e\n            \u003c/li\u003e\n            \u003cli class"}
+
+event: token
+data: {"token":"=\"flex items-center justify-between py-3\"\u003e\n              \u003cspan class=\"font-medium text-white"}
+
+event: token
+data: {"token":"\"\u003eKamis\u003c/span\u003e\n              \u003cspan class=\"tabular-nums font-semibold text-accent\"\u003e08.0"}
+
+event: token
+data: {"token":"0 — 17.00 WIB\u003c/span\u003e\n            \u003c/li\u003e\n            \u003cli class=\"flex items-center justify"}
+
+event: token
+data: {"token":"-between py-3\"\u003e\n              \u003cspan class=\"font-medium text-white\"\u003eJumat\u003c/span\u003e\n              "}
+
+event: token
+data: {"token":"\u003cspan class=\"tabular-nums font-semibold text-accent\"\u003e08.00 — 17."}
+
+event: token
+data: {"token":"00 WIB\u003c/span\u003e\n            \u003c/li\u003e\n            \u003cli class=\"flex items-center justify-between py-3\"\u003e"}
+
+event: token
+data: {"token":"\n              \u003cspan class=\"font-medium text-white\"\u003eSabtu\u003c/span\u003e\n              \u003cspan class=\"tabular-"}
+
+event: token
+data: {"token":"nums font-semibold text-accent\"\u003e08.00 — 17.00 WIB\u003c/span\u003e\n            "}
+
+event: token
+data: {"token":"\u003c/li\u003e\n            \u003cli class=\"flex items-center justify-between py-3\"\u003e\n              \u003cspan class=\""}
+
+event: token
+data: {"token":"text-paper/70\"\u003eMinggu\u003c/span\u003e\n              \u003cspan class=\"font-medium text-paper/5"}
+
+event: token
+data: {"token":"0\"\u003eTutup\u003c/span\u003e\n            \u003c/li\u003e\n          \u003c/ul\u003e\n        \u003c/div\u003e\n\n        \u003c!-- Indikator Waktu Nyata"}
+
+event: token
+data: {"token":" --\u003e\n        \u003cdiv class=\"bg-white/5 rounded-2xl p-6 md:p-8"}
+
+event: token
+data: {"token":" border border-white/10 backdrop-blur-sm flex flex-col justify-between h-full\"\u003e\n"}
+
+event: token
+data: {"token":"          \u003cdiv\u003e\n            \u003cspan class=\"text-xs uppercase tracking-widest text-accent font-semibold\"\u003eStatus Saat"}
+
+event: token
+data: {"token":" Ini\u003c/span\u003e\n            \u003cdiv class=\"mt-4 flex items-center gap-3\"\u003e\n              \u003cspan id=\""}
+
+event: token
+data: {"token":"detail-status\" class=\"px-4 py-1.5 rounded-full font-semibold text-base\"\u003e"}
+
+event: token
+data: {"token":"Memeriksa waktu...\u003c/span\u003e\n            \u003c/div\u003e\n            \u003cp class=\"mt-6 text-paper/80"}
+
+event: token
+data: {"token":" leading-relaxed text-base\"\u003e\n              Waktu operasional dihitung otomatis sesuai zona waktu Jakarta (WIB)."}
+
+event: token
+data: {"token":" Anda dipersilakan datang langsung atau mengirim pesan terlebih dahulu pada jam kerja.\n            \u003c/p\u003e\n          \u003c/div\u003e\n\n          \u003cdiv"}
+
+event: token
+data: {"token":" class=\"mt-8 pt-6 border-t border-white/10\"\u003e\n            \u003cp class=\"text-xs text"}
+
+: ping
+
+event: token
+data: {"token":"-paper/60 uppercase tracking-wider\"\u003eLokasi Bengkel\u003c/p\u003e\n            \u003cp class=\"text-"}
+
+event: token
+data: {"token":"lg font-medium text-white mt-1\"\u003eJalan Rekaan No. 2, Kota Fiktif"}
+
+event: token
+data: {"token":"\u003c/p\u003e\n          \u003c/div\u003e\n        \u003c/div\u003e\n\n      \u003c/div\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\n  \u003c!-- Kontak \u0026"}
+
+event: token
+data: {"token":" Lokasi --\u003e\n  \u003csection id=\"kontak\" class=\"py-20 md:py-32"}
+
+event: token
+data: {"token":" bg-paper scroll-mt-20\"\u003e\n    \u003cdiv class=\"max-w-5xl mx-auto"}
+
+event: token
+data: {"token":" px-6\"\u003e\n      \u003cdiv class=\"text-left\"\u003e\n        \u003cspan class=\"text-sm uppercase tracking"}
+
+event: token
+data: {"token":"-widest text-deep font-semibold\"\u003eInformasi Kontak\u003c/span\u003e\n        \u003ch2 class=\"mt-3 text"}
+
+event: token
+data: {"token":"-3xl md:text-5xl font-display font-bold tracking-tight text-ink\"\u003eHubungi Bengkel\u003c/h2\u003e\n        "}
+
+event: token
+data: {"token":"\u003cp class=\"mt-4 text-lg text-ink/80 max-w-prose leading-relaxed\"\u003e\n          Sil"}
+
+event: token
+data: {"token":"akan hubungi kami melalui saluran WhatsApp atau kunjungi langsung bengkel kami di alamat berikut.\n        \u003c/p\u003e\n      \u003c/div\u003e\n\n      "}
+
+event: token
+data: {"token":"\u003cul class=\"mt-12 grid gap-6 sm:grid-cols-2\"\u003e\n        \u003c!-- Kart"}
+
+event: token
+data: {"token":"u WhatsApp --\u003e\n        \u003cli\u003e\n          \u003ca href=\"https://wa.me/628120"}
+
+event: token
+data: {"token":"0002222?text=Halo%20Bengkel%20Motor%20Jaya%20"}
+
+event: token
+data: {"token":"Fiktif,%20saya%20ingin%20tanya%20layanan.\" target=\"_blank\""}
+
+event: token
+data: {"token":" rel=\"noopener noreferrer\" class=\"flex flex-col gap-2 rounded-2xl p-8 ring-1 ring-black/"}
+
+event: token
+data: {"token":"10 bg-tint/30 transition-transform duration-300 hover:-translate-y-1 group"}
+
+event: token
+data: {"token":"\"\u003e\n            \u003cspan class=\"text-xs uppercase tracking-widest text-deep font-bold\"\u003eWhatsApp Resmi\u003c/span\u003e\n            \u003c"}
+
+event: token
+data: {"token":"span class=\"text-2xl font-bold font-display text-ink tabular-nums mt-1 group-hover"}
+
+event: token
+data: {"token":":text-deep transition-colors\"\u003e0812-0000-2222\u003c/span\u003e\n"}
+
+event: token
+data: {"token":"            \u003cspan class=\"text-sm text-ink/70 mt-2\"\u003eKirim pesan pertanyaan servis mesin, ganti oli,"}
+
+event: token
+data: {"token":" atau tune up\u003c/span\u003e\n            \u003cdiv class=\"mt-4 inline-flex items-center text-sm font-"}
+
+event: token
+data: {"token":"semibold text-deep gap-1\"\u003e\n              \u003cspan\u003ePesan lewat WhatsApp\u003c/span\u003e\n              \u003csvg viewBox=\"0 0 2"}
+
+event: token
+data: {"token":"4 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke"}
+
+event: token
+data: {"token":"-linejoin=\"round\" class=\"w-4 h-4\" aria-hidden=\"true\"\u003e\n                \u003cpath d=\""}
+
+event: token
+data: {"token":"M5 12h14M13 6l6 6-6 6\"/\u003e\n              "}
+
+event: token
+data: {"token":"\u003c/svg\u003e\n            \u003c/div\u003e\n          \u003c/a\u003e\n        \u003c/li\u003e\n\n        \u003c!-- Kartu Alamat \u0026 Google Maps --\u003e\n        \u003cli\u003e"}
+
+event: token
+data: {"token":"\n          \u003ca href=\"https://www.google.com/maps/search/?api=1\u0026query="}
+
+event: token
+data: {"token":"Jalan%20Rekaan%20No.%202,%20Kota%20Fiktif\" target=\"_blank"}
+
+event: token
+data: {"token":"\" rel=\"noopener noreferrer\" class=\"flex flex-col gap-2 rounded-2xl p-8 ring-"}
+
+event: token
+data: {"token":"1 ring-black/10 bg-tint/30 transition-transform duration-300 hover:-translate"}
+
+event: token
+data: {"token":"-y-1 group\"\u003e\n            \u003cspan class=\"text-xs uppercase tracking-widest text-deep font"}
+
+event: token
+data: {"token":"-bold\"\u003eAlamat Bengkel\u003c/span\u003e\n            \u003cspan class=\"text-xl font-bold font-display text-ink mt-1"}
+
+event: token
+data: {"token":" group-hover:text-deep transition-colors\"\u003eJalan Rekaan No. 2, Kota Fiktif\u003c/span\u003e"}
+
+event: token
+data: {"token":"\n            \u003cspan class=\"text-sm text-ink/70 mt-2\"\u003eBuka hari Selasa sampai"}
+
+event: token
+data: {"token":" Sabtu pada jam 08.00 - 17.00 WIB\u003c/span\u003e\n            \u003cdiv class=\"mt-4 inline"}
+
+event: token
+data: {"token":"-flex items-center text-sm font-semibold text-deep gap-1\"\u003e\n              \u003cspan\u003eBuka di Google Maps\u003c/span\u003e\n"}
+
+event: token
+data: {"token":"              \u003csvg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke"}
+
+event: token
+data: {"token":"-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"w-"}
+
+event: token
+data: {"token":"4 h-4\" aria-hidden=\"true\"\u003e\n                \u003cpath d=\"M5 12h1"}
+
+event: token
+data: {"token":"4M13 6l6 6-6 6\"/\u003e\n              \u003c/svg\u003e\n            \u003c/div\u003e\n          \u003c/a\u003e\n        \u003c/li\u003e"}
+
+event: token
+data: {"token":"\n      \u003c/ul\u003e\n    \u003c/div\u003e\n  \u003c/section\u003e\n\u003c/main\u003e\n\n\u003c!-- Footer --\u003e\n\u003cfooter class=\"bg-ink"}
+
+event: token
+data: {"token":" text-paper py-12 border-t border-white/10\"\u003e\n  \u003cdiv class=\"max"}
+
+event: token
+data: {"token":"-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify"}
+
+event: token
+data: {"token":"-between gap-6\"\u003e\n    \u003cdiv\u003e\n      \u003cp class=\"font-display font-bold text-lg text"}
+
+event: token
+data: {"token":"-white\"\u003eBengkel Motor Jaya Fiktif\u003c/p\u003e\n      \u003cp class=\"text-sm text-paper/70"}
+
+event: token
+data: {"token":" mt-1\"\u003eJalan Rekaan No. 2, Kota Fiktif\u003c/p\u003e\n    \u003c/div\u003e\n    \u003c"}
+
+event: token
+data: {"token":"div class=\"text-sm text-paper/60 text-center md:text-right\"\u003e\n      \u003c"}
+
+event: token
+data: {"token":"p\u003e\u0026copy; \u003cspan id=\"current-year\"\u003e\u003c/span\u003e Bengkel Motor Jaya Fiktif. Hak cipta dilindungi"}
+
+event: token
+data: {"token":".\u003c/p\u003e\n    \u003c/div\u003e\n  \u003c/div\u003e\n\u003c/footer\u003e\n\n\u003cscript\u003e\n// Menu Navigasi Seluler\n"}
+
+event: token
+data: {"token":"const menu = document.getElementById('mobile-menu');\nfunction setMenu(open) {\n  menu.classList.toggle('hidden"}
+
+event: token
+data: {"token":"', !open);\n  document.body.classList.toggle('overflow-hidden', open);\n}\n\ndocument"}
+
+event: token
+data: {"token":".addEventListener('keydown', function(e) {\n  if (e.key === 'Escape' \u0026\u0026 !menu.classList"}
+
+event: token
+data: {"token":".contains('hidden')) {\n    setMenu(false);\n  }\n});\n\n// Perhitungan Jam Operasional (WIB"}
+
+event: token
+data: {"token":" - Asia/Jakarta)\n// Jam buka: Selasa-Sabtu 08.00-17."}
+
+event: token
+data: {"token":"00 WIB\nfunction checkOpenStatus() {\n  const heroStatus = document.getElementById('hero-status');\n  const"}
+
+event: token
+data: {"token":" detailStatus = document.getElementById('detail-status');\n  \n  try {\n    const now = new Date();\n    "}
+
+event: token
+data: {"token":"// Konversi ke waktu Asia/Jakarta\n    const options = { timeZone: 'Asia/Jakarta', hour12: false"}
+
+event: token
+data: {"token":", weekday: 'short', hour: '2-digit', minute: '2-digit' };\n    const"}
+
+event: token
+data: {"token":" formatter = new Intl.DateTimeFormat('en-US', options);\n    const parts = formatter.formatToParts(now);"}
+
+event: token
+data: {"token":"\n    \n    let weekday = '';\n    let hour = 0;\n    let minute = 0;\n"}
+
+event: token
+data: {"token":"    \n    parts.forEach(part =\u003e {\n      if (part.type === 'weekday') weekday = part"}
+
+event: token
+data: {"token":".value;\n      if (part.type === 'hour') hour = parseInt(part.value, 1"}
+
+event: token
+data: {"token":"0);\n      if (part.type === 'minute') minute = parseInt(part.value, 10"}
+
+event: token
+data: {"token":");\n    });\n\n    // Hari kerja: Tue, Wed, Thu, Fri, Sat\n    const openDays = ['Tue"}
+
+event: token
+data: {"token":"', 'Wed', 'Thu', 'Fri', 'Sat'];\n    const isWorkingDay = openDays.includes(weekday);\n    "}
+
+event: token
+data: {"token":"const currentTimeInMinutes = hour * 60 + minute;\n    const openTimeInMinutes = 8 * 60;   "}
+
+event: token
+data: {"token":"// 08:00\n    const closeTimeInMinutes = 17 * 60; //"}
+
+event: token
+data: {"token":" 17:00\n    \n    const isOpen = isWorkingDay \u0026\u0026 (currentTimeInMinutes \u003e= openTime"}
+
+event: token
+data: {"token":"InMinutes \u0026\u0026 currentTimeInMinutes \u003c closeTimeInMinutes);\n\n    const openClass = 'px-4 py-1"}
+
+event: token
+data: {"token":".5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-95"}
+
+event: token
+data: {"token":"0';\n    const closedClass = 'px-4 py-1.5 rounded-full font-semibold text-base"}
+
+event: token
+data: {"token":" bg-amber-200 text-amber-950';\n\n    if (isOpen) {\n      "}
+
+event: token
+data: {"token":"if (heroStatus) {\n        heroStatus.className = openClass;\n        heroStatus.textContent = '"}
+
+event: token
+data: {"token":"Buka Sekarang (WIB)';\n      }\n      if (detailStatus) {\n        detailStatus.className"}
+
+event: token
+data: {"token":" = openClass;\n        detailStatus.textContent = 'Buka Sekarang (WIB)';\n      }\n    } else {"}
+
+event: token
+data: {"token":"\n      if (heroStatus) {\n        heroStatus.className = closedClass;\n        heroStatus.textContent"}
+
+event: token
+data: {"token":" = 'Tutup Saat Ini';\n      }\n      if (detailStatus) {\n        detailStatus.className"}
+
+event: token
+data: {"token":" = closedClass;\n        detailStatus.textContent = 'Tutup Saat Ini';\n      }\n    }\n"}
+
+event: token
+data: {"token":"  } catch (e) {\n    if (heroStatus) {\n      heroStatus.className = 'px-4 py-1"}
+
+event: token
+data: {"token":".5 rounded-full font-semibold text-base bg-amber-200 text-amber-950';"}
+
+event: token
+data: {"token":"\n      heroStatus.textContent = 'Selasa - Sabtu 08.00-17.00 WIB';\n    }"}
+
+: ping
+
+event: token
+data: {"token":"\n    if (detailStatus) {\n      detailStatus.className = 'px-4 py-1.5 rounded-full"}
+
+event: token
+data: {"token":" font-semibold text-base bg-amber-200 text-amber-950';\n      detail"}
+
+event: token
+data: {"token":"Status.textContent = 'Selasa - Sabtu 08.00-17.00 WIB';\n"}
+
+event: token
+data: {"token":"    }\n  }\n}\n\n// Widget Penyesuaian Pesan WhatsApp\nfunction updateMessageDraft() {\n  const checkboxes"}
+
+event: token
+data: {"token":" = document.querySelectorAll('.service-checkbox:checked');\n  const preview = document.getElementById('draft-preview');"}
+
+event: token
+data: {"token":"\n  const btn = document.getElementById('btn-composed');\n  \n  let services = [];\n  checkbox"}
+
+event: token
+data: {"token":"es.forEach(cb =\u003e services.push(cb.value));\n  \n  let msg = 'Halo Bengkel Motor Jaya"}
+
+event: token
+data: {"token":" Fiktif, saya ingin tanya layanan.';\n  if (services.length \u003e 0) {\n    msg"}
+
+event: token
+data: {"token":" = 'Halo Bengkel Motor Jaya Fiktif, saya ingin tanya layanan: ' + services.join(', ') + '.';\n"}
+
+event: token
+data: {"token":"  }\n  \n  if (preview) preview.textContent = msg;\n  if (btn) btn.href = '"}
+
+event: token
+data: {"token":"https://wa.me/6281200002222?text=' + encode"}
+
+event: token
+data: {"token":"URIComponent(msg);\n}\n\n// Scroll Reveal Observer\ndocument.addEventListener('DOMContentLoaded', function() {\n  check"}
+
+event: token
+data: {"token":"OpenStatus();\n  \n  const yearElem = document.getElementById('current-year');\n  if (year"}
+
+event: token
+data: {"token":"Elem) {\n    yearElem.textContent = new Date().getFullYear();\n  }\n\n  const reveals = document.querySelectorAll('.reveal"}
+
+event: token
+data: {"token":"');\n  if ('IntersectionObserver' in window) {\n    const observer = new IntersectionObserver((entries) =\u003e {\n      entries."}
+
+event: token
+data: {"token":"forEach(entry =\u003e {\n        if (entry.isIntersecting) {\n          entry.target.classList."}
+
+event: token
+data: {"token":"add('in');\n          observer.unobserve(entry.target);\n        }\n      });\n    },"}
+
+event: token
+data: {"token":" { threshold: 0.1 });\n\n    reveals.forEach(el =\u003e observer.observe(el));\n  } else"}
+
+event: token
+data: {"token":" {\n    reveals.forEach(el =\u003e el.classList.add('in'));\n  }\n});\n\u003c/script\u003e\n"}
+
+event: token
+data: {"token":"\u003c/body\u003e\n\u003c/html\u003e"}
+
+event: done
+data: {"project_id":"97b53d3f-d35b-4cfb-8105-845381cf2919","version_id":"4e972fb8-de10-4470-8842-30ea4434a414","version_number":1}
+
