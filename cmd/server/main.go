@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Abshoor24/backend-go/internal/aistate"
 	"github.com/Abshoor24/backend-go/internal/config"
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/modules/ai/provider"
@@ -51,6 +52,7 @@ func run() error {
 		"stream_idle_timeout", cfg.AI.StreamIdleTimeout.String(),
 		"thinking_levels", cfg.AI.EffectiveThinkingLevels(),
 		"hedge_after", cfg.AI.HedgeAfter.String(),
+		"daily_quota_limit", cfg.AI.DailyQuotaLimit,
 	)
 	for _, warning := range cfg.AI.RiskWarnings() {
 		log.Warn("ai config risk", "warning", warning)
@@ -80,7 +82,11 @@ func run() error {
 	}
 
 	projectRepo := projectrepo.New(supabase.Pool())
-	projectService := projectservice.New(projectRepo, aiProvider, cfg.AI, cfg.Upload, cfg.Project, log)
+	aiState := aistate.New(supabase.Pool())
+	projectService := projectservice.New(projectRepo, aiProvider, cfg.AI, cfg.Upload, cfg.Project, log,
+		projectservice.WithQuotaStore(aiState),
+		projectservice.WithCacheStore(aiState),
+	)
 
 	// Recovery: a crash mid-generation can leave projects stuck in
 	// "generating". Reset them to "ready" (if they have versions) or
@@ -122,9 +128,8 @@ func run() error {
 		return fmt.Errorf("server: %w", err)
 	}
 
-	// Graceful shutdown with a deadline. The deadline must comfortably exceed
-	// the longest expected request (AI_TIMEOUT is 30s, Gemini can take a while)
-	// so in-flight requests are not cut off during a restart/reload.
+	// Graceful shutdown with a bounded deadline. In-flight AI opens/streams
+	// may outlive this window; ResetStuckGenerating repairs them on next boot.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

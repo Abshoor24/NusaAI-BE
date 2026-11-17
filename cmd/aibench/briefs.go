@@ -31,8 +31,13 @@ type BriefFacts struct {
 	Times      map[string]bool
 	HasHours   bool
 	HasContact bool
+	HasAddress bool
 	Palette    []string
 	HasPalette bool
+}
+
+func (f BriefFacts) HasAnyChannel() bool {
+	return f.HasContact || f.HasAddress || len(f.Emails) > 0 || len(f.Phones) > 0 || f.WhatsApp != ""
 }
 
 var (
@@ -154,6 +159,8 @@ func parseBriefFacts(text string) BriefFacts {
 		facts.HasPalette = len(facts.Palette) > 0
 	}
 	facts.HasContact = len(facts.Emails) > 0 || facts.WhatsApp != ""
+	facts.HasAddress = strings.Contains(lower, "alamat:") || strings.Contains(lower, "alamat ") ||
+		strings.Contains(lower, "jalan ") || strings.Contains(lower, "jl. ")
 	return facts
 }
 
@@ -178,12 +185,41 @@ func normalizePhone(raw string) string {
 	return value
 }
 
-var fallbackPalette = []string{
-	"#2B1D14", "#F6EFE4", "#EADBC6", "#D9733A", "#9A4A1C",
-	"#12261C", "#F3F6EE", "#DCE8D2", "#8FCB7A", "#2F6B3A",
-	"#0E1320", "#F4F5F7", "#E3E7EE", "#C6F24E", "#46630A",
-	"#10223F", "#F7F3EC", "#E8E0D2", "#E0A93B", "#8A5A00",
-	"#3A1722", "#FBF3EF", "#F2DCD6", "#E58A8A", "#A23B4C",
+type paletteSet struct {
+	Name   string
+	Colors []string
+}
+
+var fallbackPalettes = []paletteSet{
+	{Name: "Hangat", Colors: []string{"#2B1D14", "#F6EFE4", "#EADBC6", "#D9733A", "#9A4A1C"}},
+	{Name: "Hijau", Colors: []string{"#12261C", "#F3F6EE", "#DCE8D2", "#8FCB7A", "#2F6B3A"}},
+	{Name: "Malam", Colors: []string{"#0E1320", "#F4F5F7", "#E3E7EE", "#C6F24E", "#46630A"}},
+	{Name: "Biru laut", Colors: []string{"#10223F", "#F7F3EC", "#E8E0D2", "#E0A93B", "#8A5A00"}},
+	{Name: "Mawar", Colors: []string{"#3A1722", "#FBF3EF", "#F2DCD6", "#E58A8A", "#A23B4C"}},
+}
+
+var fallbackPalette = flattenPalettes(fallbackPalettes)
+
+func flattenPalettes(palettes []paletteSet) []string {
+	var colors []string
+	for _, palette := range palettes {
+		for _, color := range palette.Colors {
+			colors = append(colors, strings.ToLower(color))
+		}
+	}
+	return colors
+}
+
+func fallbackPaletteFor(color string) (paletteSet, bool) {
+	color = strings.ToLower(color)
+	for _, palette := range fallbackPalettes {
+		for _, candidate := range palette.Colors {
+			if strings.ToLower(candidate) == color {
+				return palette, true
+			}
+		}
+	}
+	return paletteSet{}, false
 }
 
 func allowedPalette(facts BriefFacts) map[string]bool {

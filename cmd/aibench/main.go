@@ -23,6 +23,8 @@ type BenchmarkConfig struct {
 	Lint            bool
 	LintDir         string
 	Parallel        int
+	Prompt          string
+	NoSystem        bool
 }
 
 func main() {
@@ -50,11 +52,16 @@ func runCLI(args []string) int {
 		return runLintDirectory(cfg.LintDir, cfg.OutFolder, briefs)
 	}
 
-	selected, err := selectBriefs(briefs, cfg.Brief)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintf(os.Stderr, "Brief tersedia: %s\n", strings.Join(availableBriefNames(briefs), ", "))
-		return 2
+	var selected []Brief
+	if cfg.Prompt != "" {
+		selected = []Brief{{Name: "short", Text: cfg.Prompt}}
+	} else {
+		selected, err = selectBriefs(briefs, cfg.Brief)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintf(os.Stderr, "Brief tersedia: %s\n", strings.Join(availableBriefNames(briefs), ", "))
+			return 2
+		}
 	}
 	if cfg.Parallel < 0 || cfg.Parallel > 5 {
 		fmt.Fprintln(os.Stderr, "--parallel harus antara 1 dan 5")
@@ -108,8 +115,9 @@ func runCLI(args []string) int {
 
 	totalFailures := 0
 	var lintResults []lintFileResult
+	lintSkipped := 0
 	if cfg.Parallel > 0 {
-		return runParallelMode(p, selected[0], *cfg, &lintResults)
+		return runParallelMode(p, selected[0], *cfg, &lintResults, &lintSkipped)
 	}
 
 	type BriefSummary struct {
@@ -137,20 +145,31 @@ func runCLI(args []string) int {
 			opt.OutFolder = cfg.OutFolder
 			opt.BriefName = brief.Name
 			opt.RunNumber = run
+			opt.Prompt = cfg.Prompt
+			opt.NoSystem = cfg.NoSystem
 			result := runBenchmark(p, brief, opt)
 			if err := persistResult(&result, opt); err != nil {
 				fmt.Fprintf(os.Stderr, "Gagal menyimpan hasil: %v\n", err)
 				return 1
 			}
 			printRunLine(run, result)
+			if result.DailyQuota {
+				printDailyQuotaStop(cfg.Model, result.Quota)
+				return 1
+			}
 			if cfg.Lint {
-				lintResult := lintFileResult{
-					File:     filepath.Base(result.HTMLPath),
-					Brief:    brief.Name,
-					Findings: lintHTML(result.HTML, brief),
+				if result.Status == "error" {
+					lintSkipped++
+					fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, run)+".html")
+				} else {
+					lintResult := lintFileResult{
+						File:     filepath.Base(result.HTMLPath),
+						Brief:    brief.Name,
+						Findings: lintHTML(result.HTML, brief),
+					}
+					printLintResult(os.Stdout, lintResult)
+					lintResults = append(lintResults, lintResult)
 				}
-				printLintResult(os.Stdout, lintResult)
-				lintResults = append(lintResults, lintResult)
 			}
 
 			firstChunkSum += float64(result.FirstChunkMs) / 1000.0
@@ -186,7 +205,7 @@ func runCLI(args []string) int {
 	}
 
 	if cfg.Lint {
-		totalFailures = finishLint(cfg.OutFolder, lintResults)
+		totalFailures = finishLint(cfg.OutFolder, lintResults, lintSkipped)
 	}
 	if totalFailures > 0 {
 		return 1
@@ -194,7 +213,7 @@ func runCLI(args []string) int {
 	return 0
 }
 
-func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lintResults *[]lintFileResult) int {
+func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lintResults *[]lintFileResult, lintSkipped *int) int {
 	fmt.Printf("WARNING: uji paralel ini memakai kuota API (%d request sekaligus).\n\n", cfg.Parallel)
 	opt := defaultRunOptions()
 	opt.Model = cfg.Model
@@ -202,9 +221,17 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 	opt.MaxOutputTokens = cfg.MaxOutputTokens
 	opt.OutFolder = cfg.OutFolder
 	opt.BriefName = brief.Name
+	opt.Prompt = cfg.Prompt
+	opt.NoSystem = cfg.NoSystem
 
 	fmt.Printf("Brief: %s chars=%d hash=%s\n", brief.Name, len(brief.Text), briefDigest(brief.Text))
 	results := runParallel(p, brief, opt, cfg.Parallel)
+	for _, result := range results {
+		if result.DailyQuota {
+			printDailyQuotaStop(cfg.Model, result.Quota)
+			return 1
+		}
+	}
 	failures := 0
 	for i, result := range results {
 		runOpt := opt
@@ -220,17 +247,22 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 			fmt.Printf("  ERROR: %s\n", result.Error)
 		}
 		if cfg.Lint {
-			lintResult := lintFileResult{
-				File:     filepath.Base(result.HTMLPath),
-				Brief:    brief.Name,
-				Findings: lintHTML(result.HTML, brief),
+			if result.Status == "error" {
+				*lintSkipped++
+				fmt.Printf("Lint %s: dilewati (run gagal)\n", outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, i+1)+".html")
+			} else {
+				lintResult := lintFileResult{
+					File:     filepath.Base(result.HTMLPath),
+					Brief:    brief.Name,
+					Findings: lintHTML(result.HTML, brief),
+				}
+				printLintResult(os.Stdout, lintResult)
+				*lintResults = append(*lintResults, lintResult)
 			}
-			printLintResult(os.Stdout, lintResult)
-			*lintResults = append(*lintResults, lintResult)
 		}
 	}
 	if cfg.Lint {
-		failures = finishLint(cfg.OutFolder, *lintResults)
+		failures = finishLint(cfg.OutFolder, *lintResults, *lintSkipped)
 	}
 	if failures > 0 {
 		return 1
@@ -238,29 +270,71 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 	return 0
 }
 
+func printDailyQuotaStop(requestedModel string, info provider.QuotaInfo) {
+	bodyModel := info.QuotaModel
+	if bodyModel == "" {
+		bodyModel = info.RequestedModel
+	}
+	retryDelay := "tidak disebut body 429"
+	if info.RetryDelay > 0 {
+		retryDelay = info.RetryDelay.String()
+	}
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "KUOTA HARIAN HABIS: run dihentikan, tidak ada retry.")
+	fmt.Fprintf(os.Stderr, "Model --model: %s\n", requestedModel)
+	if bodyModel != "" && bodyModel != requestedModel {
+		fmt.Fprintf(os.Stderr, "Model pada body 429: %s\n", bodyModel)
+	}
+	quotaID := info.QuotaID
+	if quotaID == "" {
+		quotaID = "tidak disebut body 429"
+	}
+	fmt.Fprintf(os.Stderr, "quotaId: %s\n", quotaID)
+	fmt.Fprintf(os.Stderr, "retryDelay: %s\n", retryDelay)
+	fmt.Fprintf(os.Stderr, "Perkiraan reset: %s\n", estimateQuotaReset(info, time.Now()))
+}
+
+func estimateQuotaReset(info provider.QuotaInfo, now time.Time) string {
+	if info.RetryDelay > 0 {
+		return now.Add(info.RetryDelay).Format(time.RFC3339)
+	}
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	return nextMidnight.Format(time.RFC3339) + " (perkiraan tengah malam lokal)"
+}
+
 func printRunLine(run int, result BenchmarkResult) {
-	fmt.Printf("Run %d: firstChunk=%.3fs, firstText=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d, Status=%s, 429=%d, 503=%d\n",
-		run, float64(result.FirstChunkMs)/1000.0, float64(result.FirstTextMs)/1000.0,
+	fmt.Printf("Run %d: sent→headers=%.3fs, headers→firstText=%.3fs, sent→firstText=%.3fs, firstChunk=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d, Status=%s, 429=%d, 503=%d\n",
+		run, float64(result.SentToHeadersMs)/1000.0, float64(result.HeadersToTextMs)/1000.0,
+		float64(result.FirstTextMs)/1000.0, float64(result.FirstChunkMs)/1000.0,
 		float64(result.Total)/1000.0, result.PromptTokens, result.CandidatesTokens,
 		result.ThinkingTokenCount, result.TokenPerSec, result.FinishReason, result.ValidHTML,
 		result.AttemptCount, result.Status, result.Error429, result.Error503)
+	fmt.Printf("  sent_at=%s headers_at=%s first_text_at=%s\n",
+		formatTraceTime(result.SentAt), formatTraceTime(result.HeadersAt), formatTraceTime(result.FirstTextAt))
 	if result.Error != "" {
 		fmt.Printf("  ERROR: %s\n", result.Error)
 	}
 }
 
-func finishLint(outFolder string, results []lintFileResult) int {
+func finishLint(outFolder string, results []lintFileResult, skipped int) int {
 	path, err := writeLintReport(outFolder, results)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Gagal menulis lint report: %v\n", err)
 		return 1
 	}
 	fmt.Printf("\nLint report: %s\n", path)
+	if len(results) == 0 && skipped > 0 {
+		fmt.Printf("LINT DILEWATI: %d run gagal; tidak dihitung sebagai PASS atau FAIL.\n", skipped)
+		return 0
+	}
 	failures := 0
 	for _, result := range results {
 		if result.hasFailure() {
 			failures++
 		}
+	}
+	if skipped > 0 {
+		fmt.Printf("Catatan: %d run dilewati (run gagal); tidak dihitung PASS/FAIL.\n", skipped)
 	}
 	if failures > 0 {
 		fmt.Printf("LINT FAILED: %d file memiliki pelanggaran.\n", failures)
@@ -329,6 +403,14 @@ func parseArgs(args []string) (*BenchmarkConfig, error) {
 			}
 			cfg.Brief = args[i+1]
 			i++
+		case "--prompt":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--prompt membutuhkan nilai")
+			}
+			cfg.Prompt = args[i+1]
+			i++
+		case "--no-system":
+			cfg.NoSystem = true
 		case "--runs":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("--runs membutuhkan nilai")
@@ -377,6 +459,8 @@ func printUsage(w *os.File) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Flags:")
 	fmt.Fprintln(w, "  --brief NAME        full|service|wa_only|minimal|nopalette (kosong = semua)")
+	fmt.Fprintln(w, "  --prompt TEXT       pakai prompt mentah ini, abaikan brief/fixture")
+	fmt.Fprintln(w, "  --no-system         jangan kirim SystemPrompt")
 	fmt.Fprintln(w, "  --model NAME        model provider (default gemini-3.8-flash)")
 	fmt.Fprintln(w, "  --thinking LEVEL    MINIMAL|LOW|MEDIUM|HIGH (kosong = default)")
 	fmt.Fprintln(w, "  --max-output N      max output tokens (default 32768)")

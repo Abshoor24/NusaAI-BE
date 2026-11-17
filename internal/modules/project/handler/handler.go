@@ -106,7 +106,7 @@ func New(svc service.Service, logger *slog.Logger, aiCfg config.AIConfig, upload
 		aiCfg.StreamIdleTimeout = 30 * time.Second
 	}
 	if aiCfg.OpenBudget <= 0 {
-		aiCfg.OpenBudget = 60 * time.Second
+		aiCfg.OpenBudget = 150 * time.Second
 	}
 	return &Handler{svc: svc, logger: logger, aiCfg: aiCfg, uploadCfg: uploadCfg, projectCfg: projectCfg, trace: newRequestTracker()}
 }

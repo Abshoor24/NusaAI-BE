@@ -31,6 +31,12 @@ Brief yang tidak dikenal akan menampilkan daftar brief dan gagal; tidak ada fall
 
 Hasil HTML dinamai `{brief}_{model}_{thinking-atau-default}_run{n}.html` dan tidak pernah menimpa file lama; bila nama sudah ada, akhiran `-2`, `-3`, dan seterusnya dipakai. File `_raw.json` dan `_runs.csv` memakai pola model yang sama.
 
+Run dengan `Status=error` tidak menulis file HTML dan tidak menjalankan lint. Run tersebut tetap dicatat di `_raw.json`/`_runs.csv`, ditandai `dilewati (run gagal)` di console, dan tidak dihitung sebagai `PASS` atau `FAIL`.
+
+## Kuota harian
+
+Respons 429 yang memuat `quotaId` dengan `PerDay` atau `retryDelay` lebih dari 120 detik dianggap kuota harian habis. AIBench tidak melakukan retry, menghentikan seluruh run (termasuk request paralel yang masih berjalan), mencetak model dari body 429 bila berbeda dari `--model`, `quotaId`, `retryDelay`, dan perkiraan waktu reset, lalu keluar dengan exit code non-nol.
+
 ## Contoh
 
 Uji satu brief:
@@ -65,9 +71,37 @@ go run ./cmd/aibench --lint-dir ./aibench-results/lint-all --out ./aibench-resul
 
 ## Lint
 
-Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. `lint_report.md` selalu ditulis ke folder `--out`. Exit code non-nol bila ada `FAIL`.
+Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. `lint_report.md` selalu ditulis ke folder `--out`; run gagal tidak masuk laporan dan tidak dihitung `PASS`/`FAIL`. Exit code non-nol bila ada `FAIL`. Contoh laporan hasil lint 10 run tersimpan di [`lint_report.md`](lint_report.md).
 
-Aturan `FAIL`: email di luar brief; nomor telepon/`wa.me` di luar WhatsApp brief; jam/hari di luar brief; klaim terlarang V7-3/V9-1; pill buka permanen saat brief tanpa jam; CTA "Hubungi Kami" saat brief tanpa saluran kontak; DESIGN PLAN tanpa baris `FACTS ... EMAIL:` atau lebih dari 100 kata di luar baris FACTS; italic; script eksternal selain `cdn.tailwindcss.com` atau stylesheet selain Google Fonts; hex di luar palet brief/V8-4.
+Aturan `FAIL`:
 
-Aturan `WARN` (heuristik): `text-accent` di luar section `bg-ink`; dua section `bg-paper` berurutan; jumlah section di luar 5-7.
+| Aturan | Keterangan |
+| --- | --- |
+| `email` | Email di luar brief |
+| `phone/whatsapp` | Nomor telepon/`wa.me` di luar WhatsApp brief |
+| `hours/days` | Jam/hari di luar brief |
+| `forbidden-claims` | Klaim terlarang V7-3/V9-1 |
+| `permanent-open-status` | Pill buka permanen saat brief tanpa jam |
+| `contact-cta` | CTA kontak saat brief tanpa saluran kontak |
+| `no-channel-text` | Brief tanpa WhatsApp/email/alamat/telepon, tetapi teks memuat "hubungi", "kontak kami", "tanya", "pesan via", atau "chat" |
+| `invented-days` | Nama hari, "setiap hari", "libur", atau "tutup" padahal brief tanpa nama hari |
+| `design-plan/FACTS` | DESIGN PLAN tanpa baris `FACTS ... EMAIL:` atau lebih dari 100 kata di luar baris FACTS |
+| `italic` | Elemen/utility italic |
+| `external-assets` | Script selain `cdn.tailwindcss.com` atau stylesheet selain Google Fonts |
+| `palette-hex` | Hex di luar palet brief/V8-4; setiap hex mencetak konteks kelas/properti maksimal 40 karakter |
+
+Hex dari salah satu palet cadangan V8-4 (Hangat, Hijau, Malam, Biru laut, Mawar) diturunkan menjadi `WARN` bila brief hanya memberi sebagian warna. Hex lain tetap `FAIL`.
+
+Aturan `WARN` (heuristik):
+
+| Aturan | Keterangan |
+| --- | --- |
+| `accent-outside-ink` | `text-accent` tidak berada di dalam leluhur terdekat berkelas `bg-ink` (bukan hanya section) |
+| `consecutive-paper` | Dua section `bg-paper` berurutan |
+| `section-count` | Jumlah section di luar 5-7 |
+| `palette-hex` | Palet cadangan dicampur dengan warna brief |
+| `repetition` | Frasa 4+ kata muncul lebih dari 2 kali pada teks terlihat |
+| `english-ui` | Frasa UI Inggris pada halaman berbahasa Indonesia |
+| `plan-vs-page` | Butir (2) DESIGN PLAN menyebut widget/tab/kalkulator, tetapi HTML tidak punya elemen interaktif selain tombol menu; `none` tidak ditandai |
+| `dead-link-target` | Tautan `#...`/tombol menuju section yang hanya berisi teks pengisi tanpa fakta brief |
 
