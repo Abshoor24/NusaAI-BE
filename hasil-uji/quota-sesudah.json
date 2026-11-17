@@ -1,0 +1,1 @@
+﻿{"success":true,"data":{"window_start":"2026-11-17T15:00:00+07:00","reset_at":"2026-11-18T15:00:00+07:00","daily_limit":20,"models":[{"model":"gemini-3.5-flash","used":4,"remaining":16,"exhausted":false,"status":"available"},{"model":"gemini-3.8-flash","used":2,"remaining":18,"exhausted":false,"status":"available"}]},"message":"Request successful"}
