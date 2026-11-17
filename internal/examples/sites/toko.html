@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toko Melati - Peralatan Rumah Pilihan</title>
+<meta name="description" content="Toko Melati menjual peralatan rumah dan dapur pilihan yang tahan dipakai sehari-hari. Pesan mudah lewat WhatsApp.">
+<meta name="theme-color" content="#171412">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#171412',
+          paper: '#F7F3EC',
+          clay: '#B4552D',
+          moss: '#5C6B4A',
+          sand: '#E8DCC8'
+        },
+        fontFamily: {
+          sans: ['Manrope', 'sans-serif'],
+          display: ['Fraunces', 'serif']
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  ::selection { background: #B4552D; color: #F7F3EC; }
+  .product-art { transition: transform .35s cubic-bezier(.2,.7,.2,1); }
+  .product-card:hover .product-art { transform: translateY(-6px) rotate(-1deg); }
+  @media (prefers-reduced-motion: reduce) {
+    .product-art, .product-card { transition: none; }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased">
+<a href="#produk" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:text-paper">Lewati ke produk</a>
+
+<header class="sticky top-0 z-40 border-b border-ink/10 bg-paper/90 backdrop-blur">
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+    <a href="#" class="font-display text-2xl font-semibold tracking-tight">Toko Melati</a>
+    <nav class="hidden items-center gap-8 text-sm font-medium md:flex" aria-label="Navigasi utama">
+      <a href="#produk" class="hover:text-clay transition-colors">Produk</a>
+      <a href="#cerita" class="hover:text-clay transition-colors">Tentang</a>
+      <a href="#pesan" class="hover:text-clay transition-colors">Cara Pesan</a>
+    </nav>
+    <a href="#produk" class="rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-transform hover:-translate-y-0.5">Belanja</a>
+  </div>
+</header>
+
+<main>
+  <section class="overflow-hidden border-b border-ink/10">
+    <div class="mx-auto grid max-w-6xl items-center gap-12 px-6 py-16 md:grid-cols-2 md:py-24">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-clay">Koleksi harian</p>
+        <h1 class="mt-5 font-display text-[clamp(2.6rem,5.4vw,4.8rem)] font-semibold leading-[1.04] tracking-tight">
+          Peralatan rumah yang <span class="text-clay">dipakai</span>, bukan dipajang.
+        </h1>
+        <p class="mt-6 max-w-prose text-lg leading-relaxed text-ink/70">
+          Toko Melati memilih peralatan dapur, meja, dan ruang hidup yang sederhana, kuat, dan nyaman dipakai setiap hari.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <a href="#produk" class="rounded-full bg-clay px-7 py-3.5 font-semibold text-paper transition-transform hover:-translate-y-0.5">Lihat koleksi</a>
+          <a href="#cerita" class="rounded-full border border-ink/20 px-7 py-3.5 font-semibold transition-colors hover:bg-sand">Kenapa Melati</a>
+        </div>
+        <dl class="mt-12 grid max-w-md grid-cols-3 gap-6 border-t border-ink/10 pt-6 text-sm">
+          <div><dt class="text-ink/50">Pilihan</dt><dd class="mt-1 font-display text-2xl font-semibold">48</dd></div>
+          <div><dt class="text-ink/50">Kirim dari</dt><dd class="mt-1 font-display text-2xl font-semibold">Bandung</dd></div>
+          <div><dt class="text-ink/50">Respons</dt><dd class="mt-1 font-display text-2xl font-semibold">&lt; 1 jam</dd></div>
+        </dl>
+      </div>
+
+      <div class="relative min-h-[26rem]">
+        <div class="absolute inset-x-6 top-6 h-[22rem] rounded-[2rem] bg-sand" aria-hidden="true"></div>
+        <div class="absolute left-0 top-0 w-56 rotate-[-5deg] rounded-2xl border border-ink/10 bg-paper p-4 shadow-xl">
+          <div class="product-art h-40 rounded-xl bg-moss"></div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Keramik</p>
+          <p class="mt-1 font-display text-xl font-semibold">Mangkuk Pagi</p>
+          <p class="mt-2 text-sm font-semibold">Rp85.000</p>
+        </div>
+        <div class="absolute right-0 top-24 w-60 rotate-[4deg] rounded-2xl border border-ink/10 bg-paper p-4 shadow-xl">
+          <div class="product-art h-48 rounded-xl bg-clay"></div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Tekstil</p>
+          <p class="mt-1 font-display text-xl font-semibold">Sarung Bantal Tanah</p>
+          <p class="mt-2 text-sm font-semibold">Rp120.000</p>
+        </div>
+        <div class="absolute bottom-0 left-16 w-52 rotate-[-2deg] rounded-2xl border border-ink/10 bg-ink p-4 text-paper shadow-xl">
+          <div class="product-art h-32 rounded-xl bg-sand"></div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-paper/60">Kayu</p>
+          <p class="mt-1 font-display text-xl font-semibold">Talenan Jati</p>
+          <p class="mt-2 text-sm font-semibold">Rp145.000</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="produk" class="scroll-mt-24 py-16 md:py-24">
+    <div class="mx-auto max-w-6xl px-6">
+      <div class="flex flex-wrap items-end justify-between gap-6">
+        <div class="max-w-xl">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-moss">Pilihan minggu ini</p>
+          <h2 class="mt-3 font-display text-4xl font-semibold tracking-tight md:text-5xl">Sedikit, tapi sering dipakai.</h2>
+        </div>
+        <p class="max-w-sm text-sm leading-relaxed text-ink/60">Semua harga sudah termasuk kemasan kayu daur ulang. Stok terbatas karena diproduksi dalam batch kecil.</p>
+      </div>
+
+      <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <article class="product-card rounded-2xl border border-ink/10 bg-white/40 p-4">
+          <div class="product-art flex h-56 items-center justify-center rounded-xl bg-moss">
+            <div class="h-24 w-24 rounded-full border-[10px] border-paper/60"></div>
+          </div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Keramik</p>
+          <h3 class="mt-1 font-display text-xl font-semibold">Mangkuk Pagi</h3>
+          <p class="mt-2 text-sm leading-relaxed text-ink/60">Stoneware 350 ml, aman untuk microwave.</p>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="font-semibold">Rp85.000</span>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20memesan%20Mangkuk%20Pagi" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-clay hover:underline">Pesan</a>
+          </div>
+        </article>
+
+        <article class="product-card rounded-2xl border border-ink/10 bg-white/40 p-4">
+          <div class="product-art flex h-56 items-end justify-center rounded-xl bg-sand p-6">
+            <div class="h-32 w-40 rounded-t-full bg-clay/80"></div>
+          </div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Tekstil</p>
+          <h3 class="mt-1 font-display text-xl font-semibold">Sarung Bantal Tanah</h3>
+          <p class="mt-2 text-sm leading-relaxed text-ink/60">Katena tenun, 45 x 45 cm, isi tidak termasuk.</p>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="font-semibold">Rp120.000</span>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20memesan%20Sarung%20Bantal%20Tanah" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-clay hover:underline">Pesan</a>
+          </div>
+        </article>
+
+        <article class="product-card rounded-2xl border border-ink/10 bg-white/40 p-4">
+          <div class="product-art flex h-56 items-center justify-center rounded-xl bg-ink">
+            <div class="h-36 w-24 rounded-lg bg-[#A8794F]"></div>
+          </div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Kayu</p>
+          <h3 class="mt-1 font-display text-xl font-semibold">Talenan Jati</h3>
+          <p class="mt-2 text-sm leading-relaxed text-ink/60">Jati solid 32 x 22 cm, diolah dengan minyak makanan.</p>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="font-semibold">Rp145.000</span>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20memesan%20Talenan%20Jati" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-clay hover:underline">Pesan</a>
+          </div>
+        </article>
+
+        <article class="product-card rounded-2xl border border-ink/10 bg-white/40 p-4">
+          <div class="product-art flex h-56 items-center justify-center rounded-xl bg-[#C9B79E]">
+            <div class="h-24 w-16 rounded-full bg-paper"></div>
+          </div>
+          <p class="mt-4 text-xs uppercase tracking-widest text-ink/50">Dapur</p>
+          <h3 class="mt-1 font-display text-xl font-semibold">Botol Minyak</h3>
+          <p class="mt-2 text-sm leading-relaxed text-ink/60">Kaca 500 ml dengan tuang anti-tetes.</p>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="font-semibold">Rp70.000</span>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20memesan%20Botol%20Minyak" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-clay hover:underline">Pesan</a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="cerita" class="scroll-mt-24 border-y border-ink/10 bg-sand/60 py-16 md:py-24">
+    <div class="mx-auto grid max-w-6xl gap-10 px-6 md:grid-cols-[1fr_1.2fr]">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-clay">Tentang Toko Melati</p>
+        <h2 class="mt-3 font-display text-4xl font-semibold tracking-tight md:text-5xl">Barang kecil yang membuat rumah terasa dipakai.</h2>
+      </div>
+      <div class="space-y-6 text-lg leading-relaxed text-ink/70">
+        <p>Toko Melati dimulai dari satu rak kecil di Bandung. Kami mencari peralatan yang tidak perlu perawatan rumit, tidak cepat rusak, dan tetap enak dilihat setelah bertahun-tahun.</p>
+        <p>Setiap produk dipilih langsung dari perajin dan produsen kecil. Kami menulis bahan, ukuran, dan cara rawatnya dengan jelas supaya Anda bisa memilih tanpa ragu.</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="rounded-xl border border-ink/10 bg-paper p-5">
+            <p class="font-display text-2xl font-semibold">Batch kecil</p>
+            <p class="mt-2 text-sm leading-relaxed text-ink/60">Stok mengikuti hasil produksi, bukan gudang besar.</p>
+          </div>
+          <div class="rounded-xl border border-ink/10 bg-paper p-5">
+            <p class="font-display text-2xl font-semibold">Bisa ditanya</p>
+            <p class="mt-2 text-sm leading-relaxed text-ink/60">Ukuran dan bahan bisa dikonfirmasi lewat WhatsApp.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pesan" class="scroll-mt-24 py-16 md:py-24">
+    <div class="mx-auto max-w-6xl px-6">
+      <div class="rounded-[2rem] bg-ink p-8 text-paper md:p-14">
+        <div class="grid gap-10 md:grid-cols-[1.1fr_1fr] md:items-end">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-sand/70">Cara pesan</p>
+            <h2 class="mt-3 font-display text-4xl font-semibold tracking-tight md:text-5xl">Pilih barang, kirim pesan, kami konfirmasi stok.</h2>
+            <ol class="mt-8 space-y-4 text-paper/75">
+              <li class="flex gap-4"><span class="font-display text-xl text-sand">01</span><span>Catat nama produk dan jumlahnya.</span></li>
+              <li class="flex gap-4"><span class="font-display text-xl text-sand">02</span><span>Kirim lewat WhatsApp. Kami cek stok dan ongkir.</span></li>
+              <li class="flex gap-4"><span class="font-display text-xl text-sand">03</span><span>Bayar setelah rincian pesanan disetujui.</span></li>
+            </ol>
+          </div>
+          <div class="rounded-2xl border border-white/15 bg-white/5 p-6">
+            <p class="text-sm text-paper/60">WhatsApp toko</p>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20bertanya%20soal%20produk" target="_blank" rel="noopener noreferrer" class="mt-1 block text-2xl font-semibold tabular-nums">0812-3456-7892</a>
+            <p class="mt-6 text-sm leading-relaxed text-paper/60">Senin sampai Sabtu, 09.00-18.00 WIB. Pesanan di luar jam tersebut dibalas pagi berikutnya.</p>
+            <a href="https://wa.me/6281234567892?text=Halo%20Toko%20Melati,%20saya%20ingin%20bertanya%20soal%20produk" target="_blank" rel="noopener noreferrer" class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-sand px-6 py-3 font-semibold text-ink transition-transform hover:-translate-y-0.5">Buka WhatsApp</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-ink/10 py-10">
+  <div class="mx-auto flex max-w-6xl flex-col gap-3 px-6 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+    <p class="font-display text-lg font-semibold text-ink">Toko Melati</p>
+    <p>Jalan Cihampelas No. 44, Bandung. &copy; <span id="year"></span> Toko Melati.</p>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+</script>
+<div style="position:fixed;right:14px;bottom:14px;z-index:2147483647;background:rgba(20,20,20,.88);color:#fff;font:600 11px/1.2 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:7px 11px;border-radius:999px;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.18)">Contoh hasil</div>
+</body>
+</html>

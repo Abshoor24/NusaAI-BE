@@ -102,6 +102,6 @@ Aturan `WARN` (heuristik):
 | `palette-hex` | Palet cadangan dicampur dengan warna brief |
 | `repetition` | Frasa 4+ kata muncul lebih dari 2 kali pada teks terlihat |
 | `english-ui` | Frasa UI Inggris pada halaman berbahasa Indonesia |
-| `plan-vs-page` | Butir (2) DESIGN PLAN menyebut widget/tab/kalkulator, tetapi HTML tidak punya elemen interaktif selain tombol menu |
+| `plan-vs-page` | Butir (2) DESIGN PLAN menyebut widget/tab/kalkulator, tetapi HTML tidak punya elemen interaktif selain tombol menu; `none` tidak ditandai |
 | `dead-link-target` | Tautan `#...`/tombol menuju section yang hanya berisi teks pengisi tanpa fakta brief |
 

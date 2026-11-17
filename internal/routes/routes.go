@@ -10,6 +10,7 @@ import (
 
 	"github.com/Abshoor24/backend-go/internal/apperror"
 	"github.com/Abshoor24/backend-go/internal/config"
+	"github.com/Abshoor24/backend-go/internal/examples"
 	"github.com/Abshoor24/backend-go/internal/handler"
 	"github.com/Abshoor24/backend-go/internal/jwt"
 	"github.com/Abshoor24/backend-go/internal/middleware"
@@ -71,9 +72,19 @@ func New(deps Dependencies) http.Handler {
 		r.Post("/auth/register", authH.Register)
 		r.Post("/auth/login", authH.Login)
 
-		// AI diagnostic endpoint (public).
-		aiH := aihandler.New(deps.Config.AI)
+		// AI diagnostic endpoints (public).
+		var quotaReporter aihandler.QuotaReporter
+		if deps.Project != nil {
+			quotaReporter, _ = deps.Project.(aihandler.QuotaReporter)
+		}
+		aiH := aihandler.New(deps.Config.AI, quotaReporter)
 		r.Get("/ai/health", aiH.Health)
+		r.Get("/ai/quota-status", aiH.QuotaStatus)
+
+		// Curated showcase sites (public, static HTML, no AI calls).
+		examplesH := examples.NewHandler(deps.Logger)
+		r.Get("/examples", examplesH.List)
+		r.Get("/examples/{slug}", examplesH.HTML)
 
 		// Protected endpoints requiring authentication
 		r.Group(func(r chi.Router) {

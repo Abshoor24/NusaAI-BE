@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Bengkel servis motor presisi di Bandung dengan fokus transparansi jadwal dan kemudahan reservasi via WhatsApp.
+(2) Signature widget: Penjadwalan pesan WhatsApp berdasarkan pilihan layanan dan jam operasional.
+(3) Hero composition: Asimetris 12 kolom; 7 kolom kiri berisi headline ringkas dan tombol aksi, 5 kolom kanan berisi kartu jam operasional interaktif dengan indikator status buka.
+(4) Palette: ink #10223F, paper #F7F3EC, tint #E8E0D2, accent #E0A93B, deep #8A5A00. Fonts: Outfit & Inter.
+(5) Section order: hero, layanan, jam-buka, tentang, kontak, footer.
+
+FACTS:
+- Business name: Bengkel Jaya Motor
+- Address: Jalan Soekarno-Hatta No. 88, Bandung
+- WhatsApp: 0812-3456-7891
+- Opening hours: Selasa-Sabtu 08.00-17.00
+- Services: servis mesin, ganti oli, tune up
+- Menu items: NONE
+- Email: NONE
+- PRIMARY: #10223F
+- ACCENT: #E0A93B
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bengkel Jaya Motor | Bengkel Motor Bandung</title>
+<meta name="description" content="Bengkel Jaya Motor di Jalan Soekarno-Hatta No. 88, Bandung. Layanan servis mesin, ganti oli, dan tune up. Buka Selasa-Sabtu 08.00-17.00.">
+<meta name="theme-color" content="#10223F">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#10223F',
+          paper: '#F7F3EC',
+          tint: '#E8E0D2',
+          accent: '#E0A93B',
+          deep: '#8A5A00'
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          sans: ['Inter', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script>document.documentElement.classList.add('js')</script>
+<style>
+  ::selection {
+    background-color: #E0A93B;
+    color: #10223F;
+  }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+  }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .rise {
+    animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+    animation-delay: var(--d, 0s);
+  }
+  .float {
+    animation: float 7s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- HEADER -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-ink/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-xl font-bold tracking-tight text-ink">
+        Bengkel Jaya Motor
+      </a>
+      
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium">
+        <a href="#layanan" class="hover:text-deep transition-colors">Layanan</a>
+        <a href="#jam-buka" class="hover:text-deep transition-colors">Jam Buka</a>
+        <a href="#tentang" class="hover:text-deep transition-colors">Tentang</a>
+        <a href="#kontak" class="hover:text-deep transition-colors">Kontak</a>
+      </nav>
+
+      <div class="hidden md:flex items-center">
+        <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20bertanya%20mengenai%20layanan" target="_blank" rel="noopener noreferrer" class="rounded-full px-6 py-2.5 bg-accent text-ink font-semibold text-sm hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+          Pesan lewat WhatsApp
+        </a>
+      </div>
+
+      <button type="button" onclick="setMenu(true)" class="md:hidden p-2 text-ink" aria-label="Buka menu">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MOBILE MENU -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-paper">
+    <div class="p-6 flex flex-col h-full justify-between">
+      <div class="flex items-center justify-between">
+        <span class="font-display text-xl font-bold text-ink">Bengkel Jaya Motor</span>
+        <button type="button" onclick="setMenu(false)" class="p-2 text-ink" aria-label="Tutup menu">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <nav class="flex flex-col gap-6 text-2xl font-display font-medium my-auto">
+        <a href="#layanan" onclick="setMenu(false)" class="hover:text-deep">Layanan</a>
+        <a href="#jam-buka" onclick="setMenu(false)" class="hover:text-deep">Jam Buka</a>
+        <a href="#tentang" onclick="setMenu(false)" class="hover:text-deep">Tentang</a>
+        <a href="#kontak" onclick="setMenu(false)" class="hover:text-deep">Kontak</a>
+      </nav>
+      <div>
+        <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20bertanya%20mengenai%20layanan" target="_blank" rel="noopener noreferrer" onclick="setMenu(false)" class="w-full block text-center rounded-full py-4 bg-accent text-ink font-semibold text-lg">
+          Pesan lewat WhatsApp
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- HERO SECTION -->
+    <section class="relative min-h-[100svh] pt-28 pb-16 md:py-32 flex items-center bg-paper overflow-hidden" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(224,169,59,.15),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(16,34,63,.08),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <div class="lg:col-span-7 space-y-6">
+            <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.1s">
+              Bandung
+            </p>
+            <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink leading-[1.1] tracking-tight" style="--d:.2s">
+              Bengkel motor di Jalan Soekarno-Hatta <span class="text-deep">Bandung</span>
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/80 max-w-prose leading-relaxed" style="--d:.3s">
+              Melayani servis mesin, ganti oli, dan tune up motor. Buka Selasa sampai Sabtu mulai jam 08.00 hingga 17.00.
+            </p>
+            <div class="rise flex flex-wrap gap-4 pt-2" style="--d:.4s">
+              <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20bertanya%20mengenai%20layanan" target="_blank" rel="noopener noreferrer" class="rounded-full px-8 py-3.5 bg-accent text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Pesan lewat WhatsApp
+              </a>
+              <a href="#layanan" class="rounded-full px-8 py-3.5 bg-tint text-ink font-semibold hover:-translate-y-0.5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2">
+                Lihat Layanan
+              </a>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 relative">
+            <div class="absolute -top-4 -right-4 w-full h-full rounded-3xl bg-tint/60" aria-hidden="true"></div>
+            <div class="relative overflow-hidden rounded-3xl p-8 md:p-10 min-h-[22rem] flex items-center justify-center bg-ink text-paper shadow-xl">
+              <div class="absolute inset-0 opacity-10 pointer-events-none float" style="background-image:radial-gradient(#E0A93B 1px, transparent 1px); background-size:24px 24px" aria-hidden="true"></div>
+              <div class="relative text-center w-full">
+                <p class="text-sm uppercase tracking-widest text-accent font-medium">Jam Buka Operasional</p>
+                <p class="mt-4 text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap text-paper">08.00</p>
+                <p class="my-3 text-sm uppercase tracking-widest text-paper/70">sampai</p>
+                <p class="text-5xl md:text-6xl font-bold tabular-nums leading-none whitespace-nowrap text-paper">17.00</p>
+                <div class="mt-6">
+                  <span id="open-status" class="px-4 py-1.5 rounded-full font-semibold text-base inline-block"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- LAYANAN SECTION -->
+    <section id="layanan" class="py-20 md:py-32 bg-tint scroll-mt-24">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="reveal max-w-2xl" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Layanan Kami</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Perawatan Motor Anda</h2>
+        </div>
+
+        <div class="mt-12 space-y-4">
+          
+          <div class="reveal" style="--d:.1s">
+            <div class="rounded-2xl p-6 md:p-8 bg-paper border border-ink/10 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex items-start gap-6">
+                <span class="text-2xl font-bold font-display text-deep tabular-nums">01</span>
+                <div>
+                  <h3 class="text-xl font-bold text-ink font-display">Servis Mesin</h3>
+                  <p class="text-ink/80 mt-1 max-w-prose">Layanan pemeriksaan dan perbaikan kinerja mesin motor.</p>
+                </div>
+              </div>
+              <div>
+                <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20tanya%20layanan%20Servis%20Mesin" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-deep hover:underline">
+                  Tanya Servis Mesin
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.2s">
+            <div class="rounded-2xl p-6 md:p-8 bg-paper border border-ink/10 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex items-start gap-6">
+                <span class="text-2xl font-bold font-display text-deep tabular-nums">02</span>
+                <div>
+                  <h3 class="text-xl font-bold text-ink font-display">Ganti Oli</h3>
+                  <p class="text-ink/80 mt-1 max-w-prose">Layanan penggantian pelumas mesin sesuai standar spesifikasi kendaraan.</p>
+                </div>
+              </div>
+              <div>
+                <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20tanya%20layanan%20Ganti%20Oli" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-deep hover:underline">
+                  Tanya Ganti Oli
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal" style="--d:.3s">
+            <div class="rounded-2xl p-6 md:p-8 bg-paper border border-ink/10 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-transform duration-300 hover:-translate-y-1">
+              <div class="flex items-start gap-6">
+                <span class="text-2xl font-bold font-display text-deep tabular-nums">03</span>
+                <div>
+                  <h3 class="text-xl font-bold text-ink font-display">Tune Up</h3>
+                  <p class="text-ink/80 mt-1 max-w-prose">Layanan pengaturan ulang komponen untuk mengembalikan performa kendaraan.</p>
+                </div>
+              </div>
+              <div>
+                <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20tanya%20layanan%20Tune%20Up" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-deep hover:underline">
+                  Tanya Tune Up
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- JAM BUKA SECTION -->
+    <section id="jam-buka" class="py-20 md:py-32 bg-ink text-paper scroll-mt-24 relative overflow-hidden" style="background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-6xl mx-auto px-6 relative z-10">
+        <div class="grid lg:grid-cols-12 gap-12 items-center">
+          
+          <div class="lg:col-span-6">
+            <div class="reveal" style="--d:0s">
+              <p class="text-sm uppercase tracking-widest text-accent font-medium">Jadwal Operasional</p>
+              <h2 class="font-display text-3xl md:text-5xl font-bold text-paper mt-3">Jam Buka Bengkel</h2>
+              <p class="text-paper/80 mt-4 text-lg leading-relaxed">
+                Kami melayani kebutuhan perawatan sepeda motor Anda pada hari kerja sesuai dengan jadwal operasional yang ditentukan.
+              </p>
+            </div>
+          </div>
+
+          <div class="lg:col-span-6">
+            <div class="reveal" style="--d:.2s">
+              <div class="rounded-3xl p-8 bg-paper/5 border border-white/10 backdrop-blur-sm space-y-6">
+                <div class="flex items-center justify-between pb-4 border-b border-white/10">
+                  <div class="flex items-center gap-3">
+                    <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span class="font-medium text-lg">Hari Operasional</span>
+                  </div>
+                  <span class="text-accent font-semibold">Selasa - Sabtu</span>
+                </div>
+                
+                <div class="flex items-center justify-between pb-4 border-b border-white/10">
+                  <div class="flex items-center gap-3">
+                    <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span class="font-medium text-lg">Jam Kerja</span>
+                  </div>
+                  <span class="tabular-nums font-semibold text-lg">08.00 - 17.00 WIB</span>
+                </div>
+
+                <div class="pt-2">
+                  <p class="text-sm text-paper/70">Untuk kedatangan atau pertanyaan seputar layanan, silakan hubungi kontak WhatsApp kami.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- TENTANG SECTION -->
+    <section id="tentang" class="py-20 md:py-32 bg-paper scroll-mt-24">
+      <div class="max-w-4xl mx-auto px-6">
+        <div class="reveal text-center max-w-2xl mx-auto" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Profil</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Bengkel Jaya Motor</h2>
+        </div>
+
+        <div class="reveal mt-10 space-y-6 text-lg text-ink/80 leading-relaxed max-w-prose mx-auto" style="--d:.15s">
+          <p>
+            Bengkel Jaya Motor berlokasi di Jalan Soekarno-Hatta No. 88, Bandung. Kami menyediakan layanan perawatan dan perbaikan sepeda motor meliputi servis mesin, ganti oli, dan tune up.
+          </p>
+          <p>
+            Operasional bengkel berjalan dari hari Selasa sampai Sabtu pada pukul 08.00 hingga 17.00 WIB untuk melayani pelanggan di wilayah Bandung dan sekitarnya.
+          </p>
+        </div>
+
+        <div class="reveal mt-12 grid sm:grid-cols-2 gap-4 max-w-2xl mx-auto" style="--d:.3s">
+          <div class="p-6 rounded-2xl bg-tint border border-ink/10 flex items-start gap-4">
+            <svg class="w-6 h-6 text-deep shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            <div>
+              <p class="text-sm uppercase tracking-widest text-deep font-medium">Alamat</p>
+              <p class="font-medium text-ink mt-1">Jalan Soekarno-Hatta No. 88, Bandung</p>
+            </div>
+          </div>
+
+          <div class="p-6 rounded-2xl bg-tint border border-ink/10 flex items-start gap-4">
+            <svg class="w-6 h-6 text-deep shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div>
+              <p class="text-sm uppercase tracking-widest text-deep font-medium">Jam Buka</p>
+              <p class="font-medium text-ink mt-1">Selasa-Sabtu 08.00-17.00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KONTAK SECTION -->
+    <section id="kontak" class="py-20 md:py-32 bg-tint scroll-mt-24">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="reveal max-w-2xl" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-deep font-semibold">Informasi Kontak</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3">Hubungi Bengkel Kami</h2>
+        </div>
+
+        <ul class="mt-12 grid gap-4 sm:grid-cols-2">
+          <li class="reveal" style="--d:.1s">
+            <a href="https://wa.me/6281234567891?text=Halo%20Bengkel%20Jaya%20Motor,%20saya%20ingin%20bertanya" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-1 rounded-2xl p-6 bg-paper ring-1 ring-black/10 break-words hover:-translate-y-1 transition-transform">
+              <span class="text-sm uppercase tracking-widest text-deep font-medium">WhatsApp</span>
+              <span class="text-xl font-bold text-ink tabular-nums">0812-3456-7891</span>
+              <span class="text-sm text-ink/70 mt-2 flex items-center gap-1 font-semibold text-deep">
+                Kirim pesan langsung
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </a>
+          </li>
+
+          <li class="reveal" style="--d:.2s">
+            <a href="https://www.google.com/maps/search/?api=1&query=Jalan+Soekarno-Hatta+No.+88%2C+Bandung" target="_blank" rel="noopener noreferrer" class="flex flex-col gap-1 rounded-2xl p-6 bg-paper ring-1 ring-black/10 break-words hover:-translate-y-1 transition-transform">
+              <span class="text-sm uppercase tracking-widest text-deep font-medium">Lokasi</span>
+              <span class="text-xl font-bold text-ink">Jalan Soekarno-Hatta No. 88, Bandung</span>
+              <span class="text-sm text-ink/70 mt-2 flex items-center gap-1 font-semibold text-deep">
+                Buka di Google Maps
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-ink text-paper py-12 border-t border-white/10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div>
+        <p class="font-display font-bold text-lg">Bengkel Jaya Motor</p>
+        <p class="text-sm text-paper/70 mt-1">Jalan Soekarno-Hatta No. 88, Bandung</p>
+      </div>
+      <p class="text-sm text-paper/60">
+        &copy; <span id="year"></span> Bengkel Jaya Motor. Hak cipta dilindungi.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Set Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    const mobileMenu = document.getElementById('mobile-menu');
+    function setMenu(open) {
+      mobileMenu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+
+    // Escape Key Menu Close
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
+        setMenu(false);
+      }
+    });
+
+    // Reveal Animation Observer
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Open/Closed Status Logic
+    function updateOpenStatus() {
+      const statusPill = document.getElementById('open-status');
+      if (!statusPill) return;
+
+      const now = new Date();
+      
+      // Convert to Asia/Jakarta time zone
+      const options = { timeZone: 'Asia/Jakarta', hour12: false, hour: '2-digit', minute: '2-digit' };
+      const timeParts = new Intl.DateTimeFormat('en-US', options).format(now).split(':');
+      const currentHour = parseInt(timeParts[0], 10);
+      const currentMinute = parseInt(timeParts[1], 10);
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+      // 08.00 - 17.00 WIB
+      const openTimeInMinutes = 8 * 60;
+      const closeTimeInMinutes = 17 * 60;
+
+      const isOpen = currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes < closeTimeInMinutes;
+
+      if (isOpen) {
+        statusPill.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950';
+        statusPill.textContent = 'Buka Sekarang (WIB)';
+      } else {
+        statusPill.className = 'px-4 py-1.5 rounded-full font-semibold text-base bg-amber-200 text-amber-950';
+        statusPill.textContent = 'Tutup (Buka 08.00 WIB)';
+      }
+    }
+
+    updateOpenStatus();
+  </script>
+<div style="position:fixed;right:14px;bottom:14px;z-index:2147483647;background:rgba(20,20,20,.88);color:#fff;font:600 11px/1.2 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:7px 11px;border-radius:999px;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.18)">Contoh hasil</div>
+</body>
+</html>

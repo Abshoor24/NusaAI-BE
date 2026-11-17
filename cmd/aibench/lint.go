@@ -81,6 +81,7 @@ var (
 	wordRE         = regexp.MustCompile(`(?i)[\p{L}\p{N}']+`)
 	planPoint2RE   = regexp.MustCompile(`(?i)^\s*(?:[-*]\s*)?\(?2[.)]\s*(.*)$`)
 	planWidgetRE   = regexp.MustCompile(`(?i)\b(widget|tab|tabs|kalkulator|calculator)\b`)
+	planNoneRE     = regexp.MustCompile(`(?i)\bnone\b`)
 	buttonRE       = regexp.MustCompile(`(?is)<button\b([^>]*)>(.*?)</button>`)
 	anchorAttrsRE  = regexp.MustCompile(`(?is)<a\b([^>]*)>(.*?)</a>`)
 	sectionAttrRE  = regexp.MustCompile(`(?is)<section\b([^>]*)>(.*?)</section>`)
@@ -496,6 +497,9 @@ func checkPlanVsPage(doc string) lintFinding {
 		return finding(rulePlanPage, lintPass, "DESIGN PLAN tidak ditemukan")
 	}
 	pointTwo := designPlanPointTwo(plan)
+	if planNoneRE.MatchString(pointTwo) {
+		return finding(rulePlanPage, lintPass, "butir (2) menyatakan none")
+	}
 	if !planWidgetRE.MatchString(pointTwo) {
 		return finding(rulePlanPage, lintPass, "butir (2) tidak menyebut widget/tab/kalkulator")
 	}

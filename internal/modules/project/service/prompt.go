@@ -84,10 +84,9 @@ Every item name, price, product, size, address, hour and claim must appear in
 the brief. Never invent: standard menu items of the business type, origin or
 brand names, supplier claims, interior or staff descriptions, superlatives
 (terbaik, premium, artisanal). If the brief lists no menu or prices, output NO
-item names, NO prices and NO order or cart widget. Write one short section that
-invites the visitor to ask for the menu through the contact channel in the
-brief, or omit the section. If the brief lists items and prices, copy them
-exactly (same spelling, same amounts).
+item names, NO prices and NO order or cart widget, and build no menu section
+(V10-1). If the brief lists items and prices, copy them exactly (same spelling,
+same amounts).
 
 V6-3 LINKS
 - Maps: if the brief has a maps URL, use it. Otherwise use
@@ -331,30 +330,18 @@ or transition- to the element with id mobile-menu or to its children.
 V7.2 RULES (these override earlier rules when they conflict)
 
 V72-1 FACTS LINE
-Inside the DESIGN PLAN comment add one line that starts with FACTS: and lists,
-copied from the brief: every menu item together with its price (or the word
-NONE), the WhatsApp number, the address and the opening hours. A menu item
-exists only if its name AND its amount are both written in the brief. Every
-item name, price, size, weight or product on the page must appear in that
-FACTS line. The lang attribute of the html tag matches the language of the
+Inside the DESIGN PLAN comment add exactly one line in this order:
+FACTS: MENU: ... | WA: ... | EMAIL: ... | ADDRESS: ... | HOURS: ...
+Fill every field from the brief and write NONE when it is absent. MENU lists
+every item with its price; an item exists only when its name AND amount are
+written in the brief. Every item name, price, size, weight or product on the
+page must appear in MENU. Append PRIMARY: ... | ACCENT: ... after HOURS when
+V73-6 applies. The lang attribute of the html tag matches the language of the
 brief (id for Indonesian); V71-1 otherwise stays as written.
 
-V72-2 MENU SECTION WITHOUT DATA
-If FACTS says NONE for menu items, never write any item name, category, price,
-size or weight, and never build an order or cart widget, even when a menu or
-price section is requested. Use only this block (replace PAPER, INK, ACCENT
-with your color tokens; use the WhatsApp or email link from the brief, or omit
-the link if the brief has no contact channel):
-<section id="menu" class="py-20 md:py-28 bg-PAPER">
-  <div class="max-w-3xl mx-auto px-6">
-    <div class="reveal" style="--d:0s">
-      <p class="text-sm uppercase tracking-widest text-ACCENT font-medium">Menu</p>
-      <h2 class="font-display text-3xl md:text-4xl font-semibold text-INK mt-4">Tanya Menu Kami</h2>
-      <p class="text-lg mt-4 text-INK/80">Daftar menu dan harga belum ditampilkan di halaman ini. Hubungi kami untuk menanyakannya.</p>
-      <a href="LINK" class="inline-flex mt-6 rounded-full px-8 py-3 bg-ACCENT text-INK font-semibold">Tanya Menu</a>
-    </div>
-  </div>
-</section>
+V72-2 MENU SECTION
+Replaced by V10-1: with no menu facts there is no menu section, no #menu link
+and no menu button.
 
 V72-3 HEADER
 The header has a solid background from the first paint, never transparent.
@@ -435,10 +422,11 @@ text. Replace praise with facts: say what is sold, where, and when it is open,
 using the brief's own words.
 
 V73-6 COLORS
-Add to the FACTS line: PRIMARY and ACCENT, each a hex code copied from the
-brief, or NONE. Every hex color that the brief gives must appear exactly as
-written in tailwind.config as a color token. Never replace a given hex with a
-similar shade. Lighter or darker tints may be added as extra tokens.
+Append to the FACTS line, after HOURS: PRIMARY: ... | ACCENT: ..., each a hex
+code copied from the brief, or NONE. Every hex color that the brief gives must
+appear exactly as written in tailwind.config as a color token. Never replace a
+given hex with a similar shade. Lighter or darker tints may be added as extra
+tokens.
 
 V73-7 MAP LINK
 A map link is built only from a full street address or a Maps URL that the
@@ -479,10 +467,10 @@ with the same label in both places.
 V8-3 BLUEPRINT BY WEBSITE TYPE (pick the closest type from the brief; adapt,
 do not copy; use a block only when the brief has the facts for it)
 - Food and drink (kafe, kedai, warung, toko kue): hero with hours panel, then
-  menu rows if the brief lists items and prices (otherwise the V72-2 block),
-  then a strip of facts from the brief (hours and facilities named in the
-  brief, no address), then a short about, then ONE contact block that also
-  holds the address and the map link.
+  menu rows only when the brief lists items and prices (otherwise omit the menu
+  section, V10-1), then a strip of facts from the brief (hours and facilities
+  named in the brief, no address), then a short about, then ONE contact block
+  that also holds the address and the map link.
 - Service business (bengkel, salon, klinik, laundry, jasa): hero with the main
   service as the headline, then the listed services as large numbered rows
   (01, 02, 03 only for services the brief lists), then hours as a row of facts,
@@ -500,8 +488,9 @@ do not copy; use a block only when the brief has the facts for it)
 - Event: hero with date and place from the brief in large type, then the
   schedule as numbered rows if given, then ONE contact block that holds the
   address.
-The address and the phone number appear only in that one contact block and the
-footer (V71-5); the hero and the other sections never repeat them.
+The address and the phone/WhatsApp number appear in visible text at most twice
+each total, normally only in that one contact block and the footer (V71-5); the
+hero and the other sections never repeat them.
 When the type is unclear, use the service business blueprint.
 
 V8-4 FALLBACK PALETTE (use ONLY when the brief gives no color palette; if it
@@ -577,10 +566,13 @@ V8-8 FINISHING DETAILS
   for hours and prices.
 
 V8-9 FINAL QUALITY GATE (silent, before output)
-The concept comes from a fact in the brief; there is exactly one primary action
-and its label is the same everywhere; every section carries real content from
-the brief; the conflict table V8-1 is respected; no italic, no ghost text, no
-accent-colored full-width band; contrast pairs follow V8-4; no horizontal
+DESIGN PLAN includes the mandatory FACTS line in the V72-1 format, with every
+field filled or NONE; the concept comes from a fact in the brief; there is
+exactly one primary action and its label is the same everywhere; every section
+carries real content from the brief; the address and phone/WhatsApp number each
+appear at most twice in visible text; no menu section or #menu link exists when
+MENU is NONE; the conflict table V8-1 is respected; no italic, no ghost text,
+no accent-colored full-width band; contrast pairs follow V8-4; no horizontal
 scroll at 360px.
 
 V9 RULES (claim audit; these override V8 and earlier rules when they conflict)
@@ -595,8 +587,8 @@ years of experience, team size, delivered file formats, availability claims such
 as "terbuka untuk kolaborasi", praise of staff or service (ramah, profesional,
 terpercaya, terbaik), or a description of seating, mood or ambience. A card
 with no fact beyond its title gets the title and one plain sentence saying what
-it is, or it is dropped. Add EMAIL: (value or NONE) to the FACTS line; an email
-exists on the page only if FACTS lists it.
+it is, or it is dropped. EMAIL: goes in the FACTS line exactly as V72-1 says;
+an email exists on the page only if FACTS lists one.
 
 V9-2 LIVE STATUS
 The open or closed pill, and any text such as "buka hari ini", exist only when
@@ -614,8 +606,9 @@ accordion of listed items, or omit the widget and enlarge the typographic hero.
 
 V9-4 NO CONTACT CHANNEL
 If FACTS has no WhatsApp, no email and no address: write no contact section and
-no button labelled Hubungi Kami or similar, and no card that only says to ask
-or to visit. The primary button scrolls to the main section of the page and is
+no button labelled Hubungi Kami or similar, no card that only says to ask or to
+visit, and no visible sentence that tells the visitor to contact, ask, call or
+message. The primary button scrolls to the main section of the page and is
 named after that section (for example Lihat Layanan). The last section is a
 short closing block with the business name and one factual sentence. The
 header button and the mobile menu button follow the same primary action. This
@@ -640,13 +633,13 @@ V9-1, then confirm V9-2 to V9-7.
 
 V10 RULES (fixes found in test output; these override V9 and earlier rules)
 
-V10-1 MENU BLOCK WITHOUT A CONTACT CHANNEL
-When V9-4 applies, the V72-2 menu block is written without any request to
-contact: a Menu eyebrow, a plain heading, and the sentence "Daftar menu dan
-harga belum tersedia di halaman ini." with no button. No sentence anywhere on
-the page may tell the visitor to contact, ask, call or message. Every button
-that scrolls must land on a section that holds at least one fact from the
-brief; never scroll to an empty block.
+V10-1 MENU ONLY WITH FACTS
+Build a Menu section, a #menu anchor, a Menu nav link or a menu button only
+when FACTS MENU lists at least one item with its price. Otherwise build no menu
+section and no link or button to it, and never mention a missing or unavailable
+menu. Menu rows use only FACTS MENU. No menu block may ask the visitor to contact when V9-4 applies. Every button that scrolls must
+land on a section that holds at least one fact from the brief; never scroll to
+an empty block.
 
 V10-2 NO INVENTED DAYS
 If the brief gives opening hours, write them exactly as given. Never add day
@@ -656,18 +649,20 @@ day alone.
 
 V10-3 THIN BRIEF
 If the brief has fewer than three facts beyond the business name and type, build
-at most 4 sections: hero, one short about section, the block the brief calls for
-(V72-2 menu block or the listed services), and a closing block. This overrides
-the 5 to 7 sections of V8-1. Do not pad. The business name appears only in the
-header logo, the hero headline, the page title and the footer. Never write
-"situs resmi", "selamat datang", "terima kasih telah mengunjungi" or "informasi
-lebih lanjut tersedia". A hero panel holds only brief facts, or a typographic
-block of the business name and type.
+at most 4 sections: hero, one short about section, the listed services or
+another section whose facts exist in the brief, and a closing block. This
+overrides the 5 to 7 sections of V8-1. Do not pad. The business name appears
+only in the header logo, the hero headline, the page title and the footer.
+Never write "situs resmi", "selamat datang", "terima kasih telah mengunjungi"
+or "informasi lebih lanjut tersedia". A hero panel holds only brief facts, or a
+typographic block of the business name and type.
 
 V10-4 HONEST PLAN
-Item (2) of the DESIGN PLAN names only a widget the page really contains; with
-no widget write "none". The sections named in item (5) are exactly the sections
-built.
+Item (2) of the DESIGN PLAN names only a widget the page really contains, or
+exactly "none". When it says none, no interactive element is required; do not
+build a widget, tab, accordion or calculator merely to satisfy the plan;
+navigation links and the mobile-menu button are not widgets. The sections named
+in item (5) are exactly the sections built.
 
 V10-5 ONE LANGUAGE
 Every visible word is in the content language. Exceptions: proper names, and
@@ -682,7 +677,7 @@ The primary action keeps one label in the header, hero, widget and contact
 block.
 
 V10-7 FINAL CHECK
-Before output, confirm V10-1 to V10-6 as well as V9-8.`
+Before output, confirm V10-1 to V10-6, V8-9 and V9-8.`
 
 // BuildGeneratePrompt composes the user prompt for a first-time generate.
 // briefText is the formatted brief; images are counted for the model note.

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<!-- DESIGN PLAN:
+(1) Concept: Kedai kopi contoh dengan suasana hangat di Bandung, menyajikan pilihan kopi dan croissant sederhana.
+(2) Signature widget: Pemilih pesanan ringkas yang menyusun pesan WhatsApp berdasarkan pilihan menu.
+(3) Hero composition: Layout asimetris 12 kolom; 7 kolom kiri berisi teks ucapan & aksi utama, 5 kolom kanan berisi panel jam buka dengan indikator status otomatis.
+(4) Palette tokens: ink #2B1D14, paper #F6EFE4, tint #EADBC6, accent #D9733A, deep #9A4A1C. Fonts: Outfit & Inter.
+(5) Section order: menu, tentang, kontak.
+FACTS: Menu: Kopi Tubruk Rp15.000; Kopi Susu Rp22.000; Croissant Rp18.000. WhatsApp: 0812-3456-7890 (6281234567890). Email: halo@kopiarum.id. Jam buka: Senin-Minggu 09.00-21.00. Alamat: Jalan Cihampelas No. 12, Bandung. PRIMARY #2B1D14, ACCENT #D9733A. EMAIL: halo@kopiarum.id. -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kopi Arum - Kedai Kopi di Bandung</title>
+<meta name="description" content="Kedai Kopi Arum di Jalan Cihampelas No. 12, Bandung. Buka Senin-Minggu 09.00-21.00.">
+<meta name="theme-color" content="#2B1D14">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#2B1D14',
+          paper: '#F6EFE4',
+          tint: '#EADBC6',
+          accent: '#D9733A',
+          deep: '#9A4A1C',
+        },
+        fontFamily: {
+          display: ['Outfit', 'sans-serif'],
+          sans: ['Inter', 'sans-serif'],
+        }
+      }
+    }
+  }
+  document.documentElement.classList.add('js');
+</script>
+
+<style>
+  ::selection {
+    background-color: #D9733A;
+    color: #2B1D14;
+  }
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .7s cubic-bezier(.2,.7,.2,1) var(--d,0s), transform .7s cubic-bezier(.2,.7,.2,1) var(--d,0s);
+  }
+  .js .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .rise {
+    animation: rise .8s cubic-bezier(.2,.7,.2,1) both;
+    animation-delay: var(--d, 0s);
+  }
+  .float {
+    animation: float 6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+    .rise, .float { animation: none; }
+  }
+</style>
+</head>
+
+<body class="bg-paper text-ink font-sans antialiased selection:bg-accent selection:text-ink">
+
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-md border-b border-ink/10">
+    <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+      <a href="#" class="font-display text-2xl font-bold tracking-tight text-ink">
+        Kopi Arum
+      </a>
+
+      <nav class="hidden md:flex items-center gap-8 text-base font-medium">
+        <a href="#menu" class="hover:text-deep transition-colors">Menu</a>
+        <a href="#tentang" class="hover:text-deep transition-colors">Tentang</a>
+        <a href="#kontak" class="hover:text-deep transition-colors">Kontak</a>
+      </nav>
+
+      <div class="hidden md:flex items-center">
+        <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Arum" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-full px-6 py-2.5 bg-accent text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+          Pesan lewat WhatsApp
+        </a>
+      </div>
+
+      <button type="button" onclick="setMenu(true)" class="md:hidden p-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep rounded-lg" aria-label="Buka menu navigasi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Panel -->
+  <div id="mobile-menu" class="hidden md:hidden fixed inset-0 z-50 bg-paper flex flex-col justify-between p-6">
+    <div class="flex items-center justify-between">
+      <span class="font-display text-2xl font-bold text-ink">Kopi Arum</span>
+      <button type="button" onclick="setMenu(false)" class="p-2 text-ink rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep" aria-label="Tutup menu navigasi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+
+    <nav class="flex flex-col gap-6 text-2xl font-display font-medium text-ink">
+      <a href="#menu" onclick="setMenu(false)" class="hover:text-deep">Menu</a>
+      <a href="#tentang" onclick="setMenu(false)" class="hover:text-deep">Tentang</a>
+      <a href="#kontak" onclick="setMenu(false)" class="hover:text-deep">Kontak</a>
+    </nav>
+
+    <div class="pt-6 border-t border-ink/10">
+      <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Arum" target="_blank" rel="noopener noreferrer" onclick="setMenu(false)" class="w-full inline-flex items-center justify-center rounded-full px-6 py-3 bg-accent text-ink font-semibold text-center">
+        Pesan lewat WhatsApp
+      </a>
+    </div>
+  </div>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="relative pt-32 pb-20 md:pt-40 md:pb-32 min-h-[90svh] flex items-center overflow-hidden bg-paper" style="background-image:radial-gradient(60% 50% at 85% 10%,rgba(217,115,58,.15),transparent 60%),radial-gradient(50% 40% at 10% 90%,rgba(43,29,20,.05),transparent 60%)">
+      <div class="max-w-6xl mx-auto px-6 w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          
+          <div class="lg:col-span-7">
+            <p class="rise text-sm uppercase tracking-widest text-deep font-semibold" style="--d:.1s">Kedai Kopi di Bandung</p>
+            <h1 class="rise font-display text-[clamp(2.25rem,4.6vw,4.25rem)] font-bold text-ink mt-3 leading-tight tracking-tight text-balance" style="--d:.2s">
+              Kopi Arum
+            </h1>
+            <p class="rise text-lg md:text-xl text-ink/80 mt-6 max-w-prose leading-relaxed" style="--d:.3s">
+              Menyajikan kopi dan sajian pendamping di Jalan Cihampelas No. 12. Buka setiap hari mulai pukul 09.00 sampai 21.00.
+            </p>
+            <div class="rise flex flex-wrap gap-4 mt-8" style="--d:.4s">
+              <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Arum" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-full px-8 py-3.5 bg-accent text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Pesan lewat WhatsApp
+              </a>
+              <a href="#menu" class="inline-flex items-center justify-center rounded-full px-8 py-3.5 ring-1 ring-ink/20 text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deep focus-visible:ring-offset-2">
+                Lihat Menu
+              </a>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 relative">
+            <!-- Backdrop element for depth -->
+            <div class="absolute -top-4 -right-4 inset-0 bg-tint/60 rounded-3xl pointer-events-none" aria-hidden="true"></div>
+            
+            <div class="relative bg-ink text-paper overflow-hidden rounded-3xl p-8 md:p-10 flex flex-col justify-between shadow-xl">
+              <!-- Decorative Grid Lines -->
+              <div class="absolute inset-0 pointer-events-none opacity-10" style="background-image:linear-gradient(rgba(255,255,255,.2) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.2) 1px,transparent 1px);background-size:24px 24px" aria-hidden="true"></div>
+
+              <div class="relative text-center my-4">
+                <p class="text-sm uppercase tracking-widest text-paper/70 font-medium">Jam Buka</p>
+                <p class="mt-4 text-5xl md:text-6xl font-display font-bold tabular-nums leading-none text-accent">09.00</p>
+                <p class="my-3 text-xs uppercase tracking-widest text-paper/60">sampai</p>
+                <p class="text-5xl md:text-6xl font-display font-bold tabular-nums leading-none text-accent">21.00</p>
+                <div class="mt-6 flex justify-center">
+                  <span id="open-status" class="px-4 py-1.5 rounded-full font-semibold text-base"></span>
+                </div>
+              </div>
+
+              <div class="relative mt-4 pt-4 border-t border-paper/10 text-center">
+                <p class="text-sm text-paper/80">Senin - Minggu</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Menu Section -->
+    <section id="menu" class="py-20 md:py-32 bg-tint scroll-mt-20">
+      <div class="max-w-6xl mx-auto px-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          
+          <div class="lg:col-span-5">
+            <div class="reveal sticky top-28" style="--d:0s">
+              <p class="text-sm uppercase tracking-widest text-deep font-semibold">Daftar Menu</p>
+              <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3 leading-tight">
+                Pilihan Minuman & Makanan
+              </h2>
+              <p class="text-lg text-ink/80 mt-4 leading-relaxed">
+                Tersedia untuk dinikmati langsung di kedai atau dipesan melalui layanan pesan singkat WhatsApp.
+              </p>
+            </div>
+          </div>
+
+          <div class="lg:col-span-7">
+            <div class="bg-paper rounded-3xl p-6 md:p-8 ring-1 ring-ink/10 shadow-sm">
+              <h3 class="text-xl font-display font-semibold text-ink mb-6 border-b border-ink/10 pb-4">
+                Menu Kopi & Kudapan
+              </h3>
+              
+              <ul class="divide-y divide-ink/10">
+                <li class="reveal" style="--d:.1s">
+                  <div class="flex items-baseline gap-3 py-4">
+                    <span class="font-medium text-lg text-ink">Kopi Tubruk</span>
+                    <span class="flex-1 border-b border-dotted border-ink opacity-30" aria-hidden="true"></span>
+                    <span class="tabular-nums font-semibold text-lg text-ink">Rp15.000</span>
+                  </div>
+                </li>
+                
+                <li class="reveal" style="--d:.2s">
+                  <div class="flex items-baseline gap-3 py-4">
+                    <span class="font-medium text-lg text-ink">Kopi Susu</span>
+                    <span class="flex-1 border-b border-dotted border-ink opacity-30" aria-hidden="true"></span>
+                    <span class="tabular-nums font-semibold text-lg text-ink">Rp22.000</span>
+                  </div>
+                </li>
+
+                <li class="reveal" style="--d:.3s">
+                  <div class="flex items-baseline gap-3 py-4">
+                    <span class="font-medium text-lg text-ink">Croissant</span>
+                    <span class="flex-1 border-b border-dotted border-ink opacity-30" aria-hidden="true"></span>
+                    <span class="tabular-nums font-semibold text-lg text-ink">Rp18.000</span>
+                  </div>
+                </li>
+              </ul>
+
+              <!-- Interactive Message Builder Widget -->
+              <div class="mt-8 pt-6 border-t border-ink/10">
+                <p class="text-sm font-semibold uppercase tracking-wider text-deep mb-3">Pilih Pesanan WhatsApp</p>
+                <div class="space-y-2 mb-4">
+                  <label class="flex items-center gap-3 p-3 rounded-xl bg-tint/40 cursor-pointer hover:bg-tint/70 transition-colors">
+                    <input type="checkbox" value="Kopi Tubruk (Rp15.000)" class="order-item w-4 h-4 accent-deep rounded">
+                    <span class="text-sm font-medium">Kopi Tubruk</span>
+                  </label>
+                  <label class="flex items-center gap-3 p-3 rounded-xl bg-tint/40 cursor-pointer hover:bg-tint/70 transition-colors">
+                    <input type="checkbox" value="Kopi Susu (Rp22.000)" class="order-item w-4 h-4 accent-deep rounded">
+                    <span class="text-sm font-medium">Kopi Susu</span>
+                  </label>
+                  <label class="flex items-center gap-3 p-3 rounded-xl bg-tint/40 cursor-pointer hover:bg-tint/70 transition-colors">
+                    <input type="checkbox" value="Croissant (Rp18.000)" class="order-item w-4 h-4 accent-deep rounded">
+                    <span class="text-sm font-medium">Croissant</span>
+                  </label>
+                </div>
+                <a id="wa-order-btn" href="https://wa.me/6281234567890?text=Halo%20Kopi%20Arum" target="_blank" rel="noopener noreferrer" class="w-full inline-flex items-center justify-center rounded-xl px-6 py-3 bg-accent text-ink font-semibold transition-transform duration-200 hover:-translate-y-0.5 active:scale-95">
+                  Pesan Lewat WhatsApp
+                </a>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tentang Section -->
+    <section id="tentang" class="py-20 md:py-32 bg-paper scroll-mt-20">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          
+          <div class="lg:col-span-6">
+            <div class="reveal" style="--d:0s">
+              <p class="text-sm uppercase tracking-widest text-deep font-semibold">Profil Kedai</p>
+              <h2 class="font-display text-3xl md:text-5xl font-bold text-ink mt-3 leading-tight">
+                Tentang Kopi Arum
+              </h2>
+              <div class="mt-6 space-y-4 text-lg text-ink/80 leading-relaxed max-w-prose">
+                <p>
+                  Kopi Arum adalah kedai kopi contoh yang berlokasi di Jalan Cihampelas No. 12, Bandung. Kedai ini menyediakan pilihan menu kopi dan kudapan sederhana.
+                </p>
+                <p>
+                  Operasional kedai berjalan setiap hari dari Senin hingga Minggu, mulai pukul 09.00 WIB sampai 21.00 WIB.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-6">
+            <div class="reveal" style="--d:.15s">
+              <div class="bg-gradient-to-b from-tint to-tint/50 rounded-3xl p-8 ring-1 ring-ink/10">
+                <h3 class="font-display text-xl font-bold text-ink mb-6">Ringkasan Informasi</h3>
+                
+                <dl class="space-y-6">
+                  <div>
+                    <dt class="text-xs uppercase tracking-widest text-deep font-semibold">Nama Usaha</dt>
+                    <dd class="text-lg font-medium text-ink mt-1">Kopi Arum</dd>
+                  </div>
+                  <div class="pt-4 border-t border-ink/10">
+                    <dt class="text-xs uppercase tracking-widest text-deep font-semibold">Lokasi Kedai</dt>
+                    <dd class="text-lg font-medium text-ink mt-1">Jalan Cihampelas No. 12, Bandung</dd>
+                  </div>
+                  <div class="pt-4 border-t border-ink/10">
+                    <dt class="text-xs uppercase tracking-widest text-deep font-semibold">Jam Operasional</dt>
+                    <dd class="text-lg font-medium text-ink mt-1 tabular-nums">Senin-Minggu 09.00-21.00 WIB</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Full-Width Dark Section: Contacts & Info -->
+    <section id="kontak" class="py-20 md:py-32 bg-ink text-paper relative overflow-hidden scroll-mt-20" style="background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:48px 48px">
+      <div class="max-w-5xl mx-auto px-6">
+        
+        <div class="reveal text-center max-w-2xl mx-auto" style="--d:0s">
+          <p class="text-sm uppercase tracking-widest text-accent font-semibold">Informasi Kontak</p>
+          <h2 class="font-display text-3xl md:text-5xl font-bold mt-3 leading-tight text-paper">
+            Hubungi Kami
+          </h2>
+          <p class="text-lg text-paper/80 mt-4">
+            Silakan hubungi Kopi Arum melalui saluran kontak di bawah ini.
+          </p>
+        </div>
+
+        <ul class="mt-12 grid gap-6 sm:grid-cols-2">
+          
+          <li class="reveal" style="--d:.1s">
+            <a href="https://wa.me/6281234567890?text=Halo%20Kopi%20Arum" target="_blank" rel="noopener noreferrer" class="flex flex-col justify-between h-full rounded-2xl p-6 ring-1 ring-white/20 bg-white/5 transition-transform duration-300 hover:-translate-y-1">
+              <div>
+                <span class="text-xs uppercase tracking-widest text-accent font-semibold">WhatsApp</span>
+                <p class="text-xl font-medium tabular-nums mt-2 text-paper">0812-3456-7890</p>
+              </div>
+              <span class="mt-6 inline-flex items-center gap-2 text-sm text-accent font-semibold">
+                Kirim Pesan
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6"/>
+                </svg>
+              </span>
+            </a>
+          </li>
+
+          <li class="reveal" style="--d:.2s">
+            <a href="mailto:halo@kopiarum.id" class="flex flex-col justify-between h-full rounded-2xl p-6 ring-1 ring-white/20 bg-white/5 transition-transform duration-300 hover:-translate-y-1">
+              <div>
+                <span class="text-xs uppercase tracking-widest text-accent font-semibold">Email</span>
+                <p class="text-xl font-medium mt-2 text-paper break-all">halo@kopiarum.id</p>
+              </div>
+              <span class="mt-6 inline-flex items-center gap-2 text-sm text-accent font-semibold">
+                Kirim Email
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6"/>
+                </svg>
+              </span>
+            </a>
+          </li>
+
+          <li class="reveal sm:col-span-2" style="--d:.3s">
+            <a href="https://www.google.com/maps/search/?api=1&query=Jalan%20Cihampelas%20No.%2012%2C%20Bandung" target="_blank" rel="noopener noreferrer" class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl p-6 ring-1 ring-white/20 bg-white/5 transition-transform duration-300 hover:-translate-y-1">
+              <div>
+                <span class="text-xs uppercase tracking-widest text-accent font-semibold">Alamat Kedai</span>
+                <p class="text-xl font-medium mt-1 text-paper">Jalan Cihampelas No. 12, Bandung</p>
+              </div>
+              <span class="inline-flex items-center gap-2 text-sm text-accent font-semibold shrink-0">
+                Buka Peta Google
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6"/>
+                </svg>
+              </span>
+            </a>
+          </li>
+
+        </ul>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-paper border-t border-ink/10 py-8">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-ink/70">
+      <p class="font-medium text-ink">Kopi Arum</p>
+      <p>Jalan Cihampelas No. 12, Bandung</p>
+      <p>&copy; <span id="year"></span> Kopi Arum. Hak cipta dilindungi.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Set Footer Year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile Menu Toggle
+    const mobileMenu = document.getElementById('mobile-menu');
+    function setMenu(open) {
+      mobileMenu.classList.toggle('hidden', !open);
+      document.body.classList.toggle('overflow-hidden', open);
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !mobileMenu.classList.contains('hidden')) {
+        setMenu(false);
+      }
+    });
+
+    // Real-time Opening Hours Status (WIB)
+    function updateOpenStatus() {
+      const pill = document.getElementById('open-status');
+      if (!pill) return;
+
+      try {
+        const now = new Date();
+        const options = { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(now);
+        
+        let hour = 0, minute = 0;
+        for (const part of parts) {
+          if (part.type === 'hour') hour = parseInt(part.value, 10);
+          if (part.type === 'minute') minute = parseInt(part.value, 10);
+        }
+        
+        const currentMinutes = hour * 60 + minute;
+        const openMinutes = 9 * 60;   // 09.00
+        const closeMinutes = 21 * 60; // 21.00
+
+        if (currentMinutes >= openMinutes && currentMinutes < closeMinutes) {
+          pill.className = "px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950";
+          pill.textContent = "Buka Sekarang (WIB)";
+        } else {
+          pill.className = "px-4 py-1.5 rounded-full font-semibold text-base bg-amber-200 text-amber-950";
+          pill.textContent = "Tutup Sekarang (WIB)";
+        }
+      } catch (err) {
+        pill.className = "px-4 py-1.5 rounded-full font-semibold text-base bg-emerald-200 text-emerald-950";
+        pill.textContent = "Buka 09.00 - 21.00 WIB";
+      }
+    }
+    updateOpenStatus();
+    setInterval(updateOpenStatus, 60000);
+
+    // Interactive Order Builder Widget
+    const checkboxes = document.querySelectorAll('.order-item');
+    const waBtn = document.getElementById('wa-order-btn');
+    
+    function updateWaLink() {
+      const selected = Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+      
+      let message = "Halo Kopi Arum";
+      if (selected.length > 0) {
+        message += ", saya ingin memesan: " + selected.join(", ");
+      }
+      
+      waBtn.href = "https://wa.me/6281234567890?text=" + encodeURIComponent(message);
+    }
+
+    checkboxes.forEach(cb => cb.addEventListener('change', updateWaLink));
+
+    // IntersectionObserver for Scroll Animations
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    }
+  </script>
+<div style="position:fixed;right:14px;bottom:14px;z-index:2147483647;background:rgba(20,20,20,.88);color:#fff;font:600 11px/1.2 system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:7px 11px;border-radius:999px;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.18)">Contoh hasil</div>
+</body>
+</html>

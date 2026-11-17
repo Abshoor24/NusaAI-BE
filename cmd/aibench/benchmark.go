@@ -18,21 +18,31 @@ import (
 )
 
 type RawRunData struct {
-	RunNumber     int                     `json:"run_number"`
-	FirstChunkMs  int64                   `json:"first_chunk_ms"`
-	FirstTextMs   int64                   `json:"first_text_ms"`
-	TotalMs       int64                   `json:"total_ms"`
-	UsageMetadata *provider.UsageMetadata `json:"usage_metadata,omitempty"`
-	FinishReason  string                  `json:"finish_reason"`
-	Status        string                  `json:"status"`
-	HTMLFile      string                  `json:"html_file"`
-	AttemptCount  int                     `json:"attempt_count"`
-	Error429      int                     `json:"error_429"`
-	Error503      int                     `json:"error_503"`
-	Error         string                  `json:"error,omitempty"`
+	RunNumber       int                     `json:"run_number"`
+	SentAt          string                  `json:"sent_at,omitempty"`
+	HeadersAt       string                  `json:"headers_at,omitempty"`
+	FirstTextAt     string                  `json:"first_text_at,omitempty"`
+	SentToHeadersMs int64                   `json:"sent_to_headers_ms"`
+	HeadersToTextMs int64                   `json:"headers_to_first_text_ms"`
+	FirstChunkMs    int64                   `json:"first_chunk_ms"`
+	FirstTextMs     int64                   `json:"first_text_ms"`
+	TotalMs         int64                   `json:"total_ms"`
+	UsageMetadata   *provider.UsageMetadata `json:"usage_metadata,omitempty"`
+	FinishReason    string                  `json:"finish_reason"`
+	Status          string                  `json:"status"`
+	HTMLFile        string                  `json:"html_file"`
+	AttemptCount    int                     `json:"attempt_count"`
+	Error429        int                     `json:"error_429"`
+	Error503        int                     `json:"error_503"`
+	Error           string                  `json:"error,omitempty"`
 }
 
 type BenchmarkResult struct {
+	SentAt             time.Time
+	HeadersAt          time.Time
+	FirstTextAt        time.Time
+	SentToHeadersMs    int64
+	HeadersToTextMs    int64
 	FirstChunkMs       int64
 	FirstTextMs        int64
 	Total              int64
@@ -63,6 +73,8 @@ type runOptions struct {
 	OutFolder       string
 	BriefName       string
 	RunNumber       int
+	Prompt          string
+	NoSystem        bool
 	Backoffs        []time.Duration
 	IdleTimeout     time.Duration
 	Context         context.Context
@@ -89,23 +101,36 @@ func runBenchmark(p provider.Provider, brief Brief, opt runOptions) BenchmarkRes
 	start := time.Now()
 
 	userPrompt := service.BuildGeneratePrompt(brief.Text)
+	if opt.Prompt != "" {
+		userPrompt = opt.Prompt
+	}
+	messages := make([]provider.ChatMessage, 0, 2)
+	if !opt.NoSystem {
+		messages = append(messages, provider.ChatMessage{Role: "system", Content: service.SystemPrompt})
+	}
+	messages = append(messages, provider.ChatMessage{Role: "user", Content: userPrompt})
 	req := provider.Request{
-		Model: opt.Model,
-		Messages: []provider.ChatMessage{
-			{Role: "system", Content: service.SystemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+		Model:    opt.Model,
+		Messages: messages,
 	}
 
 	var streamCh <-chan provider.StreamChunk
 	var streamErr error
+	var sentAt, headersAt time.Time
 	attemptCount := 0
 	err429, err503 := 0, 0
 
 	for attempt := 0; attempt < 3; attempt++ {
 		attemptCount = attempt + 1
-		streamCh, streamErr = p.CompleteStream(opt.Context, req)
+		var firstByteAt time.Time
+		attemptCtx := provider.WithFirstByteHook(opt.Context, func(t time.Time) {
+			firstByteAt = t
+		})
+		sendAt := time.Now()
+		streamCh, streamErr = p.CompleteStream(attemptCtx, req)
 		if streamErr == nil {
+			sentAt = sendAt
+			headersAt = firstByteAt
 			break
 		}
 		countError(streamErr, &err429, &err503)
@@ -195,13 +220,24 @@ func runBenchmark(p provider.Provider, brief Brief, opt runOptions) BenchmarkRes
 
 streamFinished:
 	totalMs := time.Since(start).Milliseconds()
+	base := start
+	if !sentAt.IsZero() {
+		base = sentAt
+	}
 	firstChunkMs := totalMs
 	firstTextMs := totalMs
 	if firstChunkReceived {
-		firstChunkMs = firstChunkTime.Sub(start).Milliseconds()
+		firstChunkMs = firstChunkTime.Sub(base).Milliseconds()
 	}
 	if firstTextReceived {
-		firstTextMs = firstTextTime.Sub(start).Milliseconds()
+		firstTextMs = firstTextTime.Sub(base).Milliseconds()
+	}
+	var sentToHeadersMs, headersToTextMs int64
+	if !sentAt.IsZero() && !headersAt.IsZero() {
+		sentToHeadersMs = headersAt.Sub(sentAt).Milliseconds()
+	}
+	if !headersAt.IsZero() && firstTextReceived && firstTextTime.After(headersAt) {
+		headersToTextMs = firstTextTime.Sub(headersAt).Milliseconds()
 	}
 
 	denominator := float64(totalMs-firstTextMs) / 1000.0
@@ -242,7 +278,16 @@ streamFinished:
 		errorText = "output is not a complete HTML document"
 	}
 
+	var firstTextAt time.Time
+	if firstTextReceived {
+		firstTextAt = firstTextTime
+	}
 	return BenchmarkResult{
+		SentAt:             sentAt,
+		HeadersAt:          headersAt,
+		FirstTextAt:        firstTextAt,
+		SentToHeadersMs:    sentToHeadersMs,
+		HeadersToTextMs:    headersToTextMs,
 		FirstChunkMs:       firstChunkMs,
 		FirstTextMs:        firstTextMs,
 		Total:              totalMs,
@@ -337,16 +382,28 @@ func uniquePath(path string) string {
 	}
 }
 
+func formatTraceTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339Nano)
+}
+
 func persistResult(result *BenchmarkResult, opt runOptions) error {
 	if err := os.MkdirAll(opt.OutFolder, 0o755); err != nil {
 		return err
 	}
 	base := outputBase(opt.BriefName, opt.Model, opt.ThinkingLevel, opt.RunNumber)
 	raw := RawRunData{
-		RunNumber:    opt.RunNumber,
-		FirstChunkMs: result.FirstChunkMs,
-		FirstTextMs:  result.FirstTextMs,
-		TotalMs:      result.Total,
+		RunNumber:       opt.RunNumber,
+		SentAt:          formatTraceTime(result.SentAt),
+		HeadersAt:       formatTraceTime(result.HeadersAt),
+		FirstTextAt:     formatTraceTime(result.FirstTextAt),
+		SentToHeadersMs: result.SentToHeadersMs,
+		HeadersToTextMs: result.HeadersToTextMs,
+		FirstChunkMs:    result.FirstChunkMs,
+		FirstTextMs:     result.FirstTextMs,
+		TotalMs:         result.Total,
 		UsageMetadata: &provider.UsageMetadata{
 			PromptTokenCount:     result.PromptTokens,
 			CandidatesTokenCount: result.CandidatesTokens,
@@ -409,12 +466,19 @@ func appendRunCSV(path string, raw RawRunData) {
 
 	w := csv.NewWriter(f)
 	if !fileExists {
-		_ = w.Write([]string{"run_number", "first_chunk_ms", "first_text_ms", "total_ms",
+		_ = w.Write([]string{"run_number", "sent_at", "headers_at", "first_text_at",
+			"sent_to_headers_ms", "headers_to_first_text_ms",
+			"first_chunk_ms", "first_text_ms", "total_ms",
 			"prompt_tokens", "candidates_tokens", "thoughts_tokens", "total_tokens",
 			"finish_reason", "status", "html_file", "attempt_count", "error_429", "error_503", "error"})
 	}
 	_ = w.Write([]string{
 		fmt.Sprintf("%d", raw.RunNumber),
+		raw.SentAt,
+		raw.HeadersAt,
+		raw.FirstTextAt,
+		fmt.Sprintf("%d", raw.SentToHeadersMs),
+		fmt.Sprintf("%d", raw.HeadersToTextMs),
 		fmt.Sprintf("%d", raw.FirstChunkMs),
 		fmt.Sprintf("%d", raw.FirstTextMs),
 		fmt.Sprintf("%d", raw.TotalMs),

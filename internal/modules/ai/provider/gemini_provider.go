@@ -268,6 +268,7 @@ func (p *GeminiProvider) CompleteStream(ctx context.Context, req Request) (<-cha
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", p.apiKey)
 	httpReq.Header.Set("Accept", "text/event-stream")
+	httpReq = traceFirstByte(ctx, httpReq)
 
 	// Use p.streamClient (no hard body-read timeout) so long streams are not
 	// killed mid-response. ResponseHeaderTimeout is set on the transport.

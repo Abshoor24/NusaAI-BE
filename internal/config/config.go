@@ -66,11 +66,14 @@ type JWTConfig struct {
 }
 
 type AIConfig struct {
-	Provider             string
-	APIKey               string
-	Model                string
-	FallbackModels       []string
-	BaseURL              string
+	Provider       string
+	APIKey         string
+	Model          string
+	FallbackModels []string
+	BaseURL        string
+	// Timeout bounds the provider open (response headers) per attempt. Free
+	// tier Gemini TTFT is routinely 58-92s, so the default is 120s; 40s cut
+	// almost every primary attempt. This is not the total generate budget.
 	Timeout              time.Duration
 	MaxBytes             int64
 	MaxGenerateBodyBytes int64
@@ -91,15 +94,22 @@ type AIConfig struct {
 	// chunk within this window ends the stream as stalled.
 	StreamIdleTimeout time.Duration
 	// RetryOnUnavailable repeats the provider open call (pre-stream only)
-	// on 503/429, up to this many extra attempts. 0 disables retries.
+	// on 503/429, up to this many extra attempts (0 or 1). 0 disables
+	// retries. Capped at 1 so a slow model cannot burn the open budget
+	// twice before the fallback is tried.
 	RetryOnUnavailable int
 	// RetryBackoff is the pause between provider open attempts.
 	RetryBackoff time.Duration
 	// OpenBudget bounds the whole provider open phase (every retry and every
-	// fallback model) before the stream is handed to the SSE relay.
+	// fallback model) before the stream is handed to the SSE relay. Default
+	// 150s leaves room for a fallback after the 120s primary header timeout.
 	OpenBudget time.Duration
+	// DailyQuotaLimit is the free-tier generate requests allowed per model
+	// per quota day. Used only to estimate remaining quota in /ai/quota-status.
+	DailyQuotaLimit int
 	// HedgeAfter starts the next fallback model in parallel when the current
-	// model has not opened within this duration. 0 disables hedging.
+	// model has not opened within this duration. Default 0 = off: exactly one
+	// provider request per generate, so free-tier quota is not doubled.
 	HedgeAfter time.Duration
 	// PerfLog enables structured per-stream timing diagnostics when true.
 	// Default true; set AI_PERF_LOG=false to disable.
@@ -207,7 +217,7 @@ func Load() (*Config, error) {
 			Model:          getEnv("AI_MODEL", "gemini-3.8-flash"),
 			FallbackModels: splitCSV(getEnv("AI_FALLBACK_MODELS", "gemini-3.5-flash")),
 			BaseURL:        getEnv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
-			Timeout:        getDuration("AI_TIMEOUT", 25*time.Second),
+			Timeout:        getDuration("AI_TIMEOUT", 120*time.Second),
 			MaxBytes:       getInt64("AI_MAX_REQUEST_BYTES", 1<<20), // 1 MB default
 			// Separate JSON body cap for generate/revise: base64 images inflate
 			// ~33%, so these endpoints allow up to the 32 MB multipart buffer.
@@ -230,7 +240,10 @@ func Load() (*Config, error) {
 			RetryBackoff:       getDuration("AI_RETRY_BACKOFF", 2*time.Second),
 			// Total budget for the provider open phase across every retry
 			// and fallback model. Exhausting it fails fast with AI_BUSY.
-			OpenBudget: getDuration("AI_OPEN_BUDGET", 60*time.Second),
+			OpenBudget: getDuration("AI_OPEN_BUDGET", 150*time.Second),
+			// Free tier: 20 generate requests per model per day. Only used
+			// for the estimated remaining count in /ai/quota-status.
+			DailyQuotaLimit: getInt("AI_DAILY_QUOTA_LIMIT", 20),
 			// 0 keeps model fallback sequential.
 			HedgeAfter:     getDuration("AI_HEDGE_AFTER", 0),
 			PerfLog:        getBool("AI_PERF_LOG", true),
@@ -311,8 +324,11 @@ func (c *Config) validate() error {
 	if c.AI.StreamIdleTimeout <= 0 {
 		return fmt.Errorf("config: AI_STREAM_IDLE_TIMEOUT must be greater than 0")
 	}
-	if c.AI.RetryOnUnavailable < 0 || c.AI.RetryOnUnavailable > 2 {
-		return fmt.Errorf("config: AI_RETRY_ON_UNAVAILABLE must be between 0 and 2")
+	if c.AI.RetryOnUnavailable < 0 || c.AI.RetryOnUnavailable > 1 {
+		return fmt.Errorf("config: AI_RETRY_ON_UNAVAILABLE must be between 0 and 1")
+	}
+	if c.AI.DailyQuotaLimit <= 0 {
+		return fmt.Errorf("config: AI_DAILY_QUOTA_LIMIT must be greater than 0")
 	}
 	if c.AI.RetryBackoff < 0 {
 		return fmt.Errorf("config: AI_RETRY_BACKOFF must not be negative")
@@ -634,9 +650,9 @@ func (c AIConfig) EffectiveThinkingLevels() map[string]string {
 // valid but likely to behave badly at runtime.
 func (c AIConfig) RiskWarnings() []string {
 	var warnings []string
-	if len(c.FallbackModels) > 0 && c.OpenBudget < 2*c.Timeout {
+	if len(c.FallbackModels) > 0 && c.OpenBudget <= c.Timeout {
 		warnings = append(warnings,
-			"AI_OPEN_BUDGET is less than 2 x AI_TIMEOUT with fallback models configured; the fallback may never be attempted")
+			"AI_OPEN_BUDGET is not greater than AI_TIMEOUT with fallback models configured; the fallback can never be attempted")
 	}
 	if c.HedgeAfter > 0 && len(c.FallbackModels) == 0 {
 		warnings = append(warnings, "AI_HEDGE_AFTER is set but no AI_FALLBACK_MODELS are configured; hedging will never run")

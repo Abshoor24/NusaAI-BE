@@ -110,6 +110,11 @@ type PendingStream struct {
 	// per-stream diagnostics (populated by the handler loop).
 	Chunks    int
 	TextBytes int
+	// CacheHit is true when the response came from the exact-brief HTML cache
+	// and no provider request was made.
+	CacheHit bool
+	// briefHash keys the exact-brief cache. Empty for revise.
+	briefHash string
 }
 
 // Open phase labels surfaced to the frontend as SSE status events.
@@ -143,10 +148,26 @@ type service struct {
 	projectCfg config.ProjectConfig
 	logger     *slog.Logger
 	quota      *quotaState
+	quotaStore QuotaStore
+	cacheStore CacheStore
+}
+
+// Option customizes optional persistence for the project service.
+type Option func(*service)
+
+// WithQuotaStore persists daily quota counters and exhaustion markers.
+func WithQuotaStore(store QuotaStore) Option {
+	return func(s *service) { s.quotaStore = store }
+}
+
+// WithCacheStore persists validated HTML for exact-brief reuse.
+func WithCacheStore(store CacheStore) Option {
+	return func(s *service) { s.cacheStore = store }
 }
 
 // New wires the project service. provider may be nil in tests that never stream.
-func New(repo repository.Repository, provider aiprovider.Provider, aiCfg config.AIConfig, uploadCfg config.UploadConfig, projectCfg config.ProjectConfig, logger *slog.Logger) Service {
+// Without options, quota state is in-memory only and the HTML cache is disabled.
+func New(repo repository.Repository, provider aiprovider.Provider, aiCfg config.AIConfig, uploadCfg config.UploadConfig, projectCfg config.ProjectConfig, logger *slog.Logger, opts ...Option) Service {
 	if uploadCfg.Dir == "" {
 		uploadCfg.Dir = "uploads"
 	}
@@ -159,10 +180,14 @@ func New(repo repository.Repository, provider aiprovider.Provider, aiCfg config.
 	if projectCfg.MaxHTMLBytes <= 0 {
 		projectCfg.MaxHTMLBytes = 524288
 	}
-	return &service{
+	svc := &service{
 		repo: repo, provider: provider, aiCfg: aiCfg, uploadCfg: uploadCfg,
 		projectCfg: projectCfg, logger: logger, quota: newQuotaState(time.Now),
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 func (s *service) Create(ctx context.Context, userID string, req model.CreateProjectRequest) (*model.Project, error) {
@@ -380,11 +405,13 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// OpenStream opens the provider stream for a prepared pending request. It
-// retries overloaded responses on the same model (up to AI_RETRY_ON_UNAVAILABLE
-// with jittered backoff), moves to the next fallback model for other failures,
-// and never retries a response-header timeout on the same model. The caller's
-// context is expected to carry the AI_OPEN_BUDGET deadline.
+// OpenStream opens the provider stream for a prepared pending request. An
+// exact-brief cache hit is served without calling the provider. Otherwise it
+// retries overloaded responses on the same model at most once (free-tier
+// safety, further bounded by AI_RETRY_ON_UNAVAILABLE), moves to the next
+// fallback model for other failures, and never retries a response-header
+// timeout on the same model. The caller's context is expected to carry the
+// AI_OPEN_BUDGET deadline.
 //
 // When AI_HEDGE_AFTER > 0 and a fallback exists, the first fallback model is
 // started in parallel if the primary has not produced its first chunk in time.
@@ -398,6 +425,16 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 		return apperror.AIProviderReason(apperror.ReasonProviderError, "AI provider is not configured", nil)
 	}
 
+	s.ensureQuotaLoaded(ctx)
+	if s.tryCachedStream(ctx, pending) {
+		s.logger.Info("ai stream served from exact-brief cache",
+			"project_id", pending.Project.ID,
+			"kind", pending.Kind,
+			"brief_hash", pending.briefHash,
+		)
+		return nil
+	}
+
 	converted := make([]aiprovider.ImageAttachment, 0, len(pending.providerImages))
 	for _, im := range pending.providerImages {
 		converted = append(converted, aiprovider.ImageAttachment{MimeType: im.MimeType, Data: im.Data})
@@ -408,8 +445,11 @@ func (s *service) OpenStream(ctx context.Context, pending *PendingStream, observ
 	if maxRetries < 0 {
 		maxRetries = 0
 	}
-	if maxRetries > 2 {
-		maxRetries = 2
+	// Free-tier safety: at most one same-model retry, then fall back to the
+	// next model. More retries multiply quota use and can consume the whole
+	// open budget before the fallback is ever tried.
+	if maxRetries > 1 {
+		maxRetries = 1
 	}
 	openStart := time.Now()
 
@@ -515,6 +555,7 @@ func (s *service) openSequential(
 				observe(OpenPhaseEvent{Phase: phase, Attempt: attempt + 1, Elapsed: time.Since(openStart)})
 			}
 			totalAttempts++
+			s.noteGenerateAttempt(ctx, modelName)
 			stream, err := s.provider.CompleteStream(ctx, req)
 			if err == nil {
 				s.setOpenWinner(pending, modelName, level, fallback, attempt+1, time.Since(openStart))
@@ -536,7 +577,7 @@ func (s *service) openSequential(
 			if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
 				continue
 			}
-			if s.recordDailyQuota(err, modelName) {
+			if s.recordDailyQuota(ctx, err, modelName) {
 				// Daily quota does not recover within a normal retry: move on
 				// to the next model immediately.
 				break
@@ -759,6 +800,7 @@ func (s *service) openHedgeCandidate(
 			observe(OpenPhaseEvent{Phase: phase, Attempt: attempt + 1, Elapsed: time.Since(openStart)})
 		}
 		attempts.Add(1)
+		s.noteGenerateAttempt(ctx, modelName)
 		stream, err := s.provider.CompleteStream(ctx, req)
 		if err == nil {
 			select {
@@ -797,7 +839,7 @@ func (s *service) openHedgeCandidate(
 		if s.handleThinkingRejection(err, &thinkingRetried, modelName, level, &req) {
 			continue
 		}
-		if s.recordDailyQuota(err, modelName) {
+		if s.recordDailyQuota(ctx, err, modelName) {
 			fail(err)
 			return
 		}
@@ -957,6 +999,7 @@ func (s *service) PrepareGenerate(ctx context.Context, userID, projectID string,
 		Project: p, Kind: model.KindGenerate, Prompt: p.Brief.Description,
 		StartedAt: time.Now(), MaxBytes: s.projectCfg.MaxHTMLBytes,
 		systemPrompt: SystemPrompt, userPrompt: BuildGeneratePrompt(briefText), providerImages: provImgs,
+		briefHash: briefHash(p.Brief),
 	}, nil
 }
 
@@ -1119,6 +1162,7 @@ func (s *service) FinishStream(ctx context.Context, pending *PendingStream, rawB
 		s.failDetached(ctx, pending)
 		return nil, err
 	}
+	s.storeValidatedHTML(ctx, pending, doc)
 	attrs := []any{
 		"project_id", pending.Project.ID,
 		"version_number", v.VersionNumber,

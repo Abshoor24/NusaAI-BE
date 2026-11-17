@@ -23,6 +23,8 @@ type BenchmarkConfig struct {
 	Lint            bool
 	LintDir         string
 	Parallel        int
+	Prompt          string
+	NoSystem        bool
 }
 
 func main() {
@@ -50,11 +52,16 @@ func runCLI(args []string) int {
 		return runLintDirectory(cfg.LintDir, cfg.OutFolder, briefs)
 	}
 
-	selected, err := selectBriefs(briefs, cfg.Brief)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintf(os.Stderr, "Brief tersedia: %s\n", strings.Join(availableBriefNames(briefs), ", "))
-		return 2
+	var selected []Brief
+	if cfg.Prompt != "" {
+		selected = []Brief{{Name: "short", Text: cfg.Prompt}}
+	} else {
+		selected, err = selectBriefs(briefs, cfg.Brief)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintf(os.Stderr, "Brief tersedia: %s\n", strings.Join(availableBriefNames(briefs), ", "))
+			return 2
+		}
 	}
 	if cfg.Parallel < 0 || cfg.Parallel > 5 {
 		fmt.Fprintln(os.Stderr, "--parallel harus antara 1 dan 5")
@@ -138,6 +145,8 @@ func runCLI(args []string) int {
 			opt.OutFolder = cfg.OutFolder
 			opt.BriefName = brief.Name
 			opt.RunNumber = run
+			opt.Prompt = cfg.Prompt
+			opt.NoSystem = cfg.NoSystem
 			result := runBenchmark(p, brief, opt)
 			if err := persistResult(&result, opt); err != nil {
 				fmt.Fprintf(os.Stderr, "Gagal menyimpan hasil: %v\n", err)
@@ -212,6 +221,8 @@ func runParallelMode(p provider.Provider, brief Brief, cfg BenchmarkConfig, lint
 	opt.MaxOutputTokens = cfg.MaxOutputTokens
 	opt.OutFolder = cfg.OutFolder
 	opt.BriefName = brief.Name
+	opt.Prompt = cfg.Prompt
+	opt.NoSystem = cfg.NoSystem
 
 	fmt.Printf("Brief: %s chars=%d hash=%s\n", brief.Name, len(brief.Text), briefDigest(brief.Text))
 	results := runParallel(p, brief, opt, cfg.Parallel)
@@ -292,11 +303,14 @@ func estimateQuotaReset(info provider.QuotaInfo, now time.Time) string {
 }
 
 func printRunLine(run int, result BenchmarkResult) {
-	fmt.Printf("Run %d: firstChunk=%.3fs, firstText=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d, Status=%s, 429=%d, 503=%d\n",
-		run, float64(result.FirstChunkMs)/1000.0, float64(result.FirstTextMs)/1000.0,
+	fmt.Printf("Run %d: sent→headers=%.3fs, headers→firstText=%.3fs, sent→firstText=%.3fs, firstChunk=%.3fs, Total=%.3fs, PromptTok=%d, CandTok=%d, ThinkTok=%d, Tok/s=%.1f, FinishReason=%s, Valid=%v, Attempts=%d, Status=%s, 429=%d, 503=%d\n",
+		run, float64(result.SentToHeadersMs)/1000.0, float64(result.HeadersToTextMs)/1000.0,
+		float64(result.FirstTextMs)/1000.0, float64(result.FirstChunkMs)/1000.0,
 		float64(result.Total)/1000.0, result.PromptTokens, result.CandidatesTokens,
 		result.ThinkingTokenCount, result.TokenPerSec, result.FinishReason, result.ValidHTML,
 		result.AttemptCount, result.Status, result.Error429, result.Error503)
+	fmt.Printf("  sent_at=%s headers_at=%s first_text_at=%s\n",
+		formatTraceTime(result.SentAt), formatTraceTime(result.HeadersAt), formatTraceTime(result.FirstTextAt))
 	if result.Error != "" {
 		fmt.Printf("  ERROR: %s\n", result.Error)
 	}
@@ -389,6 +403,14 @@ func parseArgs(args []string) (*BenchmarkConfig, error) {
 			}
 			cfg.Brief = args[i+1]
 			i++
+		case "--prompt":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--prompt membutuhkan nilai")
+			}
+			cfg.Prompt = args[i+1]
+			i++
+		case "--no-system":
+			cfg.NoSystem = true
 		case "--runs":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("--runs membutuhkan nilai")
@@ -437,6 +459,8 @@ func printUsage(w *os.File) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Flags:")
 	fmt.Fprintln(w, "  --brief NAME        full|service|wa_only|minimal|nopalette (kosong = semua)")
+	fmt.Fprintln(w, "  --prompt TEXT       pakai prompt mentah ini, abaikan brief/fixture")
+	fmt.Fprintln(w, "  --no-system         jangan kirim SystemPrompt")
 	fmt.Fprintln(w, "  --model NAME        model provider (default gemini-3.8-flash)")
 	fmt.Fprintln(w, "  --thinking LEVEL    MINIMAL|LOW|MEDIUM|HIGH (kosong = default)")
 	fmt.Fprintln(w, "  --max-output N      max output tokens (default 32768)")

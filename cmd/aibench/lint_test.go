@@ -393,6 +393,11 @@ func TestLintPlanVsPage(t *testing.T) {
 	if finding := lintMap(t, full, menuOnly)[rulePlanPage]; finding.Status != lintWarn {
 		t.Fatalf("plan with menu button only = %s (%s), want WARN", finding.Status, finding.Evidence)
 	}
+	nonePlan := strings.Replace(plan, "Tambahkan widget kalkulator interaktif.", "Widget: none.", 1)
+	noneDoc := strings.Replace(commentRE.ReplaceAllString(cleanLintHTML, ""), "</head>", nonePlan+"</head>", 1)
+	if finding := lintMap(t, full, noneDoc)[rulePlanPage]; finding.Status != lintPass {
+		t.Fatalf("plan with widget none = %s (%s), want PASS", finding.Status, finding.Evidence)
+	}
 }
 
 func TestLintDeadLinkTarget(t *testing.T) {

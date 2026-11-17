@@ -942,6 +942,21 @@ func TestSystemPromptLocked(t *testing.T) {
 	if !strings.Contains(SystemPrompt, "USER DATA") {
 		t.Error("system prompt must mark user input as untrusted data")
 	}
+	for _, want := range []string{
+		"FACTS: MENU: ... | WA: ... | EMAIL: ... | ADDRESS: ... | HOURS: ...",
+		"at most twice",
+		`exactly "none"`,
+		"no menu section",
+	} {
+		if !strings.Contains(SystemPrompt, want) {
+			t.Errorf("system prompt missing %q", want)
+		}
+	}
+	for _, gone := range []string{"Tanya Menu Kami", "Daftar menu dan harga belum ditampilkan"} {
+		if strings.Contains(SystemPrompt, gone) {
+			t.Errorf("system prompt still contains obsolete menu block %q", gone)
+		}
+	}
 	gen := BuildGeneratePrompt("brief text here")
 	if !strings.Contains(gen, "<brief>") || !strings.Contains(gen, "brief text here") {
 		t.Errorf("generate prompt missing delimited brief: %q", gen)
@@ -2158,10 +2173,10 @@ func TestDailyQuotaLogsOncePerModelPerHour(t *testing.T) {
 			RetryDelay: 60369 * time.Second,
 		})))
 
-	if !impl.recordDailyQuota(err, "gemini-3.5-flash") {
+	if !impl.recordDailyQuota(context.Background(), err, "gemini-3.5-flash") {
 		t.Fatal("recordDailyQuota = false, want true")
 	}
-	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	impl.recordDailyQuota(context.Background(), err, "gemini-3.5-flash")
 	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 1 {
 		t.Fatalf("quota ERROR logs = %d, want 1 within one hour:\n%s", got, logs.String())
 	}
@@ -2178,7 +2193,7 @@ func TestDailyQuotaLogsOncePerModelPerHour(t *testing.T) {
 	}
 
 	now = now.Add(quotaLogInterval + time.Second)
-	impl.recordDailyQuota(err, "gemini-3.5-flash")
+	impl.recordDailyQuota(context.Background(), err, "gemini-3.5-flash")
 	if got := strings.Count(logs.String(), "ai provider daily quota exhausted"); got != 2 {
 		t.Errorf("quota ERROR logs = %d, want 2 after the log interval", got)
 	}

@@ -233,16 +233,21 @@ func TestLoadRejectsBadGenerationKnobs(t *testing.T) {
 
 func TestLoadStreamLimitDefaults(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_TIMEOUT", "")
 	t.Setenv("AI_STREAM_MAX_DURATION", "")
 	t.Setenv("AI_STREAM_IDLE_TIMEOUT", "")
 	t.Setenv("AI_RETRY_ON_UNAVAILABLE", "")
 	t.Setenv("AI_RETRY_BACKOFF", "")
 	t.Setenv("AI_OPEN_BUDGET", "")
+	t.Setenv("AI_DAILY_QUOTA_LIMIT", "")
 	t.Setenv("AI_HEDGE_AFTER", "")
 	t.Setenv("AI_THINKING_LEVELS", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.Timeout != 120*time.Second {
+		t.Errorf("Timeout = %v, want 120s (free-tier TTFT is 58-92s)", cfg.AI.Timeout)
 	}
 	if cfg.AI.StreamMaxDuration != 180*time.Second {
 		t.Errorf("StreamMaxDuration = %v, want 180s", cfg.AI.StreamMaxDuration)
@@ -256,14 +261,29 @@ func TestLoadStreamLimitDefaults(t *testing.T) {
 	if cfg.AI.RetryBackoff != 2*time.Second {
 		t.Errorf("RetryBackoff = %v, want 2s", cfg.AI.RetryBackoff)
 	}
-	if cfg.AI.OpenBudget != 60*time.Second {
-		t.Errorf("OpenBudget = %v, want 60s", cfg.AI.OpenBudget)
+	if cfg.AI.OpenBudget != 150*time.Second {
+		t.Errorf("OpenBudget = %v, want 150s", cfg.AI.OpenBudget)
+	}
+	if cfg.AI.DailyQuotaLimit != 20 {
+		t.Errorf("DailyQuotaLimit = %d, want 20", cfg.AI.DailyQuotaLimit)
 	}
 	if cfg.AI.HedgeAfter != 0 {
 		t.Errorf("HedgeAfter = %v, want 0 (disabled)", cfg.AI.HedgeAfter)
 	}
 	if cfg.AI.ThinkingLevel == nil || *cfg.AI.ThinkingLevel != "LOW" {
 		t.Errorf("ThinkingLevel = %v, want LOW", cfg.AI.ThinkingLevel)
+	}
+}
+
+func TestLoadHedgeOptInFromEnv(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("AI_HEDGE_AFTER", "5s")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AI.HedgeAfter != 5*time.Second {
+		t.Errorf("HedgeAfter = %v, want 5s from env", cfg.AI.HedgeAfter)
 	}
 }
 
@@ -377,7 +397,7 @@ func TestEffectiveThinkingLevelsAndRiskWarnings(t *testing.T) {
 		Model:          "gemini-3.5-flash",
 		FallbackModels: []string{"gemini-3.8-flash"},
 		ThinkingLevel:  &level,
-		OpenBudget:     40 * time.Second,
+		OpenBudget:     20 * time.Second,
 		Timeout:        25 * time.Second,
 		HedgeAfter:     45 * time.Second,
 	}
