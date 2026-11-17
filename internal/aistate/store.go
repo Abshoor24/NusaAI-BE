@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -19,13 +20,21 @@ type QuotaRecord struct {
 	ExhaustedUntil time.Time
 }
 
+// querier is the subset of pgxpool.Pool used by Store. Keeping it small lets
+// tests exercise the SQL semantics without a live Postgres instance.
+type querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 // Store is the Postgres-backed implementation of the quota/cache stores.
 type Store struct {
-	pool *pgxpool.Pool
+	db querier
 }
 
 func New(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+	return &Store{db: pool}
 }
 
 func windowDate(windowStart time.Time) string {
@@ -37,7 +46,7 @@ func windowDate(windowStart time.Time) string {
 func (s *Store) LoadQuota(ctx context.Context, windowStart time.Time) ([]QuotaRecord, error) {
 	const q = `SELECT model, generate_count, exhausted_until
 		FROM ai_quota_usage WHERE window_date = $1::date`
-	rows, err := s.pool.Query(ctx, q, windowDate(windowStart))
+	rows, err := s.db.Query(ctx, q, windowDate(windowStart))
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +73,7 @@ func (s *Store) IncrementGenerate(ctx context.Context, model string, windowStart
 		VALUES ($1, $2::date, 1, NOW())
 		ON CONFLICT (model, window_date) DO UPDATE
 		SET generate_count = ai_quota_usage.generate_count + 1, updated_at = NOW()`
-	_, err := s.pool.Exec(ctx, q, model, windowDate(windowStart))
+	_, err := s.db.Exec(ctx, q, model, windowDate(windowStart))
 	return err
 }
 
@@ -75,7 +84,7 @@ func (s *Store) MarkExhausted(ctx context.Context, model string, windowStart tim
 		ON CONFLICT (model, window_date) DO UPDATE
 		SET exhausted_until = GREATEST(COALESCE(ai_quota_usage.exhausted_until, 'epoch'::timestamptz), EXCLUDED.exhausted_until),
 		    updated_at = NOW()`
-	_, err := s.pool.Exec(ctx, q, model, windowDate(windowStart), until)
+	_, err := s.db.Exec(ctx, q, model, windowDate(windowStart), until)
 	return err
 }
 
@@ -83,7 +92,7 @@ func (s *Store) MarkExhausted(ctx context.Context, model string, windowStart tim
 func (s *Store) GetHTML(ctx context.Context, hash string) (string, bool, error) {
 	const q = `SELECT html FROM ai_html_cache WHERE brief_hash = $1`
 	var html string
-	err := s.pool.QueryRow(ctx, q, hash).Scan(&html)
+	err := s.db.QueryRow(ctx, q, hash).Scan(&html)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
@@ -97,6 +106,6 @@ func (s *Store) GetHTML(ctx context.Context, hash string) (string, bool, error) 
 func (s *Store) PutHTML(ctx context.Context, hash, html string) error {
 	const q = `INSERT INTO ai_html_cache (brief_hash, html) VALUES ($1, $2)
 		ON CONFLICT (brief_hash) DO UPDATE SET html = EXCLUDED.html`
-	_, err := s.pool.Exec(ctx, q, hash, html)
+	_, err := s.db.Exec(ctx, q, hash, html)
 	return err
 }
