@@ -1,7 +1,7 @@
 # Secrets and local environment
 .env
 .env.*
-.env.example
+!.env.example
 
 # Build output
 bin/
@@ -12,12 +12,18 @@ dist/
 server.log
 server.err.log
 server.pid
+be-log.txt
 tmp/
+air/tmp/
 uploads/
+
+# Logs and coverage
+*.log
+*.out
+coverage.out
 
 # Go
 *.exe
-*.out
 *.test
 
 # IDE / OS
@@ -28,6 +34,7 @@ uploads/
 Thumbs.db
 .upload/
 
-be-log.txt
-
+# AI and benchmark test output
+hasil-uji/
 aibench-results/
+lint_report.md
