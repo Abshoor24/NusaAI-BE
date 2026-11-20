@@ -1,0 +1,38 @@
+# Git and local VCS data
+.git
+.gitignore
+
+# Secrets and local environment (never bake these into the image)
+.env
+.env.*
+!.env.example
+
+# Local build output / binaries
+bin/
+dist/
+*.exe
+*.test
+server
+coverage.out
+*.out
+
+# Runtime artifacts
+uploads/
+tmp/
+air/
+*.log
+server.log
+server.err.log
+server.pid
+be-log.txt
+
+# Test / benchmark output
+aibench-results/
+hasil-uji/
+lint_report.md
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

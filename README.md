@@ -47,7 +47,7 @@ backend/
 │   ├── repository/        database access (UserRepository)
 │   ├── routes/            route definition & middleware wiring
 │   └── service/           business logic (AuthService)
-├── migrations/            SQL migrations berurutan (0001 s.d. 0012, embedded via embed.FS)
+├── migrations/            SQL migrations berurutan (0001 s.d. 0013, embedded via embed.FS)
 ├── pkg/
 │   ├── logger/            structured logging (slog), env-aware formatting (text / JSON)
 │   └── response/          standard JSON API response + request validation helpers
@@ -98,11 +98,48 @@ docker compose up -d --build
 go run ./cmd/server
 ```
 
+### Opsi D — Hot reload dengan air (lokal):
+```powershell
+# sekali saja
+go install github.com/air-verse/air@latest
+
+# dari root repo backend; .air.toml sudah tersedia
+air
+```
+
+`.air.toml` membangun ulang server ke `air/tmp/main.exe` setiap kali file Go
+berubah. Hentikan dengan `Ctrl+C`.
+
+### Opsi E — Stack lengkap dengan Docker Compose:
+```powershell
+docker compose up -d --build
+docker compose logs -f server
+docker compose down          # data Postgres + uploads tetap di volume
+```
+
+Compose memakai `env_file: .env` (opsional) dan menimpa hanya nilai khusus
+container (`APP_HOST=0.0.0.0`, `DATABASE_HOST=postgres`, port dalam container).
+Port host mengikuti `APP_PORT` / `DATABASE_PORT` dari `.env`.
+
 Server berjalan di `http://localhost:8080` (sesuai `APP_PORT`).
 
 ## Environment Variables
 
 Lihat [.env.example](.env.example) untuk daftar lengkap dan deskripsi singkat.
+
+`.env` adalah konfigurasi lokal Anda dan **tidak boleh di-commit**; hanya
+`.env.example` yang tracked. `.env.example` disinkronkan dengan `.env`:
+nama variabel dan urutannya sama, nilai non-rahasia disalin, sedangkan nilai
+rahasia (`DATABASE_URL`, `JWT_SECRET`, `AI_API_KEY`) diganti placeholder.
+Variabel yang dibaca kode tetapi tidak ada di `.env` ditulis sebagai komentar
+default di bagian bawah file. Untuk memeriksa keduanya tanpa mencetak nilai:
+
+```powershell
+powershell -File scripts/check-env-example.ps1
+```
+
+Salin `.env.example` menjadi `.env` lalu isi placeholder-nya sebelum menjalankan
+server. Jangan pernah menaruh kunci asli di `.env.example`.
 
 Variabel wajib:
 | Variable | Keterangan |
@@ -271,6 +308,9 @@ docker compose down -v        # Hentikan container dan reset volume database
 | POST | `/api/v1/auth/login` | - | Login, menerima JWT |
 | GET | `/api/v1/auth/me` | Bearer | Profil user yang sedang login |
 | GET | `/api/v1/ai/health` | - | Cek konfigurasi AI lokal |
+| GET | `/api/v1/ai/quota-status` | - | Estimasi sisa kuota harian per model (tanpa memanggil Gemini) |
+| GET | `/api/v1/examples` | - | Daftar 5 contoh website (`kuliner`, `jasa`, `toko`, `portofolio`, `acara`) |
+| GET | `/api/v1/examples/{slug}` | - | HTML mentah salah satu contoh |
 | POST | `/api/v1/projects` | Bearer | Membuat project baru dari brief |
 | GET | `/api/v1/projects` | Bearer | Daftar project milik user |
 | GET | `/api/v1/projects/{id}` | Bearer | Detail project + versi terbaru (HTML) |

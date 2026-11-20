@@ -71,7 +71,7 @@ go run ./cmd/aibench --lint-dir ./aibench-results/lint-all --out ./aibench-resul
 
 ## Lint
 
-Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. `lint_report.md` selalu ditulis ke folder `--out`; run gagal tidak masuk laporan dan tidak dihitung `PASS`/`FAIL`. Exit code non-nol bila ada `FAIL`. Contoh laporan hasil lint 10 run tersimpan di [`lint_report.md`](lint_report.md).
+Setiap file dibandingkan dengan fixture brief yang sesuai dengan prefix nama file. Output console dan `lint_report.md` memuat `PASS`, `FAIL`, atau `WARN` per aturan beserta kutipan bukti maksimal 80 karakter. `lint_report.md` selalu ditulis ke folder `--out`; run gagal tidak masuk laporan dan tidak dihitung `PASS`/`FAIL`. Exit code non-nol bila ada `FAIL`. Contoh laporan hasil lint 10 run tersimpan di [`contoh-lint-report.md`](contoh-lint-report.md).
 
 Aturan `FAIL`:
 
