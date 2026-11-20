@@ -1,4 +1,4 @@
-# Nusa AI
+# Nusa AI - Backend AI Website Generator
 
 > Backend AI Website Generator (Tahap A): user menjelaskan website yang diinginkan (brief), AI menghasilkan satu file HTML mandiri, lalu user merevisinya lewat instruksi teks.
 
